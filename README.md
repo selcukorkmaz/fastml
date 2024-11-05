@@ -2,7 +2,6 @@
 
 [![CRAN_Status_Badge](https://www.r-pkg.org/badges/version/fastml)](https://CRAN.R-project.org/package=fastml)
 [![License](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
-[![R-CMD-check](https://github.com/yourusername/fastml/workflows/R-CMD-check/badge.svg)](https://github.com/yourusername/fastml/actions)
 
 **fastml** is a streamlined R package designed to simplify the training, evaluation, and comparison of multiple machine learning models. It offers comprehensive data preprocessing, supports a wide range of algorithms with hyperparameter tuning, and provides performance metrics alongside visualization tools to facilitate efficient and effective machine learning workflows.
 
