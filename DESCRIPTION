@@ -1,0 +1,28 @@
+Package: fastml
+Type: Package
+Title: Fast Machine Learning Model Training and Evaluation
+Version: 0.1.0
+Authors@R: c(person("Selcuk", "Korkmaz", email="selcukorkmaz@gmail.com", role=c("aut", "cre"),
+                    comment = c(ORCID = "0000-0003-4632-6850")), 
+             person("Dincer", "Goksuluk", email="dincer.goksuluk@gmail.com", role="aut",
+                    comment = c(ORCID = "0000-0002-2752-7668")))
+Description:
+    Streamlines the training, evaluation, and comparison of 
+    multiple machine learning models with minimal code by providing 
+    comprehensive data preprocessing and support for a wide range of 
+    algorithms with hyperparameter tuning. It offers performance metrics 
+    and visualization tools to facilitate efficient and effective machine learning workflows.
+License: GPL (>= 2)
+Encoding: UTF-8
+LazyData: true
+Imports:
+    caret,
+    pROC,
+    reshape2,
+    ggplot2,
+    foreach,
+    doParallel
+Suggests:
+    knitr,
+    rmarkdown
+RoxygenNote: 7.3.2
