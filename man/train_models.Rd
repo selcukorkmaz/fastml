@@ -10,6 +10,7 @@ train_models(
   algorithms,
   resampling_method,
   folds,
+  repeats = NULL,
   tune_params,
   metric,
   summaryFunction = NULL,
@@ -26,6 +27,8 @@ train_models(
 \item{resampling_method}{Resampling method for cross-validation (e.g., "cv", "repeatedcv").}
 
 \item{folds}{Number of folds for cross-validation.}
+
+\item{repeats}{Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").}
 
 \item{tune_params}{List of hyperparameter tuning ranges.}
 

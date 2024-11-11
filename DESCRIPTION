@@ -21,5 +21,20 @@ Imports:
     doParallel
 Suggests:
     knitr,
-    rmarkdown
+    rmarkdown,
+    randomForest,
+    kernlab,
+    gbm,    
+    nnet,      
+    rpart,
+    glmnet,
+    xgboost,
+    pls,
+    C50,
+    mboost,
+    arm,
+    ipred,
+    caTools,
+    e1071,
+    MASS
 RoxygenNote: 7.3.2

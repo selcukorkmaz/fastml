@@ -125,7 +125,8 @@ model4 <- fastml(
   data = iris,
   label = "Species",
   algorithms = c("random_forest"),
-  tune_params = custom_tuning
+  tune_params = custom_tuning,
+  metric = "Accuracy"
 )
 
 # View the results

@@ -1,3 +1,5 @@
+utils::globalVariables("twoClassSummary")
+
 #' Train Specified Machine Learning Algorithms on the Training Data
 #'
 #' Trains specified machine learning algorithms on the preprocessed training data.
@@ -7,6 +9,7 @@
 #' @param algorithms Vector of algorithm names to train.
 #' @param resampling_method Resampling method for cross-validation (e.g., "cv", "repeatedcv").
 #' @param folds Number of folds for cross-validation.
+#' @param repeats Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").
 #' @param tune_params List of hyperparameter tuning ranges.
 #' @param metric The performance metric to optimize.
 #' @param summaryFunction A custom summary function for model evaluation. Default is \code{NULL}.
@@ -17,12 +20,14 @@
 #' @importFrom stats as.formula predict binomial
 #'
 #' @export
+
 train_models <-
   function(train_data,
            label,
            algorithms,
            resampling_method,
            folds,
+           repeats = NULL,
            tune_params,
            metric,
            summaryFunction = NULL,
@@ -33,19 +38,34 @@ train_models <-
     # Ensure the target variable is a factor
     train_data[[label]] <- as.factor(train_data[[label]])
 
-    # Decide on classProbs based on whether probabilities are needed
-    # For metrics like MCC, class probabilities are not needed
-    class_probs <- FALSE
+    # Check and adjust factor levels to be valid R variable names
+    original_levels <- levels(train_data[[label]])
+    valid_levels <- make.names(original_levels)
+    if (!all(original_levels == valid_levels)) {
+      levels(train_data[[label]]) <- valid_levels
+      warning("Factor levels of the target variable have been adjusted to be valid R variable names.")
+    }
 
-    # Use the custom summary function
-    if (is.null(summaryFunction)) {
-      summary_func <- defaultSummary
+    # Decide on classProbs based on whether probabilities are needed
+    # For metrics like ROC, class probabilities are needed
+    if (metric == "ROC") {
+      class_probs <- TRUE
+      if (is.null(summaryFunction)) {
+        summary_func <- twoClassSummary  # Use twoClassSummary for ROC
+      } else {
+        summary_func <- summaryFunction
+      }
     } else {
-      summary_func <- summaryFunction
+      class_probs <- FALSE
+      if (is.null(summaryFunction)) {
+        summary_func <- defaultSummary
+      } else {
+        summary_func <- summaryFunction
+      }
     }
 
     # Set up trainControl
-    control <- trainControl(
+    control_args <- list(
       method = resampling_method,
       number = folds,
       search = "grid",
@@ -55,6 +75,13 @@ train_models <-
       allowParallel = TRUE,
       savePredictions = "final"
     )
+
+    # Include repeats if applicable
+    if (!is.null(repeats) && resampling_method %in% c("repeatedcv", "adaptive_cv", "adaptive_boot")) {
+      control_args$repeats <- repeats
+    }
+
+    control <- do.call(trainControl, control_args)
 
     # Define required tuning parameters for each algorithm
     required_tuning_params <- list(
@@ -117,7 +144,7 @@ train_models <-
             tuneGrid,
             default_params,
             required_tuning_params[[algo]],
-            resampling_method = (resampling_method != "none")
+            resampling_method != "none"
           )
 
           model <- train(
@@ -141,7 +168,7 @@ train_models <-
             tuneGrid,
             default_params,
             required_tuning_params[[algo]],
-            resampling_method = (resampling_method != "none")
+            resampling_method != "none"
           )
 
           model <- train(
@@ -164,7 +191,7 @@ train_models <-
             tuneGrid,
             default_params,
             required_tuning_params[[algo]],
-            resampling_method = (resampling_method != "none")
+            resampling_method != "none"
           )
 
           model <- train(
@@ -186,7 +213,7 @@ train_models <-
             tuneGrid,
             default_params,
             required_tuning_params[[algo]],
-            resampling_method = (resampling_method != "none")
+            resampling_method != "none"
           )
 
           model <- train(
@@ -216,7 +243,7 @@ train_models <-
             tuneGrid,
             default_params,
             required_tuning_params[[algo]],
-            resampling_method = (resampling_method != "none")
+            resampling_method != "none"
           )
 
           model <- train(
@@ -239,7 +266,7 @@ train_models <-
           tuneGrid <- validate_tuneGrid(tuneGrid,
                                         default_params,
                                         NULL,
-                                        resampling_method = (resampling_method != "none"))
+                                        resampling_method != "none")
 
           model <- train(
             formula,
@@ -272,7 +299,7 @@ train_models <-
           tuneGrid <- validate_tuneGrid(tuneGrid,
                                         default_params,
                                         NULL,
-                                        resampling_method = (resampling_method != "none"))
+                                        resampling_method != "none")
 
           model <- train(
             formula,
@@ -294,7 +321,7 @@ train_models <-
             tuneGrid,
             default_params,
             required_tuning_params[[algo]],
-            resampling_method = (resampling_method != "none")
+            resampling_method != "none"
           )
 
           model <- train(
@@ -320,7 +347,7 @@ train_models <-
             tuneGrid,
             default_params,
             required_tuning_params[[algo]],
-            resampling_method = (resampling_method != "none")
+            resampling_method != "none"
           )
 
           model <- train(
@@ -347,7 +374,7 @@ train_models <-
             tuneGrid,
             default_params,
             required_tuning_params[[algo]],
-            resampling_method = (resampling_method != "none")
+            resampling_method != "none"
           )
 
           model <- train(
@@ -410,7 +437,7 @@ train_models <-
             tuneGrid,
             default_params,
             required_tuning_params[[algo]],
-            resampling_method = (resampling_method != "none")
+            resampling_method != "none"
           )
 
           model <- train(
@@ -432,7 +459,7 @@ train_models <-
           tuneGrid <- validate_tuneGrid(tuneGrid,
                                         default_params,
                                         NULL,
-                                        resampling_method = (resampling_method != "none"))
+                                        resampling_method != "none")
 
           model <- train(
             formula,
@@ -463,7 +490,7 @@ train_models <-
             tuneGrid,
             default_params,
             required_tuning_params[[algo]],
-            resampling_method = (resampling_method != "none")
+            resampling_method != "none"
           )
 
           model <- train(
@@ -486,7 +513,7 @@ train_models <-
             tuneGrid,
             default_params,
             required_tuning_params[[algo]],
-            resampling_method = (resampling_method != "none")
+            resampling_method != "none"
           )
 
           model <- train(
@@ -519,4 +546,5 @@ train_models <-
 
     return(models)
   }
+
 

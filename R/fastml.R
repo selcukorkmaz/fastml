@@ -84,7 +84,8 @@
 #'   data = iris,
 #'   label = "Species",
 #'   algorithms = c("random_forest"),
-#'   tune_params = custom_tuning
+#'   tune_params = custom_tuning,
+#'   metric = "Accuracy"
 #' )
 #'
 #' # View the results
@@ -132,15 +133,21 @@ fastml <- function(data,
       "Specificity",
       "Precision",
       "F1",
-      "MCC")
+      "MCC",
+      "ROC")  # Include "ROC"
 
-  # Validate metric
-  if (!(metric %in% supported_metrics)) {
+  # Validate metric (case-insensitive)
+  metric_input <- metric  # Keep the original user input
+  metric_lower <- tolower(metric)
+  supported_metrics_lower <- tolower(supported_metrics)
+  if (!(metric_lower %in% supported_metrics_lower)) {
     stop(paste(
       "Unsupported metric. Please choose from:",
       paste(supported_metrics, collapse = ", ")
     ))
   }
+  # Map back to the correctly capitalized metric
+  metric <- supported_metrics[which(supported_metrics_lower == metric_lower)]
 
   # Check if the label exists in the data
   if (!(label %in% names(data))) {
@@ -218,6 +225,19 @@ fastml <- function(data,
   test_processed <- preprocessed$test
   preprocessor <- preprocessed$preprocessor
 
+  # Adjust factor levels of the target variable in training data
+  train_processed[[label]] <- as.factor(train_processed[[label]])
+  original_levels <- levels(train_processed[[label]])
+  valid_levels <- make.names(original_levels)
+  if (!all(original_levels == valid_levels)) {
+    levels(train_processed[[label]]) <- valid_levels
+    warning("Factor levels of the target variable have been adjusted to be valid R variable names.")
+  }
+
+  # Adjust factor levels of the target variable in test data to match training data
+  test_processed[[label]] <- factor(test_processed[[label]], levels = original_levels)
+  levels(test_processed[[label]]) <- levels(train_processed[[label]])
+
   # Check for missing values in preprocessed training data
   if (any(is.na(train_processed))) {
     stop(
@@ -247,7 +267,8 @@ fastml <- function(data,
       folds = folds,
       tune_params = tune_params,
       metric = metric,
-      summaryFunction = summaryFunction
+      summaryFunction = summaryFunction,
+      seed = seed  # Pass seed for reproducibility
     )
   }, error = function(e) {
     # The on.exit will handle cluster termination
@@ -299,9 +320,11 @@ fastml <- function(data,
     # Store the label name for future use
     models = models,
     # Include all models in the result
-    metric = metric                                   # Store the optimized metric
+    metric = metric  # Store the optimized metric
   )
 
   class(result) <- "fastml_model"
   invisible(result)
 }
+
+
