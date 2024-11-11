@@ -12,7 +12,8 @@ train_models(
   folds,
   tune_params,
   metric,
-  summaryFunction = NULL
+  summaryFunction = NULL,
+  seed = 123
 )
 }
 \arguments{
@@ -31,6 +32,8 @@ train_models(
 \item{metric}{The performance metric to optimize.}
 
 \item{summaryFunction}{A custom summary function for model evaluation. Default is \code{NULL}.}
+
+\item{seed}{An integer value specifying the random seed for reproducibility.}
 }
 \value{
 A list of trained model objects.

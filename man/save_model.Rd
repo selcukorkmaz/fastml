@@ -11,6 +11,9 @@ save_model(model, filepath)
 
 \item{filepath}{A string specifying the file path to save the model.}
 }
+\value{
+No return value, called for its side effect of saving the model object to a file.
+}
 \description{
 Saves the trained model object to a file.
 }

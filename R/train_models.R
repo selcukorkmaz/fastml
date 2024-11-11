@@ -10,6 +10,7 @@
 #' @param tune_params List of hyperparameter tuning ranges.
 #' @param metric The performance metric to optimize.
 #' @param summaryFunction A custom summary function for model evaluation. Default is \code{NULL}.
+#' @param seed An integer value specifying the random seed for reproducibility.
 #' @return A list of trained model objects.
 #'
 #' @importFrom caret train trainControl defaultSummary
@@ -24,7 +25,8 @@ train_models <-
            folds,
            tune_params,
            metric,
-           summaryFunction = NULL) {
+           summaryFunction = NULL,
+           seed = 123) {
     # Load required packages
     requireNamespace("caret", quietly = TRUE)
 
@@ -88,7 +90,7 @@ train_models <-
 
     # Loop over each algorithm
     for (algo in algorithms) {
-      set.seed(123)  # For reproducibility
+      set.seed(seed)  # For reproducibility
       model <- NULL  # Initialize model variable
 
       # Define the model formula

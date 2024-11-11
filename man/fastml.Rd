@@ -18,7 +18,8 @@ fastml(
   impute_method = NULL,
   encode_categoricals = TRUE,
   scaling_methods = c("center", "scale"),
-  summaryFunction = NULL
+  summaryFunction = NULL,
+  seed = 123
 )
 }
 \arguments{
@@ -51,6 +52,8 @@ Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.}
 \item{scaling_methods}{Vector of scaling methods to apply. Default is \code{c("center", "scale")}.}
 
 \item{summaryFunction}{A custom summary function for model evaluation. Default is \code{NULL}.}
+
+\item{seed}{An integer value specifying the random seed for reproducibility.}
 }
 \value{
 An object of class \code{fastml_model} containing the best model, performance metrics, and other information.
@@ -60,7 +63,7 @@ Trains and evaluates multiple classification models.
 }
 \examples{
 \donttest{
-# Example dataset
+ # Example 1: Using the iris dataset for binary classification (excluding 'setosa')
 data(iris)
 iris <- iris[iris$Species != "setosa", ]  # Binary classification
 iris$Species <- factor(iris$Species)
@@ -74,5 +77,58 @@ model <- fastml(
 # View model summary
 summary(model)
 }
+
+# Example 2: Using the mtcars dataset for binary classification
+data(mtcars)
+mtcars$am <- factor(mtcars$am)  # Convert transmission (0 = automatic, 1 = manual) to a factor
+
+# Train models with a different resampling method and specific algorithms
+model2 <- fastml(
+  data = mtcars,
+  label = "am",
+  algorithms = c("random_forest", "svm_radial"),
+  resampling_method = "repeatedcv",
+  folds = 3,
+  test_size = 0.25
+)
+
+# View model performance
+summary(model2)
+
+\donttest{
+# Example 3: Using the airquality dataset with missing values
+data(airquality)
+airquality <- na.omit(airquality)  # Simple example to remove missing values for demonstration
+airquality$Month <- factor(airquality$Month)
+
+# Train models with categorical encoding and scaling
+model3 <- fastml(
+  data = airquality,
+  label = "Month",
+  encode_categoricals = TRUE,
+  scaling_methods = c("center", "scale")
+)
+
+# Evaluate and compare models
+summary(model3)
+}
+
+# Example 4: Custom hyperparameter tuning for a random forest
+data(iris)
+iris <- iris[iris$Species != "setosa", ]  # Filter out 'setosa' for binary classification
+iris$Species <- factor(iris$Species)
+custom_tuning <- list(
+  random_forest = expand.grid(mtry = c(1:10))
+)
+
+model4 <- fastml(
+  data = iris,
+  label = "Species",
+  algorithms = c("random_forest"),
+  tune_params = custom_tuning
+)
+
+# View the results
+summary(model4)
 
 }
