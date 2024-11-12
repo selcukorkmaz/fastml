@@ -103,9 +103,10 @@
 #' summary(model4)
 #'
 #' @importFrom caret createDataPartition
-#' @importFrom doParallel registerDoParallel
+#' @importFrom doParallel registerDoParallel registerDoParallel
 #' @importFrom foreach registerDoSEQ
 #' @importFrom parallel makeCluster stopCluster detectCores
+#' @importFrom stats complete.cases
 #' @export
 fastml <- function(data,
                    label,
@@ -204,7 +205,7 @@ fastml <- function(data,
   set.seed(seed)  # For reproducibility
   if (stratify) {
     train_index <-
-      caret::createDataPartition(data[[label]], p = 1 - test_size, list = FALSE)
+      createDataPartition(data[[label]], p = 1 - test_size, list = FALSE)
   } else {
     train_index <-
       sample(seq_len(nrow(data)), size = floor((1 - test_size) * nrow(data)))
@@ -257,14 +258,15 @@ fastml <- function(data,
 
   # Initialize parallel backend if n_cores > 1
   if (n_cores > 1) {
-    cl <- parallel::makeCluster(n_cores)
-    doParallel::registerDoParallel(cl)
+    cl <- makeCluster(n_cores)
+    registerDoParallel(cl)
+
 
     # Ensure the cluster is stopped even if an error occurs
     on.exit({
       if (!is.null(cl)) {
-        parallel::stopCluster(cl)
-        foreach::registerDoSEQ()
+        stopCluster(cl)
+        registerDoSEQ()
       }
     }, add = TRUE)
   }

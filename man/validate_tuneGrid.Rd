@@ -4,7 +4,7 @@
 \alias{validate_tuneGrid}
 \title{Validate and Complete the tuneGrid}
 \usage{
-validate_tuneGrid(tuneGrid, default_params, required_params, resampling_method)
+validate_tuneGrid(tuneGrid, default_params, required_params, is_cv_enabled)
 }
 \arguments{
 \item{tuneGrid}{User-provided tuning grid.}
@@ -13,7 +13,7 @@ validate_tuneGrid(tuneGrid, default_params, required_params, resampling_method)
 
 \item{required_params}{Required hyperparameters for the algorithm.}
 
-\item{resampling_method}{Logical indicating whether cross-validation is enabled.}
+\item{is_cv_enabled}{Logical indicating whether cross-validation is enabled.}
 }
 \value{
 A validated and possibly modified tuneGrid.

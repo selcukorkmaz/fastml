@@ -10,12 +10,13 @@ fastml(
   algorithms = c("xgboost", "random_forest", "svm_radial"),
   test_size = 0.2,
   resampling_method = "cv",
-  folds = 5,
+  folds = ifelse(grepl("cv", resampling_method), 10, 25),
+  repeats = ifelse(grepl("[d_]cv$", resampling_method), 1, NA),
   tune_params = NULL,
   metric = "Accuracy",
   n_cores = 1,
   stratify = TRUE,
-  impute_method = NULL,
+  impute_method = "error",
   encode_categoricals = TRUE,
   scaling_methods = c("center", "scale"),
   summaryFunction = NULL,
@@ -37,6 +38,8 @@ Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.}
 
 \item{folds}{An integer specifying the number of folds for cross-validation. Default is \code{5}.}
 
+\item{repeats}{Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").}
+
 \item{tune_params}{A list specifying hyperparameter tuning ranges. Default is \code{NULL}.}
 
 \item{metric}{The performance metric to optimize during training. Default is \code{"Accuracy"}.}
@@ -45,7 +48,16 @@ Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.}
 
 \item{stratify}{Logical indicating whether to use stratified sampling when splitting the data. Default is \code{TRUE}.}
 
-\item{impute_method}{Method for missing value imputation. Default is \code{NULL}.}
+\item{impute_method}{Method for handling missing values. Options include:
+\describe{
+  \item{\code{"medianImpute"}}{Impute missing values using median imputation.}
+  \item{\code{"knnImpute"}}{Impute missing values using k-nearest neighbors.}
+  \item{\code{"bagImpute"}}{Impute missing values using bagging.}
+  \item{\code{"remove"}}{Remove rows with missing values from the data.}
+  \item{\code{"error"}}{Do not perform imputation; if missing values are detected after preprocessing, stop execution with an error.}
+  \item{\code{NULL}}{Equivalent to \code{"error"}. No imputation is performed, and the function will stop if missing values are present.}
+}
+Default is \code{"error"}.}
 
 \item{encode_categoricals}{Logical indicating whether to encode categorical variables. Default is \code{TRUE}.}
 
@@ -88,7 +100,8 @@ model2 <- fastml(
   label = "am",
   algorithms = c("random_forest", "svm_radial"),
   resampling_method = "repeatedcv",
-  folds = 3,
+  folds = 5,
+  repeats = 2,
   test_size = 0.25
 )
 

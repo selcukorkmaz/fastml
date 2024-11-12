@@ -8,7 +8,7 @@ prepare_data(
   train_data,
   test_data,
   label,
-  impute_method = "medianImpute",
+  impute_method = "error",
   encode_categoricals = TRUE,
   scaling_methods = c("center", "scale")
 )
@@ -20,10 +20,16 @@ prepare_data(
 
 \item{label}{Name of the target variable.}
 
-\item{impute_method}{Method for missing value imputation. Default is \code{"medianImpute"}.
-Options include \code{"medianImpute"}, \code{"knnImpute"}, \code{"bagImpute"}, or \code{NULL} for no imputation.}
-
-\item{encode_categoricals}{Logical indicating whether to encode categorical variables. Default is \code{TRUE}.}
+\item{impute_method}{Method for handling missing values. Options include:
+\describe{
+  \item{\code{"medianImpute"}}{Impute missing values using median imputation.}
+  \item{\code{"knnImpute"}}{Impute missing values using k-nearest neighbors.}
+  \item{\code{"bagImpute"}}{Impute missing values using bagging.}
+  \item{\code{"remove"}}{Remove rows with missing values from the data.}
+  \item{\code{"error"}}{Do not perform imputation; if missing values are detected after preprocessing, stop execution with an error.}
+  \item{\code{NULL}}{Equivalent to \code{"error"}. No imputation is performed, and the function will stop if missing values are present.}
+}
+Default is \code{"error"}.}
 
 \item{scaling_methods}{Vector of scaling methods to apply. Options include \code{"center"}, \code{"scale"}, \code{"range"}, \code{"zv"}, \code{"nzv"}, \code{"YeoJohnson"}, \code{"BoxCox"}.
 Default is \code{c("center", "scale")}.}

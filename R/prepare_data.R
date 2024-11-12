@@ -85,7 +85,7 @@ prepare_data <- function(train_data,
     factor_cols <- sapply(train_data[predictors], is.factor)
     if (any(factor_cols)) {
       # Use dummyVars for one-hot encoding
-      dummies <- caret::dummyVars( ~ ., data = train_data[, predictors], fullRank = TRUE)
+      dummies <- dummyVars( ~ ., data = train_data[, predictors], fullRank = TRUE)
       train_data_dummies <- predict(dummies, newdata = train_data)
       test_data_dummies <- predict(dummies, newdata = test_data)
 
@@ -112,7 +112,7 @@ prepare_data <- function(train_data,
   }
 
   # Apply preprocessing steps
-  preProcess_steps <- caret::preProcess(train_processed[, setdiff(names(train_processed), label)],
+  preProcess_steps <- preProcess(train_processed[, setdiff(names(train_processed), label)],
                                         method = preProcess_methods)
 
   # Apply preprocessing to training data

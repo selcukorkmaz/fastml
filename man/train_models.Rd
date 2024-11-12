@@ -10,7 +10,7 @@ train_models(
   algorithms,
   resampling_method,
   folds,
-  repeats = NULL,
+  repeats,
   tune_params,
   metric,
   summaryFunction = NULL,
