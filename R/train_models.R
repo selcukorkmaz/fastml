@@ -27,13 +27,16 @@ train_models <-
            algorithms,
            resampling_method,
            folds,
-           repeats = NULL,
+           repeats,
            tune_params,
            metric,
            summaryFunction = NULL,
            seed = 123) {
     # Load required packages
     requireNamespace("caret", quietly = TRUE)
+    if (metric == "ROC") {
+      requireNamespace("pROC", quietly = TRUE)  # For ROC metric
+    }
 
     # Ensure the target variable is a factor
     train_data[[label]] <- as.factor(train_data[[label]])
@@ -51,14 +54,14 @@ train_models <-
     if (metric == "ROC") {
       class_probs <- TRUE
       if (is.null(summaryFunction)) {
-        summary_func <- twoClassSummary  # Use twoClassSummary for ROC
+        summary_func <- caret::twoClassSummary  # Use twoClassSummary for ROC
       } else {
         summary_func <- summaryFunction
       }
     } else {
       class_probs <- FALSE
       if (is.null(summaryFunction)) {
-        summary_func <- defaultSummary
+        summary_func <- caret::defaultSummary
       } else {
         summary_func <- summaryFunction
       }
@@ -68,6 +71,7 @@ train_models <-
     control_args <- list(
       method = resampling_method,
       number = folds,
+      repeats = repeats,
       search = "grid",
       verboseIter = FALSE,
       classProbs = class_probs,
@@ -76,12 +80,20 @@ train_models <-
       savePredictions = "final"
     )
 
-    # Include repeats if applicable
-    if (!is.null(repeats) && resampling_method %in% c("repeatedcv", "adaptive_cv", "adaptive_boot")) {
-      control_args$repeats <- repeats
-    }
+    control <- do.call(caret::trainControl, control_args)
 
-    control <- do.call(trainControl, control_args)
+    # Determine available metrics from the summaryFunction
+    available_metrics <- get_available_metrics(summary_func, train_data, label)
+
+    # Validate the metric
+    if (!(metric %in% available_metrics)) {
+      stop(
+        paste(
+          "Unsupported metric. The available metrics are:",
+          paste(available_metrics, collapse = ", ")
+        )
+      )
+    }
 
     # Define required tuning parameters for each algorithm
     required_tuning_params <- list(
@@ -147,7 +159,7 @@ train_models <-
             resampling_method != "none"
           )
 
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "nnet",
@@ -171,7 +183,7 @@ train_models <-
             resampling_method != "none"
           )
 
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "svmLinear",
@@ -194,7 +206,7 @@ train_models <-
             resampling_method != "none"
           )
 
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "svmRadial",
@@ -216,7 +228,7 @@ train_models <-
             resampling_method != "none"
           )
 
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "knn",
@@ -246,7 +258,7 @@ train_models <-
             resampling_method != "none"
           )
 
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "xgbTree",
@@ -268,7 +280,7 @@ train_models <-
                                         NULL,
                                         resampling_method != "none")
 
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "rf",
@@ -279,7 +291,7 @@ train_models <-
 
         } else if (algo == "logistic_regression") {
           # Logistic Regression (GLM)
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "glm",
@@ -301,7 +313,7 @@ train_models <-
                                         NULL,
                                         resampling_method != "none")
 
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "glmnet",
@@ -324,7 +336,7 @@ train_models <-
             resampling_method != "none"
           )
 
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "rpart",
@@ -350,7 +362,7 @@ train_models <-
             resampling_method != "none"
           )
 
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "C5.0",
@@ -377,7 +389,7 @@ train_models <-
             resampling_method != "none"
           )
 
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "gbm",
@@ -389,7 +401,7 @@ train_models <-
 
         } else if (algo == "naive_bayes") {
           # Naive Bayes
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "nb",
@@ -399,7 +411,7 @@ train_models <-
 
         } else if (algo == "lda") {
           # Linear Discriminant Analysis
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "lda",
@@ -409,7 +421,7 @@ train_models <-
 
         } else if (algo == "qda") {
           # Quadratic Discriminant Analysis
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "qda",
@@ -419,7 +431,7 @@ train_models <-
 
         } else if (algo == "bagging") {
           # Bagging (treebag)
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "treebag",
@@ -440,7 +452,7 @@ train_models <-
             resampling_method != "none"
           )
 
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "LogitBoost",
@@ -461,7 +473,7 @@ train_models <-
                                         NULL,
                                         resampling_method != "none")
 
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "glmnet",
@@ -472,7 +484,7 @@ train_models <-
 
         } else if (algo == "bayes_glm") {
           # Bayesian Generalized Linear Model
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "bayesglm",
@@ -493,7 +505,7 @@ train_models <-
             resampling_method != "none"
           )
 
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "pls",
@@ -516,7 +528,7 @@ train_models <-
             resampling_method != "none"
           )
 
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "glmboost",
@@ -546,5 +558,26 @@ train_models <-
 
     return(models)
   }
+
+# Helper function to get available metrics from the summaryFunction
+get_available_metrics <- function(summaryFunction, train_data, label) {
+  # Create a small sample dataset
+  sample_data <- train_data[1:2, , drop = FALSE]
+  sample_obs <- sample_data[[label]]
+  sample_pred <- sample_obs  # Use the same values for simplicity
+
+  # Create a data frame for summaryFunction
+  data <- data.frame(obs = sample_obs, pred = sample_pred)
+
+  if (class(summaryFunction) == "function") {
+    res <- summaryFunction(data = data, lev = levels(sample_obs), model = NULL)
+    return(names(res))
+  } else {
+    # Use defaultSummary
+    res <- caret::defaultSummary(data = data)
+    return(names(res))
+  }
+}
+
 
 

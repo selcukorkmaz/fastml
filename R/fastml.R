@@ -10,11 +10,21 @@
 #' @param resampling_method A string specifying the resampling method for cross-validation. Default is \code{"cv"} (cross-validation).
 #'                          Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.
 #' @param folds An integer specifying the number of folds for cross-validation. Default is \code{5}.
+#' @param repeats Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").
 #' @param tune_params A list specifying hyperparameter tuning ranges. Default is \code{NULL}.
 #' @param metric The performance metric to optimize during training. Default is \code{"Accuracy"}.
 #' @param n_cores An integer specifying the number of CPU cores to use for parallel processing. Default is \code{1}.
 #' @param stratify Logical indicating whether to use stratified sampling when splitting the data. Default is \code{TRUE}.
-#' @param impute_method Method for missing value imputation. Default is \code{NULL}.
+#' @param impute_method Method for handling missing values. Options include:
+#'   \describe{
+#'     \item{\code{"medianImpute"}}{Impute missing values using median imputation.}
+#'     \item{\code{"knnImpute"}}{Impute missing values using k-nearest neighbors.}
+#'     \item{\code{"bagImpute"}}{Impute missing values using bagging.}
+#'     \item{\code{"remove"}}{Remove rows with missing values from the data.}
+#'     \item{\code{"error"}}{Do not perform imputation; if missing values are detected after preprocessing, stop execution with an error.}
+#'     \item{\code{NULL}}{Equivalent to \code{"error"}. No imputation is performed, and the function will stop if missing values are present.}
+#'   }
+#'   Default is \code{"error"}.
 #' @param encode_categoricals Logical indicating whether to encode categorical variables. Default is \code{TRUE}.
 #' @param scaling_methods Vector of scaling methods to apply. Default is \code{c("center", "scale")}.
 #' @param summaryFunction A custom summary function for model evaluation. Default is \code{NULL}.
@@ -47,7 +57,8 @@
 #'   label = "am",
 #'   algorithms = c("random_forest", "svm_radial"),
 #'   resampling_method = "repeatedcv",
-#'   folds = 3,
+#'   folds = 5,
+#'   repeats = 2,
 #'   test_size = 0.25
 #' )
 #'
@@ -101,12 +112,13 @@ fastml <- function(data,
                    algorithms = c("xgboost", "random_forest", "svm_radial"),
                    test_size = 0.2,
                    resampling_method = "cv",
-                   folds = 5,
+                   folds = ifelse(grepl("cv", resampling_method), 10, 25),
+                   repeats = ifelse(grepl("[d_]cv$", resampling_method), 1, NA),
                    tune_params = NULL,
                    metric = "Accuracy",
                    n_cores = 1,
                    stratify = TRUE,
-                   impute_method = NULL,
+                   impute_method = "error",  # Enhanced impute_method
                    encode_categoricals = TRUE,
                    scaling_methods = c("center", "scale"),
                    summaryFunction = NULL,
@@ -125,34 +137,8 @@ fastml <- function(data,
     stop("The 'parallel' package is required but not installed.")
   }
 
-  # Supported metrics
-  supported_metrics <-
-    c("Accuracy",
-      "Kappa",
-      "Sensitivity",
-      "Specificity",
-      "Precision",
-      "F1",
-      "MCC",
-      "ROC")  # Include "ROC"
-
-  # Validate metric (case-insensitive)
-  metric_input <- metric  # Keep the original user input
-  metric_lower <- tolower(metric)
-  supported_metrics_lower <- tolower(supported_metrics)
-  if (!(metric_lower %in% supported_metrics_lower)) {
-    stop(paste(
-      "Unsupported metric. Please choose from:",
-      paste(supported_metrics, collapse = ", ")
-    ))
-  }
-  # Map back to the correctly capitalized metric
-  metric <- supported_metrics[which(supported_metrics_lower == metric_lower)]
-
-  # Check if the label exists in the data
-  if (!(label %in% names(data))) {
-    stop("The specified label does not exist in the data.")
-  }
+  # Initialize the cluster variable
+  cl <- NULL
 
   # Handle algorithms
   supported_algorithms <- c(
@@ -184,6 +170,8 @@ fastml <- function(data,
     algorithms <- supported_algorithms
   } else {
     invalid_algorithms <- setdiff(algorithms, supported_algorithms)
+    valid_algorithms <- intersect(algorithms, supported_algorithms)
+
     if (length(invalid_algorithms) > 0) {
       warning(
         paste(
@@ -193,16 +181,30 @@ fastml <- function(data,
           paste(supported_algorithms, collapse = ", ")
         )
       )
-      # Remove invalid algorithms
-      algorithms <- setdiff(algorithms, invalid_algorithms)
     }
+
+    if (length(valid_algorithms) == 0) {
+      stop(
+        paste(
+          "No valid algorithms specified. Please choose from the supported algorithms:\n",
+          paste(supported_algorithms, collapse = ", ")
+        )
+      )
+    } else {
+      algorithms <- valid_algorithms
+    }
+  }
+
+  # Check if the label exists in the data
+  if (!(label %in% names(data))) {
+    stop("The specified label does not exist in the data.")
   }
 
   # Split data into training and testing sets
   set.seed(seed)  # For reproducibility
   if (stratify) {
     train_index <-
-      createDataPartition(data[[label]], p = 1 - test_size, list = FALSE)
+      caret::createDataPartition(data[[label]], p = 1 - test_size, list = FALSE)
   } else {
     train_index <-
       sample(seq_len(nrow(data)), size = floor((1 - test_size) * nrow(data)))
@@ -216,7 +218,7 @@ fastml <- function(data,
     train_data = train_data,
     test_data = test_data,
     label = label,
-    impute_method = impute_method,
+    impute_method = impute_method,  # Use enhanced impute_method
     encode_categoricals = encode_categoricals,
     scaling_methods = scaling_methods
   )
@@ -240,91 +242,126 @@ fastml <- function(data,
 
   # Check for missing values in preprocessed training data
   if (any(is.na(train_processed))) {
+    # Provide detailed error message
+    na_counts <- colSums(is.na(train_processed))
+    na_vars <- names(na_counts[na_counts > 0])
+    na_info <- paste(na_vars, "(", na_counts[na_vars], "missing)", collapse = ", ")
     stop(
-      "Preprocessed training data contains missing values. Please check the preprocessing steps."
+      paste(
+        "Preprocessed training data contains missing values in the following variables:",
+        na_info,
+        "\nPlease check the preprocessing steps or specify an appropriate 'impute_method'."
+      )
     )
   }
 
   # Initialize parallel backend if n_cores > 1
   if (n_cores > 1) {
-    cl <- makeCluster(n_cores)
-    registerDoParallel(cl)
+    cl <- parallel::makeCluster(n_cores)
+    doParallel::registerDoParallel(cl)
 
     # Ensure the cluster is stopped even if an error occurs
     on.exit({
-      stopCluster(cl)
-      registerDoSEQ()
+      if (!is.null(cl)) {
+        parallel::stopCluster(cl)
+        foreach::registerDoSEQ()
+      }
     }, add = TRUE)
   }
 
-  # Train models within a tryCatch to handle errors and ensure cluster termination
-  models <- tryCatch({
-    train_models(
+  # Wrap the main code in a tryCatch block
+  result <- tryCatch({
+
+    # Train models
+    models <- train_models(
       train_data = train_processed,
       label = label,
       algorithms = algorithms,
       resampling_method = resampling_method,
       folds = folds,
+      repeats = repeats,
       tune_params = tune_params,
       metric = metric,
       summaryFunction = summaryFunction,
       seed = seed  # Pass seed for reproducibility
     )
+
+    # Check if any models were successfully trained
+    if (length(models) == 0) {
+      stop("No models were successfully trained. Please check your data and parameters.")
+    }
+
+    # Evaluate models
+    performance <-
+      evaluate_models(models, test_processed, label, metric)
+
+    # Calculate best model index using the metric specified
+    metric_values <- sapply(performance, function(x)
+      x[[metric]])
+
+    # Handle possible NA values
+    if (any(is.na(metric_values))) {
+      warning(
+        "Some models did not return the specified metric. Check the metric name and model performance."
+      )
+      metric_values[is.na(metric_values)] <-
+        -Inf  # Set NA to -Inf so they are not selected as best
+    }
+
+    # Check if all metric_values are -Inf
+    if (all(metric_values == -Inf)) {
+      stop(
+        "None of the models returned the specified metric. Please check the 'metric' parameter."
+      )
+    }
+
+    # Identify all models with the maximum metric value
+    max_metric_value <- max(metric_values)
+    best_model_indices <- which(metric_values == max_metric_value)
+
+    # Check for ties
+    if (length(best_model_indices) > 1) {
+      # Multiple models have the same best metric value
+      tied_models <- names(models)[best_model_indices]
+      # Use the order of the algorithms list to break ties
+      ordered_tied_models <- intersect(algorithms, tied_models)
+      best_model_name <- ordered_tied_models[1]
+      best_model_idx <- which(names(models) == best_model_name)
+
+      # Inform the user about the tie and which model was selected
+      warning(paste(
+        "Multiple models have the same best", metric, "value.",
+        "Models:", paste(tied_models, collapse = ", "),
+        "\nSelecting the first model based on the order of algorithms."
+      ))
+    } else {
+      best_model_idx <- best_model_indices[1]
+      best_model_name <- names(models)[best_model_idx]
+    }
+
+    # Store the result
+    result <- list(
+      best_model = models[[best_model_idx]],
+      best_model_name = names(models)[best_model_idx],
+      performance = performance,
+      preprocessor = preprocessor,
+      label = label,
+      models = models,
+      metric = metric
+    )
+
+    class(result) <- "fastml_model"
+    result  # Return the result
+
   }, error = function(e) {
-    # The on.exit will handle cluster termination
-    stop(e)  # Re-throw the error after ensuring on.exit is called
+    # Re-throw the error after ensuring on.exit is called
+    stop(e)
   })
 
-  # Check if any models were successfully trained
-  if (length(models) == 0) {
-    stop("No models were successfully trained. Please check your data and parameters.")
-  }
-
-  # Evaluate models (compute multiple metrics by default)
-  performance <-
-    evaluate_models(models, test_processed, label, metric)
-
-  # Calculate best model index using the metric specified
-  metric_values <- sapply(performance, function(x)
-    x[[metric]])
-
-  # Handle possible NA values
-  if (any(is.na(metric_values))) {
-    warning(
-      "Some models did not return the specified metric. Check the metric name and model performance."
-    )
-    metric_values[is.na(metric_values)] <-
-      -Inf  # Set NA to -Inf so they are not selected as best
-  }
-
-  # Check if all metric_values are -Inf (i.e., all models failed to produce the metric)
-  if (all(metric_values == -Inf)) {
-    stop(
-      "None of the models returned the specified metric. Please check the 'metric' parameter."
-    )
-  }
-
-  best_model_idx <- which.max(metric_values)
-
-  # Store the result
-  result <- list(
-    best_model = models[[best_model_idx]],
-    # Best model object
-    best_model_name = names(models)[best_model_idx],
-    # Name of the best algorithm
-    performance = performance,
-    # Performance metrics of all models
-    preprocessor = preprocessor,
-    # Preprocessing steps
-    label = label,
-    # Store the label name for future use
-    models = models,
-    # Include all models in the result
-    metric = metric  # Store the optimized metric
-  )
-
-  class(result) <- "fastml_model"
+  # Return the result
   invisible(result)
 }
+
+
 
 
