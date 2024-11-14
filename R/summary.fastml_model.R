@@ -23,7 +23,11 @@ summary.fastml_model <- function(object, sort_metric = NULL, ...) {
   performance <- object$performance
 
   # Define all possible metrics
-  all_metric_names <- c("Accuracy", "Kappa", "Sensitivity", "Specificity", "Precision", "F1", "ROC")
+  if (object$task == "classification") {
+    all_metric_names <- c("Accuracy", "Kappa", "Sensitivity", "Specificity", "Precision", "F1", "ROC")
+  } else {
+    all_metric_names <- c("RMSE", "MAE", "Rsquared")
+  }
 
   # Determine which metrics are available (have at least one non-NA value)
   available_metrics <- all_metric_names[sapply(all_metric_names, function(metric) {
@@ -48,7 +52,7 @@ summary.fastml_model <- function(object, sort_metric = NULL, ...) {
   }
 
   # Determine the main metric used for sorting
-  # Prioritize sort_metric if provided and available, else use the optimized metric, else default to "Accuracy"
+  # Prioritize sort_metric if provided and available, else use the optimized metric
   if (!is.null(sort_metric)) {
     if (!(sort_metric %in% available_metrics)) {
       stop(paste("Invalid sort_metric. Choose from:", paste(available_metrics, collapse = ", ")))
@@ -58,10 +62,6 @@ summary.fastml_model <- function(object, sort_metric = NULL, ...) {
     optimized_metric <- object$metric
     if (optimized_metric %in% available_metrics) {
       main_metric <- optimized_metric
-    } else if ("ROC" %in% available_metrics) {
-      main_metric <- "ROC"
-    } else if ("Accuracy" %in% available_metrics) {
-      main_metric <- "Accuracy"
     } else {
       main_metric <- available_metrics[1]
       warning(paste("Optimized metric", optimized_metric, "is not available. Using", main_metric, "as the sorting metric."))
@@ -73,8 +73,14 @@ summary.fastml_model <- function(object, sort_metric = NULL, ...) {
     stop(paste("The main metric", main_metric, "is not present in the performance metrics."))
   }
 
-  # Sort by the main metric in descending order, handling NA values
-  performance_df <- performance_df[order(-performance_df[[main_metric]], na.last = TRUE), ]
+  # Sort by the main metric, handling NA values
+  if (object$task == "regression") {
+    # For regression, lower metrics like RMSE are better
+    performance_df <- performance_df[order(performance_df[[main_metric]], na.last = TRUE), ]
+  } else {
+    # For classification, higher metrics like Accuracy are better
+    performance_df <- performance_df[order(-performance_df[[main_metric]], na.last = TRUE), ]
+  }
 
   # Print the best model
   best_model_name <- object$best_model_name
@@ -101,20 +107,20 @@ summary.fastml_model <- function(object, sort_metric = NULL, ...) {
   }
 
   # Melt the data frame for plotting
-  performance_melt <- melt(performance_df, id.vars = "Model")
+  performance_melt <- reshape2::melt(performance_df, id.vars = "Model")
 
   # Remove rows where the metric value is NA to clean the plot
   performance_melt <- performance_melt[!is.na(performance_melt$value), ]
   colnames(performance_melt)[2] <- "Measure"
 
   # Plot performance metrics
-  p <- ggplot(performance_melt,
-              aes(x = Model, y = value, fill = Measure)) +
-    geom_bar(stat = "identity", position = "dodge") +
-    facet_wrap(~ Measure, scales = "free_y") +
-    theme_bw() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-    labs(title = "Model Performance Comparison", x = "Model", y = "Metric Value")
+  p <- ggplot2::ggplot(performance_melt,
+                       ggplot2::aes(x = Model, y = value, fill = Measure)) +
+    ggplot2::geom_bar(stat = "identity", position = "dodge") +
+    ggplot2::facet_wrap(~ Measure, scales = "free_y") +
+    ggplot2::theme_bw() +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
+    ggplot2::labs(title = "Model Performance Comparison", x = "Model", y = "Metric Value")
 
   print(p)
 

@@ -40,3 +40,4 @@ predict.fastml_model <- function(object, newdata, ...) {
 
   return(predictions)
 }
+

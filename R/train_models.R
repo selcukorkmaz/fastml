@@ -6,6 +6,7 @@ utils::globalVariables("twoClassSummary")
 #'
 #' @param train_data Preprocessed training data frame.
 #' @param label Name of the target variable.
+#' @param task Type of task: "classification" or "regression".
 #' @param algorithms Vector of algorithm names to train.
 #' @param resampling_method Resampling method for cross-validation (e.g., "cv", "repeatedcv").
 #' @param folds Number of folds for cross-validation.
@@ -18,12 +19,11 @@ utils::globalVariables("twoClassSummary")
 #'
 #' @importFrom caret train trainControl defaultSummary
 #' @importFrom stats as.formula predict binomial
-#'
 #' @export
-
 train_models <-
   function(train_data,
            label,
+           task,
            algorithms,
            resampling_method,
            folds,
@@ -42,22 +42,32 @@ train_models <-
       }
     }
 
-    # Ensure the target variable is a factor
-    train_data[[label]] <- as.factor(train_data[[label]])
+    # # Detect task based on the type of the target variable
+    # target_var <- train_data[[label]]
+    #
+    # if (is.factor(target_var) || is.character(target_var) || is.logical(target_var)) {
+    #   task <- "classification"
+    #   train_data[[label]] <- as.factor(train_data[[label]])
+    # } else if (is.numeric(target_var)) {
+    #   task <- "regression"
+    #   train_data[[label]] <- as.numeric(train_data[[label]])
+    # } else {
+    #   stop("Unable to detect task type. The target variable must be numeric, factor, character, or logical.")
+    # }
 
     # Decide on classProbs based on whether probabilities are needed
     # For metrics like ROC, class probabilities are needed
-    if (metric == "ROC") {
+    if (task == "classification" && metric == "ROC") {
       class_probs <- TRUE
       if (is.null(summaryFunction)) {
-        summary_func <- twoClassSummary  # Use twoClassSummary for ROC
+        summary_func <- caret::twoClassSummary  # Use twoClassSummary for ROC
       } else {
         summary_func <- summaryFunction
       }
     } else {
       class_probs <- FALSE
       if (is.null(summaryFunction)) {
-        summary_func <- defaultSummary
+        summary_func <- caret::defaultSummary
       } else {
         summary_func <- summaryFunction
       }
@@ -76,10 +86,10 @@ train_models <-
       savePredictions = "final"
     )
 
-    control <- do.call(trainControl, control_args)
+    control <- do.call(caret::trainControl, control_args)
 
     # Determine available metrics from the summaryFunction
-    available_metrics <- get_available_metrics(summary_func, train_data, label)
+    available_metrics <- get_available_metrics(summary_func, train_data, label, task)
 
     # Validate the metric
     if (!(metric %in% available_metrics)) {
@@ -145,7 +155,7 @@ train_models <-
 
       # Train the model within a tryCatch block
       tryCatch({
-        # Train the model based on the algorithm
+        # Train the model based on the algorithm and task
         if (algo == "neural_network") {
           # Neural Network (nnet)
           # Define default tuning parameters
@@ -160,7 +170,7 @@ train_models <-
             resampling_method != "none"
           )
 
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "nnet",
@@ -184,10 +194,12 @@ train_models <-
             resampling_method != "none"
           )
 
-          model <- train(
+          method_name <- "svmLinear"
+
+          model <- caret::train(
             formula,
             data = train_data,
-            method = "svmLinear",
+            method = method_name,
             trControl = control,
             tuneGrid = tuneGrid,
             metric = metric
@@ -207,10 +219,12 @@ train_models <-
             resampling_method != "none"
           )
 
-          model <- train(
+          method_name <- "svmRadial"
+
+          model <- caret::train(
             formula,
             data = train_data,
-            method = "svmRadial",
+            method = method_name,
             trControl = control,
             tuneGrid = tuneGrid,
             metric = metric
@@ -229,10 +243,12 @@ train_models <-
             resampling_method != "none"
           )
 
-          model <- train(
+          method_name <- "knn"
+
+          model <- caret::train(
             formula,
             data = train_data,
-            method = "knn",
+            method = method_name,
             trControl = control,
             tuneGrid = tuneGrid,
             metric = metric
@@ -259,10 +275,12 @@ train_models <-
             resampling_method != "none"
           )
 
-          model <- train(
+          method_name <- "xgbTree"
+
+          model <- caret::train(
             formula,
             data = train_data,
-            method = "xgbTree",
+            method = method_name,
             trControl = control,
             tuneGrid = tuneGrid,
             metric = metric,
@@ -281,46 +299,93 @@ train_models <-
                                         NULL,
                                         resampling_method != "none")
 
-          model <- train(
+          method_name <- "rf"
+
+          model <- caret::train(
             formula,
             data = train_data,
-            method = "rf",
+            method = method_name,
             trControl = control,
             tuneGrid = tuneGrid,
             metric = metric
           )
 
-        } else if (algo == "logistic_regression") {
-          # Logistic Regression (GLM)
-          model <- train(
-            formula,
-            data = train_data,
-            method = "glm",
-            family = binomial(),
-            trControl = control,
-            metric = metric
-          )
+        } else if (algo == "linear_regression") {
+          # Linear Regression (for regression task)
+          if (task == "regression") {
+            model <- caret::train(
+              formula,
+              data = train_data,
+              method = "lm",
+              trControl = control,
+              metric = metric
+            )
+          } else {
+            warning("Algorithm 'linear_regression' is not applicable for classification tasks.")
+            next
+          }
 
-        } else if (algo == "penalized_logistic_regression") {
-          # Penalized Logistic Regression (glmnet)
-          # Define default tuning parameters
-          default_params <- list(alpha = c(0, 0.5, 1),
-                                 # Elastic net mixing parameter
+        } else if (algo == "ridge_regression") {
+          # Ridge Regression
+          if (task == "regression") {
+            default_params <- list(lambda = seq(0, 1, length = 10))
+            tuneGrid <- validate_tuneGrid(
+              tuneGrid,
+              default_params,
+              NULL,
+              resampling_method != "none"
+            )
+            model <- caret::train(
+              formula,
+              data = train_data,
+              method = "ridge",
+              trControl = control,
+              tuneGrid = tuneGrid,
+              metric = metric
+            )
+          } else {
+            warning("Algorithm 'ridge_regression' is not applicable for classification tasks.")
+            next
+          }
+
+        } else if (algo == "lasso_regression") {
+          # Lasso Regression
+          if (task == "regression") {
+            default_params <- list(fraction = seq(0.1, 1, length = 10))
+            tuneGrid <- validate_tuneGrid(
+              tuneGrid,
+              default_params,
+              NULL,
+              resampling_method != "none"
+            )
+            model <- caret::train(
+              formula,
+              data = train_data,
+              method = "lasso",
+              trControl = control,
+              tuneGrid = tuneGrid,
+              metric = metric
+            )
+          } else {
+            warning("Algorithm 'lasso_regression' is not applicable for classification tasks.")
+            next
+          }
+
+        } else if (algo == "elastic_net") {
+          # Elastic Net
+          default_params <- list(alpha = seq(0, 1, by = 0.1),
                                  lambda = seq(0.0001, 0.1, length = 10))
 
           # No specific required tuning parameters
-          tuneGrid <- validate_tuneGrid(
-            tuneGrid,
-            default_params,
-            NULL,
-            resampling_method != "none"
-          )
+          tuneGrid <- validate_tuneGrid(tuneGrid,
+                                        default_params,
+                                        NULL,
+                                        resampling_method != "none")
 
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "glmnet",
-            family = "binomial",
             trControl = control,
             tuneGrid = tuneGrid,
             metric = metric
@@ -339,36 +404,10 @@ train_models <-
             resampling_method != "none"
           )
 
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "rpart",
-            trControl = control,
-            tuneGrid = tuneGrid,
-            metric = metric
-          )
-
-        } else if (algo == "c5.0") {
-          # Decision Tree (C5.0)
-          # Define default tuning parameters
-          default_params <- list(
-            model = c("tree", "rules"),
-            trials = c(1, 5, 10),
-            winnow = c(TRUE, FALSE)
-          )
-
-          # Required tuning parameters
-          tuneGrid <- validate_tuneGrid(
-            tuneGrid,
-            default_params,
-            required_tuning_params[[algo]],
-            resampling_method != "none"
-          )
-
-          model <- train(
-            formula,
-            data = train_data,
-            method = "C5.0",
             trControl = control,
             tuneGrid = tuneGrid,
             metric = metric
@@ -392,7 +431,7 @@ train_models <-
             resampling_method != "none"
           )
 
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "gbm",
@@ -400,99 +439,6 @@ train_models <-
             tuneGrid = tuneGrid,
             metric = metric,
             verbose = FALSE
-          )
-
-        } else if (algo == "naive_bayes") {
-          # Naive Bayes
-          model <- train(
-            formula,
-            data = train_data,
-            method = "nb",
-            trControl = control,
-            metric = metric
-          )
-
-        } else if (algo == "lda") {
-          # Linear Discriminant Analysis
-          model <- train(
-            formula,
-            data = train_data,
-            method = "lda",
-            trControl = control,
-            metric = metric
-          )
-
-        } else if (algo == "qda") {
-          # Quadratic Discriminant Analysis
-          model <- train(
-            formula,
-            data = train_data,
-            method = "qda",
-            trControl = control,
-            metric = metric
-          )
-
-        } else if (algo == "bagging") {
-          # Bagging (treebag)
-          model <- train(
-            formula,
-            data = train_data,
-            method = "treebag",
-            trControl = control,
-            metric = metric
-          )
-
-        } else if (algo == "logitboost") {
-          # LogitBoost
-          # Define default tuning parameters
-          default_params <- list(nIter = c(50, 100))
-
-          # Required tuning parameters
-          tuneGrid <- validate_tuneGrid(
-            tuneGrid,
-            default_params,
-            required_tuning_params[[algo]],
-            resampling_method != "none"
-          )
-
-          model <- train(
-            formula,
-            data = train_data,
-            method = "LogitBoost",
-            trControl = control,
-            tuneGrid = tuneGrid,
-            metric = metric
-          )
-
-        } else if (algo == "elastic_net") {
-          # Elastic Net (glmnet)
-          # Define default tuning parameters
-          default_params <- list(alpha = seq(0, 1, by = 0.1),
-                                 lambda = seq(0.0001, 0.1, length = 10))
-
-          # No specific required tuning parameters
-          tuneGrid <- validate_tuneGrid(tuneGrid,
-                                        default_params,
-                                        NULL,
-                                        resampling_method != "none")
-
-          model <- train(
-            formula,
-            data = train_data,
-            method = "glmnet",
-            trControl = control,
-            tuneGrid = tuneGrid,
-            metric = metric
-          )
-
-        } else if (algo == "bayes_glm") {
-          # Bayesian Generalized Linear Model
-          model <- train(
-            formula,
-            data = train_data,
-            method = "bayesglm",
-            trControl = control,
-            metric = metric
           )
 
         } else if (algo == "pls") {
@@ -508,7 +454,7 @@ train_models <-
             resampling_method != "none"
           )
 
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "pls",
@@ -531,7 +477,7 @@ train_models <-
             resampling_method != "none"
           )
 
-          model <- train(
+          model <- caret::train(
             formula,
             data = train_data,
             method = "glmboost",
@@ -539,6 +485,133 @@ train_models <-
             tuneGrid = tuneGrid,
             metric = metric
           )
+
+        } else if (algo == "logistic_regression") {
+          # Logistic Regression (for classification)
+          if (task == "classification") {
+            model <- caret::train(
+              formula,
+              data = train_data,
+              method = "glm",
+              family = binomial(),
+              trControl = control,
+              metric = metric
+            )
+          } else {
+            warning("Algorithm 'logistic_regression' is not applicable for regression tasks.")
+            next
+          }
+
+        } else if (algo == "penalized_logistic_regression") {
+          # Penalized Logistic Regression (glmnet)
+          if (task == "classification") {
+            # Define default tuning parameters
+            default_params <- list(alpha = c(0, 0.5, 1),
+                                   lambda = seq(0.0001, 0.1, length = 10))
+
+            # No specific required tuning parameters
+            tuneGrid <- validate_tuneGrid(
+              tuneGrid,
+              default_params,
+              NULL,
+              resampling_method != "none"
+            )
+
+            model <- caret::train(
+              formula,
+              data = train_data,
+              method = "glmnet",
+              family = "binomial",
+              trControl = control,
+              tuneGrid = tuneGrid,
+              metric = metric
+            )
+          } else {
+            warning("Algorithm 'penalized_logistic_regression' is not applicable for regression tasks.")
+            next
+          }
+
+        } else if (algo == "naive_bayes") {
+          # Naive Bayes (classification only)
+          if (task == "classification") {
+            model <- caret::train(
+              formula,
+              data = train_data,
+              method = "nb",
+              trControl = control,
+              metric = metric
+            )
+          } else {
+            warning("Algorithm 'naive_bayes' is not applicable for regression tasks.")
+            next
+          }
+
+        } else if (algo == "lda") {
+          # Linear Discriminant Analysis (classification only)
+          if (task == "classification") {
+            model <- caret::train(
+              formula,
+              data = train_data,
+              method = "lda",
+              trControl = control,
+              metric = metric
+            )
+          } else {
+            warning("Algorithm 'lda' is not applicable for regression tasks.")
+            next
+          }
+
+        } else if (algo == "qda") {
+          # Quadratic Discriminant Analysis (classification only)
+          if (task == "classification") {
+            model <- caret::train(
+              formula,
+              data = train_data,
+              method = "qda",
+              trControl = control,
+              metric = metric
+            )
+          } else {
+            warning("Algorithm 'qda' is not applicable for regression tasks.")
+            next
+          }
+
+        } else if (algo == "bagging") {
+          # Bagging (treebag)
+          model <- caret::train(
+            formula,
+            data = train_data,
+            method = "treebag",
+            trControl = control,
+            metric = metric
+          )
+
+        } else if (algo == "logitboost") {
+          # LogitBoost (classification only)
+          if (task == "classification") {
+            # Define default tuning parameters
+            default_params <- list(nIter = c(50, 100))
+
+            # Required tuning parameters
+            tuneGrid <- validate_tuneGrid(
+              tuneGrid,
+              default_params,
+              required_tuning_params[[algo]],
+              resampling_method != "none"
+            )
+
+            model <- caret::train(
+              formula,
+              data = train_data,
+              method = "LogitBoost",
+              trControl = control,
+              tuneGrid = tuneGrid,
+              metric = metric
+            )
+          } else {
+            warning("Algorithm 'logitboost' is not applicable for regression tasks.")
+            next
+          }
 
         } else {
           warning(paste("Algorithm", algo, "is not supported or failed to train."))
@@ -563,21 +636,41 @@ train_models <-
   }
 
 # Helper function to get available metrics from the summaryFunction
-get_available_metrics <- function(summaryFunction, train_data, label) {
+get_available_metrics <- function(summaryFunction, train_data, label, task) {
   # Create a small sample dataset
   sample_data <- train_data[1:2, , drop = FALSE]
   sample_obs <- sample_data[[label]]
-  sample_pred <- sample_obs  # Use the same values for simplicity
 
-  # Create a data frame for summaryFunction
-  data <- data.frame(obs = sample_obs, pred = sample_pred)
+  if (task == "classification") {
+    sample_pred <- sample_obs  # Use the same values for simplicity
 
-  if (class(summaryFunction) == "function") {
-    res <- summaryFunction(data = data, lev = levels(sample_obs), model = NULL)
-    return(names(res))
+    # Create a data frame for summaryFunction
+    data <- data.frame(obs = sample_obs, pred = sample_pred)
+
+    if (inherits(summaryFunction, "function")) {
+      res <- summaryFunction(data = data, lev = levels(sample_obs), model = NULL)
+      return(names(res))
+    } else {
+      # Use defaultSummary
+      res <- caret::defaultSummary(data = data)
+      return(names(res))
+    }
+  } else if (task == "regression") {
+    sample_pred <- sample_obs + rnorm(length(sample_obs))  # Add small noise
+
+    # Create a data frame for summaryFunction
+    data <- data.frame(obs = sample_obs, pred = sample_pred)
+
+    if (inherits(summaryFunction, "function")) {
+      res <- summaryFunction(data = data, lev = NULL, model = NULL)
+      return(names(res))
+    } else {
+      # Use defaultSummary
+      res <- caret::defaultSummary(data = data)
+      return(names(res))
+    }
   } else {
-    # Use defaultSummary
-    res <- defaultSummary(data = data)
-    return(names(res))
+    stop("Invalid task type.")
   }
 }
+

@@ -39,6 +39,3 @@ validate_tuneGrid <- function(tuneGrid, default_params, required_params, is_cv_e
 
   return(tuneGrid)
 }
-
-
-

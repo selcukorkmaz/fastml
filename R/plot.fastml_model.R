@@ -21,7 +21,11 @@ plot.fastml_model <- function(x, ...) {
   performance <- x$performance
 
   # Define the metrics to plot
-  metric_names <- c("Accuracy", "Kappa", "Sensitivity", "Specificity", "Precision", "F1")
+  if (x$task == "classification") {
+    metric_names <- c("Accuracy", "Kappa", "Sensitivity", "Specificity", "Precision", "F1")
+  } else {
+    metric_names <- c("RMSE", "MAE", "Rsquared")
+  }
 
   # Initialize performance data frame
   performance_df <- data.frame(Model = names(performance),
@@ -47,16 +51,20 @@ plot.fastml_model <- function(x, ...) {
   }
 
   # Melt the data frame for plotting
-  performance_melt <- melt(performance_df, id.vars = "Model")
+  performance_melt <- reshape2::melt(performance_df, id.vars = "Model")
+
+  # Remove rows where the metric value is NA to clean the plot
+  performance_melt <- performance_melt[!is.na(performance_melt$value), ]
+  colnames(performance_melt)[2] <- "Measure"
 
   # Generate the plot
-  p <- ggplot(performance_melt,
-              aes(x = Model, y = value, fill = variable)) +
-    geom_bar(stat = "identity", position = "dodge") +
-    facet_wrap(~ variable, scales = "free_y") +
-    theme_bw() +
-    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
-    labs(title = "Model Performance Comparison", x = "Model", y = "Metric Value")
+  p <- ggplot2::ggplot(performance_melt,
+                       ggplot2::aes(x = Model, y = value, fill = Measure)) +
+    ggplot2::geom_bar(stat = "identity", position = "dodge") +
+    ggplot2::facet_wrap(~ Measure, scales = "free_y") +
+    ggplot2::theme_bw() +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
+    ggplot2::labs(title = "Model Performance Comparison", x = "Model", y = "Metric Value")
 
   # Display the plot
   print(p)
