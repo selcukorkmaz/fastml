@@ -10,7 +10,7 @@
 #' @return A list of performance metrics for each model.
 #'
 #' @importFrom caret confusionMatrix
-#' @importFrom pROC roc
+#' @importFrom pROC roc auc
 #' @importFrom stats predict
 #' @export
 evaluate_models <- function(models, test_data, label, task, metric = "Accuracy") {
@@ -27,19 +27,8 @@ evaluate_models <- function(models, test_data, label, task, metric = "Accuracy")
   # Initialize performance list
   performance <- list()
 
-  # # Extract true labels
+  # Extract true labels
   true_labels <- test_data[[label]]
-  #
-  # # Detect task based on the type of the target variable
-  # if (is.factor(true_labels) || is.character(true_labels) || is.logical(true_labels)) {
-  #   task <- "classification"
-  #   true_labels <- as.factor(true_labels)
-  # } else if (is.numeric(true_labels)) {
-  #   task <- "regression"
-  #   true_labels <- as.numeric(true_labels)
-  # } else {
-  #   stop("Unable to detect task type. The target variable must be numeric, factor, character, or logical.")
-  # }
 
   # Remove the label from test_data
   test_features <- test_data[, !(names(test_data) %in% label), drop = FALSE]
@@ -51,9 +40,62 @@ evaluate_models <- function(models, test_data, label, task, metric = "Accuracy")
     # Initialize a list to store metrics
     metrics <- list()
 
-    # Predict on test data
-    predictions <- predict(model, test_features)
+    # Check if the model is an ensemble method
+    if (!inherits(model, "train") && is.list(model) && !is.null(model$method)) {
+      method <- model$method
 
+      if (method == "stacking" || method == "blending") {
+        # Generate predictions from base models
+        base_preds <- lapply(model$base_models, function(m) {
+          predict(m, newdata = test_features)
+        })
+
+        # Combine predictions into a data frame
+        pred_df <- as.data.frame(base_preds)
+        names(pred_df) <- paste0("pred_", names(model$base_models))
+
+        # Predict using meta-model
+        predictions <- predict(model$meta_model, newdata = pred_df)
+
+        if (task == "classification" && is.factor(true_labels)) {
+          predictions <- factor(predictions, levels = levels(true_labels))
+        }
+
+      } else if (method == "voting") {
+        # Generate predictions from base models
+        base_preds <- lapply(model$base_models, function(m) {
+          predict(m, newdata = test_features)
+        })
+
+        # Voting mechanism
+        if (task == "classification") {
+          # Majority vote
+          predictions <- apply(do.call(cbind, base_preds), 1, function(x) {
+            votes <- table(x)
+            winner <- names(votes)[which.max(votes)]
+            return(winner)
+          })
+          predictions <- factor(predictions, levels = levels(true_labels))
+        } else {
+          # Average predictions
+          predictions <- rowMeans(do.call(cbind, base_preds))
+        }
+
+      } else {
+        warning(paste("Unknown ensemble method:", method))
+        next
+      }
+
+    } else {
+      # Regular model prediction
+      predictions <- predict(model, newdata = test_features)
+
+      if (task == "classification" && is.factor(true_labels)) {
+        predictions <- factor(predictions, levels = levels(true_labels))
+      }
+    }
+
+    # Proceed with evaluation
     if (task == "classification") {
       # Compute confusion matrix
       cm <- caret::confusionMatrix(predictions, true_labels)
@@ -84,48 +126,38 @@ evaluate_models <- function(models, test_data, label, task, metric = "Accuracy")
 
       # Compute ROC AUC if required
       if (metric == "ROC") {
-        # Try to get predicted probabilities
-        prob_predictions <- tryCatch({
-          predict(model, test_features, type = "prob")
-        }, error = function(e) {
-          NULL
-        })
-
-        if (!is.null(prob_predictions)) {
-          # For binary classification
-          if (nlevels(true_labels) == 2) {
-            positive_class <- levels(true_labels)[2]  # Assuming the second level is the positive class
-            roc_obj <- pROC::roc(
-              response = true_labels,
-              predictor = prob_predictions[[positive_class]],
-              levels = levels(true_labels),
-              direction = "<"
-            )
-            metrics$ROC <- as.numeric(roc_obj$auc)
-          } else {
-            # For multiclass, compute average ROC AUC using one-vs-all approach
-            roc_list <- list()
-            for (class in levels(true_labels)) {
-              binary_labels <- ifelse(true_labels == class, class, paste0("not_", class))
-              roc_obj <- pROC::roc(
-                response = binary_labels,
-                predictor = prob_predictions[[class]],
-                levels = c(class, paste0("not_", class)),
-                direction = "<"
-              )
-              roc_list[[class]] <- as.numeric(roc_obj$auc)
+        if (requireNamespace("pROC", quietly = TRUE)) {
+          if (is.list(model) && !is.null(model$method)) {
+            # For ensemble methods, handle ROC calculation
+            if (method == "stacking" || method == "blending") {
+              # For stacking/blending, use predicted probabilities from meta-model if available
+              if (any(grepl("prob", methods(predict)))) {
+                prob_predictions <- predict(model$meta_model, newdata = pred_df, type = "prob")
+                roc_obj <- pROC::roc(response = true_labels, predictor = prob_predictions[, 2])
+                metrics$ROC <- pROC::auc(roc_obj)
+              } else {
+                metrics$ROC <- NA
+                warning(paste("ROC cannot be computed for model:", model_name))
+              }
+            } else if (method == "voting") {
+              # For voting, ROC calculation may not be applicable
+              metrics$ROC <- NA
+              warning(paste("ROC cannot be computed for voting ensemble:", model_name))
             }
-            metrics$ROC <- mean(unlist(roc_list), na.rm = TRUE)
+          } else {
+            # For regular models
+            if (any(grepl("prob", methods(predict)))) {
+              prob_predictions <- predict(model, newdata = test_features, type = "prob")
+              roc_obj <- pROC::roc(response = true_labels, predictor = prob_predictions[, 2])
+              metrics$ROC <- pROC::auc(roc_obj)
+            } else {
+              metrics$ROC <- NA
+              warning(paste("ROC cannot be computed for model:", model_name))
+            }
           }
         } else {
-          warning(
-            paste(
-              "Model",
-              model_name,
-              "does not support probability predictions required for ROC calculation."
-            )
-          )
           metrics$ROC <- NA
+          warning("The 'pROC' package is required for ROC metric but not installed.")
         }
       }
 
@@ -134,7 +166,7 @@ evaluate_models <- function(models, test_data, label, task, metric = "Accuracy")
       residuals <- true_labels - predictions
       metrics$RMSE <- sqrt(mean(residuals^2))
       metrics$MAE <- mean(abs(residuals))
-      metrics$Rsquared <- cor(true_labels, predictions)^2
+      metrics$Rsquared <- cor(true_labels, predictions, use = "complete.obs")^2
     }
 
     # Add metrics to performance list

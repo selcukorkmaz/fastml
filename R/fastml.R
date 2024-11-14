@@ -193,9 +193,9 @@ fastml <- function(data,
   # Set default algorithms and metric based on the task
   if (is.null(algorithms)) {
     if (task == "classification") {
-      algorithms <- c("glmboost", "random_forest", "svm_radial", "xgboost", "gbm")
+      algorithms <- c("random_forest", "xgboost", "svm_radial", "neural_network", "gbm")
     } else {
-      algorithms <- c("glmboost", "random_forest", "svm_radial", "xgboost", "gbm")
+      algorithms <- c("random_forest", "xgboost", "svm_radial", "neural_network", "gbm")
     }
   }
 
@@ -222,11 +222,14 @@ fastml <- function(data,
     "ranger",
     "gbm",
     "xgboost",
+    "lightgbm",
+    "catboost",
     "svm_linear",
     "svm_radial",
     "knn",
     "naive_bayes",
     "neural_network",
+    "deep_learning",
     "lda",
     "qda",
     "bagging",
@@ -235,7 +238,10 @@ fastml <- function(data,
     "elastic_net",
     "bayes_glm",
     "pls",
-    "glmboost"
+    "glmboost",
+    "stacking",
+    "blending",
+    "voting"
   )
 
   supported_algorithms_regression <- c(
@@ -247,12 +253,18 @@ fastml <- function(data,
     "random_forest",
     "gbm",
     "xgboost",
+    "lightgbm",
+    "catboost",
     "svm_linear",
     "svm_radial",
     "knn",
     "neural_network",
+    "deep_learning",
     "pls",
-    "glmboost"
+    "glmboost",
+    "stacking",
+    "blending",
+    "voting"
   )
 
   if (task == "classification") {
@@ -449,7 +461,6 @@ fastml <- function(data,
   # Return the result
   invisible(result)
 }
-
 
 
 

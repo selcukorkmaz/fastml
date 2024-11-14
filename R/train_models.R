@@ -42,19 +42,6 @@ train_models <-
       }
     }
 
-    # # Detect task based on the type of the target variable
-    # target_var <- train_data[[label]]
-    #
-    # if (is.factor(target_var) || is.character(target_var) || is.logical(target_var)) {
-    #   task <- "classification"
-    #   train_data[[label]] <- as.factor(train_data[[label]])
-    # } else if (is.numeric(target_var)) {
-    #   task <- "regression"
-    #   train_data[[label]] <- as.numeric(train_data[[label]])
-    # } else {
-    #   stop("Unable to detect task type. The target variable must be numeric, factor, character, or logical.")
-    # }
-
     # Decide on classProbs based on whether probabilities are needed
     # For metrics like ROC, class probabilities are needed
     if (task == "classification" && metric == "ROC") {
@@ -104,6 +91,7 @@ train_models <-
     # Define required tuning parameters for each algorithm
     required_tuning_params <- list(
       neural_network = c("size", "decay"),
+      deep_learning = c("epochs", "batch_size", "units", "activation"),
       svm_linear = c("C"),
       svm_radial = c("sigma", "C"),
       knn = c("k"),
@@ -122,11 +110,27 @@ train_models <-
         "min_child_weight",
         "subsample"
       ),
+      lightgbm = c(
+        "num_leaves",
+        "learning_rate",
+        "n_estimators",
+        "min_data_in_leaf",
+        "feature_fraction"
+      ),
+      catboost = c(
+        "iterations",
+        "learning_rate",
+        "depth",
+        "l2_leaf_reg"
+      ),
       logitboost = c("nIter"),
       decision_tree = c("cp"),
       c5.0 = c("model", "trials", "winnow"),
       pls = c("ncomp"),
-      glmboost = c("mstop", "prune")
+      glmboost = c("mstop", "prune"),
+      stacking = NULL,
+      blending = NULL,
+      voting = NULL
       # Add other algorithms and their required parameters as needed
     )
 
@@ -180,6 +184,133 @@ train_models <-
             trace = FALSE,
             maxit = 200  # Optional: Increase max iterations if needed
           )
+
+        } else if (algo == "deep_learning") {
+          # Keras (Deep Learning)
+          if (!requireNamespace("keras", quietly = TRUE)) {
+            stop("The 'keras' package is required for deep learning but is not installed.")
+          }
+
+          # Define default tuning parameters
+          default_params <- list(
+            epochs = c(10, 20),
+            batch_size = c(32, 64),
+            units = c(64, 128),
+            activation = c("relu")
+          )
+
+          # Validate or set tuneGrid
+          tuneGrid <- validate_tuneGrid(
+            tuneGrid,
+            default_params,
+            required_tuning_params[[algo]],
+            resampling_method != "none"
+          )
+
+          # Use the custom model info
+          model <- caret::train(
+            formula,
+            data = train_data,
+            method = kerasModelInfo,
+            trControl = control,
+            tuneGrid = tuneGrid,
+            metric = metric
+          )
+
+
+        }  else if (algo == "lightgbm") {
+          # LightGBM
+          if (!requireNamespace("lightgbm", quietly = TRUE)) {
+            stop("The 'lightgbm' package is required for LightGBM but is not installed.")
+          }
+
+          # Define default tuning parameters
+          default_params <- list(
+            num_leaves = c(31, 63),
+            learning_rate = c(0.01, 0.1),
+            n_estimators = c(100, 200),
+            min_data_in_leaf = c(20, 50),
+            feature_fraction = c(0.6, 0.8, 1.0)
+          )
+
+          # Validate or set tuneGrid
+          tuneGrid <- validate_tuneGrid(
+            tuneGrid,
+            default_params,
+            required_tuning_params[[algo]],
+            resampling_method != "none"
+          )
+
+          # Use the custom model info
+          model <- caret::train(
+            formula,
+            data = train_data,
+            method = lightgbmModelInfo,
+            trControl = control,
+            tuneGrid = tuneGrid,
+            metric = metric
+          )
+
+        } else if (algo == "catboost") {
+          # CatBoost
+          if (!requireNamespace("catboost", quietly = TRUE)) {
+            stop("The 'catboost' package is required for CatBoost but is not installed.")
+          }
+
+          # Define default tuning parameters
+          default_params <- list(
+            iterations = c(100, 200),
+            learning_rate = c(0.01, 0.1),
+            depth = c(4, 6, 8),
+            l2_leaf_reg = c(1, 3, 5)
+          )
+
+          # Validate or set tuneGrid
+          tuneGrid <- validate_tuneGrid(
+            tuneGrid,
+            default_params,
+            required_tuning_params[[algo]],
+            resampling_method != "none"
+          )
+
+          # Use the custom model info
+          model <- caret::train(
+            formula,
+            data = train_data,
+            method = catboostModelInfo,
+            trControl = control,
+            tuneGrid = tuneGrid,
+            metric = metric
+          )
+        } else if (algo == "stacking") {
+          # Stacking Ensemble
+          # Requires at least two base models
+          if (length(models) < 2) {
+            warning("Stacking requires at least two base models. Skipping stacking.")
+            next
+          }
+
+          model <- create_stacking_model(models, train_data, label, task, metric, control, seed)
+
+        } else if (algo == "blending") {
+          # Blending Ensemble
+          # Requires at least two base models
+          if (length(models) < 2) {
+            warning("Blending requires at least two base models. Skipping blending.")
+            next
+          }
+
+          model <- create_blending_model(models, train_data, label, task, metric, control, seed)
+
+        } else if (algo == "voting") {
+          # Voting Ensemble
+          # Requires at least two base models
+          if (length(models) < 2) {
+            warning("Voting requires at least two base models. Skipping voting.")
+            next
+          }
+
+          model <- create_voting_model(models, train_data, label, task, metric, control, seed)
 
         } else if (algo == "svm_linear") {
           # SVM with linear kernel

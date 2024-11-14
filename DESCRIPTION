@@ -36,5 +36,6 @@ Suggests:
     ipred,
     caTools,
     e1071,
-    MASS
+    MASS,
+    lightgbm
 RoxygenNote: 7.3.2
