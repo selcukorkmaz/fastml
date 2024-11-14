@@ -193,9 +193,9 @@ fastml <- function(data,
   # Set default algorithms and metric based on the task
   if (is.null(algorithms)) {
     if (task == "classification") {
-      algorithms <- c("neural_network", "random_forest", "svm_radial", "xgboost", "gbm")
+      algorithms <- c("glmboost", "random_forest", "svm_radial", "xgboost", "gbm")
     } else {
-      algorithms <- c("neural_network", "random_forest", "svm_radial", "xgboost", "gbm")
+      algorithms <- c("glmboost", "random_forest", "svm_radial", "xgboost", "gbm")
     }
   }
 
