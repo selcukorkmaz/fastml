@@ -4,16 +4,20 @@
 \alias{evaluate_models}
 \title{Evaluate Models Function}
 \usage{
-evaluate_models(models, test_data, label, metric = "Accuracy")
+evaluate_models(models, train_data, test_data, label, task, metric = NULL)
 }
 \arguments{
 \item{models}{A list of trained model objects.}
+
+\item{train_data}{Preprocessed training data frame.}
 
 \item{test_data}{Preprocessed test data frame.}
 
 \item{label}{Name of the target variable.}
 
-\item{metric}{The performance metric to optimize (e.g., "Accuracy", "ROC").}
+\item{task}{Type of task: "classification" or "regression".}
+
+\item{metric}{The performance metric to optimize (e.g., "accuracy", "rmse").}
 }
 \value{
 A list of performance metrics for each model.

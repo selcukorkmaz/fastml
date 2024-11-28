@@ -31,13 +31,15 @@ prepare_data(
 }
 Default is \code{"error"}.}
 
+\item{encode_categoricals}{Logical indicating whether to encode categorical variables using one-hot encoding. Default is \code{TRUE}.}
+
 \item{scaling_methods}{Vector of scaling methods to apply. Options include \code{"center"}, \code{"scale"}, \code{"range"}, \code{"zv"}, \code{"nzv"}, \code{"YeoJohnson"}, \code{"BoxCox"}.
 Default is \code{c("center", "scale")}.}
 }
 \value{
-A list containing preprocessed training and testing data and the preprocessor object.
+A list containing preprocessed training and testing data and the recipe object.
 }
 \description{
-Preprocesses the training and testing data with customizable steps.
+Preprocesses the training and testing data with customizable steps using the `recipes` package.
 }
 \keyword{internal}

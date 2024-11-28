@@ -4,12 +4,15 @@
 \alias{predict.fastml_model}
 \title{Predict Function for fastml_model}
 \usage{
-\method{predict}{fastml_model}(object, newdata, ...)
+\method{predict}{fastml_model}(object, newdata, type = "auto", ...)
 }
 \arguments{
 \item{object}{An object of class \code{fastml_model}.}
 
 \item{newdata}{A data frame containing new data for prediction.}
+
+\item{type}{Type of prediction. Default is \code{"auto"}, which returns class labels for classification and numeric predictions for regression.
+Other options include \code{"prob"} for class probabilities (classification only).}
 
 \item{...}{Additional arguments (not used).}
 }

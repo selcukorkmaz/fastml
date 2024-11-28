@@ -7,6 +7,7 @@
 train_models(
   train_data,
   label,
+  task,
   algorithms,
   resampling_method,
   folds,
@@ -14,13 +15,16 @@ train_models(
   tune_params,
   metric,
   summaryFunction = NULL,
-  seed = 123
+  seed = 123,
+  recipe
 )
 }
 \arguments{
 \item{train_data}{Preprocessed training data frame.}
 
 \item{label}{Name of the target variable.}
+
+\item{task}{Type of task: "classification" or "regression".}
 
 \item{algorithms}{Vector of algorithm names to train.}
 
@@ -37,6 +41,8 @@ train_models(
 \item{summaryFunction}{A custom summary function for model evaluation. Default is \code{NULL}.}
 
 \item{seed}{An integer value specifying the random seed for reproducibility.}
+
+\item{recipe}{A recipe object for preprocessing.}
 }
 \value{
 A list of trained model objects.

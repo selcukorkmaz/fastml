@@ -1,4 +1,4 @@
-utils::globalVariables(c("Model", "value", "variable", "for"))
+utils::globalVariables(c("Model", "Value", "Measure"))
 
 #' Plot Function for fastml_model
 #'
@@ -7,9 +7,7 @@ utils::globalVariables(c("Model", "value", "variable", "for"))
 #' @param x An object of class \code{fastml_model}.
 #' @param ... Additional arguments (not used).
 #' @return Displays comparison plots of model performances.
-#'
 #' @importFrom ggplot2 ggplot aes geom_bar facet_wrap theme_bw theme element_text labs
-#' @importFrom reshape2 melt
 #' @export
 plot.fastml_model <- function(x, ...) {
   # Ensure x is a valid fastml_model
@@ -20,50 +18,42 @@ plot.fastml_model <- function(x, ...) {
   # Extract performance metrics
   performance <- x$performance
 
-  # Define the metrics to plot
-  if (x$task == "classification") {
-    metric_names <- c("Accuracy", "Kappa", "Sensitivity", "Specificity", "Precision", "F1")
-  } else {
-    metric_names <- c("RMSE", "MAE", "Rsquared")
+  # Initialize a list to collect metrics
+  metrics_list <- list()
+
+  # Iterate over each model's performance
+  for (model_name in names(performance)) {
+    model_metrics <- performance[[model_name]]
+    # Convert the tibble to a data frame
+    model_metrics_df <- as.data.frame(model_metrics)
+    # Add the Model name to the data frame
+    model_metrics_df$Model <- model_name
+    # Append to the metrics_list
+    metrics_list[[model_name]] <- model_metrics_df
   }
 
-  # Initialize performance data frame
-  performance_df <- data.frame(Model = names(performance),
-                               stringsAsFactors = FALSE)
+  # Combine all metrics into one data frame
+  performance_df <- do.call(rbind, metrics_list)
 
-  # Populate the data frame with metric values
-  for (metric in metric_names) {
-    performance_df[[metric]] <- sapply(performance, function(perf) {
-      if (!is.null(perf[[metric]])) {
-        return(perf[[metric]])
-      } else {
-        return(NA)
-      }
-    })
-  }
+  # Reorder columns so 'Model' is first
+  performance_df <- performance_df[, c("Model", names(performance_df)[names(performance_df) != "Model"])]
 
-  # Load ggplot2 and reshape2 for plotting
+  # Remove any rows with NA values in .estimate
+  performance_df <- performance_df[!is.na(performance_df$.estimate), ]
+
+  # Load ggplot2 for plotting
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
     stop("The 'ggplot2' package is required but not installed.")
   }
-  if (!requireNamespace("reshape2", quietly = TRUE)) {
-    stop("The 'reshape2' package is required but not installed.")
-  }
 
-  # Melt the data frame for plotting
-  performance_melt <- reshape2::melt(performance_df, id.vars = "Model")
-
-  # Remove rows where the metric value is NA to clean the plot
-  performance_melt <- performance_melt[!is.na(performance_melt$value), ]
-  colnames(performance_melt)[2] <- "Measure"
-
-  # Generate the plot
-  p <- ggplot2::ggplot(performance_melt,
-                       ggplot2::aes(x = Model, y = value, fill = Measure)) +
+  # Plot performance metrics
+  p <- ggplot2::ggplot(performance_df,
+                       ggplot2::aes(x = Model, y = .estimate, fill = Model)) +
     ggplot2::geom_bar(stat = "identity", position = "dodge") +
-    ggplot2::facet_wrap(~ Measure, scales = "free_y") +
+    ggplot2::facet_wrap(~ .metric, scales = "free_y") +
     ggplot2::theme_bw() +
-    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
+    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+                   legend.position = "none") +
     ggplot2::labs(title = "Model Performance Comparison", x = "Model", y = "Metric Value")
 
   # Display the plot

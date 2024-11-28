@@ -7,15 +7,15 @@
 fastml(
   data,
   label,
-  algorithms = c("xgboost", "random_forest", "svm_radial"),
+  algorithms = NULL,
   test_size = 0.2,
   resampling_method = "cv",
   folds = ifelse(grepl("cv", resampling_method), 10, 25),
-  repeats = ifelse(grepl("[d_]cv$", resampling_method), 1, NA),
+  repeats = ifelse(resampling_method == "repeatedcv", 1, NA),
   tune_params = NULL,
-  metric = "Accuracy",
+  metric = NULL,
   n_cores = 1,
-  stratify = TRUE,
+  stratify = NULL,
   impute_method = "error",
   encode_categoricals = TRUE,
   scaling_methods = c("center", "scale"),
@@ -28,7 +28,7 @@ fastml(
 
 \item{label}{A string specifying the name of the target variable.}
 
-\item{algorithms}{A vector of algorithm names to use. Default is \code{c("xgboost", "random_forest", "svm_radial")}.
+\item{algorithms}{A vector of algorithm names to use. Default depends on the task.
 Use \code{"all"} to run all supported algorithms.}
 
 \item{test_size}{A numeric value between 0 and 1 indicating the proportion of the data to use for testing. Default is \code{0.2}.}
@@ -36,17 +36,17 @@ Use \code{"all"} to run all supported algorithms.}
 \item{resampling_method}{A string specifying the resampling method for cross-validation. Default is \code{"cv"} (cross-validation).
 Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.}
 
-\item{folds}{An integer specifying the number of folds for cross-validation. Default is \code{5}.}
+\item{folds}{An integer specifying the number of folds for cross-validation. Default is \code{10} for methods containing "cv" and \code{25} otherwise.}
 
 \item{repeats}{Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").}
 
 \item{tune_params}{A list specifying hyperparameter tuning ranges. Default is \code{NULL}.}
 
-\item{metric}{The performance metric to optimize during training. Default is \code{"Accuracy"}.}
+\item{metric}{The performance metric to optimize during training. Default depends on the task.}
 
 \item{n_cores}{An integer specifying the number of CPU cores to use for parallel processing. Default is \code{1}.}
 
-\item{stratify}{Logical indicating whether to use stratified sampling when splitting the data. Default is \code{TRUE}.}
+\item{stratify}{Logical indicating whether to use stratified sampling when splitting the data. Default is \code{TRUE} for classification and \code{FALSE} for regression.}
 
 \item{impute_method}{Method for handling missing values. Options include:
 \describe{
@@ -71,78 +71,5 @@ Default is \code{"error"}.}
 An object of class \code{fastml_model} containing the best model, performance metrics, and other information.
 }
 \description{
-Trains and evaluates multiple classification models.
-}
-\examples{
-\donttest{
- # Example 1: Using the iris dataset for binary classification (excluding 'setosa')
-data(iris)
-iris <- iris[iris$Species != "setosa", ]  # Binary classification
-iris$Species <- factor(iris$Species)
-
-# Train models
-model <- fastml(
-  data = iris,
-  label = "Species"
-)
-
-# View model summary
-summary(model)
-}
-
-# Example 2: Using the mtcars dataset for binary classification
-data(mtcars)
-mtcars$am <- factor(mtcars$am)  # Convert transmission (0 = automatic, 1 = manual) to a factor
-
-# Train models with a different resampling method and specific algorithms
-model2 <- fastml(
-  data = mtcars,
-  label = "am",
-  algorithms = c("random_forest", "svm_radial"),
-  resampling_method = "repeatedcv",
-  folds = 5,
-  repeats = 2,
-  test_size = 0.25
-)
-
-# View model performance
-summary(model2)
-
-\donttest{
-# Example 3: Using the airquality dataset with missing values
-data(airquality)
-airquality <- na.omit(airquality)  # Simple example to remove missing values for demonstration
-airquality$Month <- factor(airquality$Month)
-
-# Train models with categorical encoding and scaling
-model3 <- fastml(
-  data = airquality,
-  label = "Month",
-  encode_categoricals = TRUE,
-  scaling_methods = c("center", "scale")
-)
-
-# Evaluate and compare models
-summary(model3)
-}
-
-# Example 4: Custom hyperparameter tuning for a random forest
-data(iris)
-iris <- iris[iris$Species != "setosa", ]  # Filter out 'setosa' for binary classification
-iris$Species <- factor(iris$Species)
-custom_tuning <- list(
-  random_forest = expand.grid(mtry = c(1:10))
-)
-
-model4 <- fastml(
-  data = iris,
-  label = "Species",
-  algorithms = c("random_forest"),
-  tune_params = custom_tuning,
-  metric = "Accuracy"
-)
-
-# View the results
-summary(model4)
-
+Trains and evaluates multiple classification or regression models automatically detecting the task based on the target variable type.
 }

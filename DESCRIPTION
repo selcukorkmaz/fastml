@@ -1,7 +1,7 @@
 Package: fastml
 Type: Package
 Title: Fast Machine Learning Model Training and Evaluation
-Version: 0.1.0
+Version: 0.2.0
 Authors@R: c(person("Selcuk", "Korkmaz", email="selcukorkmaz@gmail.com", role=c("aut", "cre"),
                     comment = c(ORCID = "0000-0003-4632-6850")), 
              person("Dincer", "Goksuluk", email="dincer.goksuluk@gmail.com", role="aut",
@@ -13,29 +13,25 @@ License: GPL (>= 2)
 Encoding: UTF-8
 LazyData: true
 Imports:
-    caret,
-    pROC,
-    reshape2,
+    tidymodels (>= 1.0.0),
+    recipes,
+    dplyr,
     ggplot2,
+    reshape2,
     foreach,
-    doParallel
+    doParallel,
+    rsample,
+    parsnip,
+    tune,
+    workflows,
+    stacks,
+    yardstick,
+    tibble,
+    rlang,
+    stats,
+    utils
 Suggests:
+    testthat (>= 3.0.0),
     knitr,
-    rmarkdown,
-    randomForest,
-    kernlab,
-    gbm,    
-    nnet,      
-    rpart,
-    glmnet,
-    xgboost,
-    pls,
-    C50,
-    mboost,
-    arm,
-    ipred,
-    caTools,
-    e1071,
-    MASS,
-    lightgbm
+    rmarkdown
 RoxygenNote: 7.3.2

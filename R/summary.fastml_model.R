@@ -1,5 +1,3 @@
-utils::globalVariables(c("Model", "value", "variable", "for", "Measure"))
-
 #' Summary Function for fastml_model
 #'
 #' Provides a detailed summary of the models' performances.
@@ -22,64 +20,65 @@ summary.fastml_model <- function(object, sort_metric = NULL, ...) {
   # Extract performance metrics
   performance <- object$performance
 
+  # Initialize a list to collect metrics
+  metrics_list <- list()
+
+  # Iterate over each model's performance
+  for (model_name in names(performance)) {
+    model_metrics <- performance[[model_name]]
+    # Convert the tibble to a data frame
+    model_metrics_df <- as.data.frame(model_metrics)
+    # Add the Model name to the data frame
+    model_metrics_df$Model <- model_name
+    # Append to the metrics_list
+    metrics_list[[model_name]] <- model_metrics_df
+  }
+
+  # Combine all metrics into one data frame
+  performance_df <- do.call(rbind, metrics_list)
+
+  # Reorder columns so 'Model' is first
+  performance_df <- performance_df[, c("Model", names(performance_df)[names(performance_df) != "Model"])]
+
   # Define all possible metrics
   if (object$task == "classification") {
-    all_metric_names <- c("Accuracy", "Kappa", "Sensitivity", "Specificity", "Precision", "F1", "ROC")
+    all_metric_names <- unique(performance_df$.metric)
   } else {
-    all_metric_names <- c("RMSE", "MAE", "Rsquared")
-  }
-
-  # Determine which metrics are available (have at least one non-NA value)
-  available_metrics <- all_metric_names[sapply(all_metric_names, function(metric) {
-    any(sapply(performance, function(x) !is.null(x[[metric]]) && !is.na(x[[metric]])))
-  })]
-
-  if (length(available_metrics) == 0) {
-    stop("No performance metrics available to summarize.")
-  }
-
-  # Collect metrics into a data frame
-  performance_df <- data.frame(Model = names(performance), stringsAsFactors = FALSE)
-
-  for (metric in available_metrics) {
-    performance_df[[metric]] <- sapply(performance, function(x) {
-      if (is.list(x) && !is.null(x[[metric]])) {
-        return(as.numeric(x[[metric]]))
-      } else {
-        return(NA)
-      }
-    })
+    all_metric_names <- unique(performance_df$.metric)
   }
 
   # Determine the main metric used for sorting
   # Prioritize sort_metric if provided and available, else use the optimized metric
   if (!is.null(sort_metric)) {
-    if (!(sort_metric %in% available_metrics)) {
-      stop(paste("Invalid sort_metric. Choose from:", paste(available_metrics, collapse = ", ")))
+    if (!(sort_metric %in% all_metric_names)) {
+      stop(paste("Invalid sort_metric. Choose from:", paste(all_metric_names, collapse = ", ")))
     }
     main_metric <- sort_metric
   } else {
     optimized_metric <- object$metric
-    if (optimized_metric %in% available_metrics) {
+    if (optimized_metric %in% all_metric_names) {
       main_metric <- optimized_metric
     } else {
-      main_metric <- available_metrics[1]
+      main_metric <- all_metric_names[1]
       warning(paste("Optimized metric", optimized_metric, "is not available. Using", main_metric, "as the sorting metric."))
     }
   }
 
-  # Ensure main_metric exists in performance_df
-  if (!(main_metric %in% names(performance_df))) {
+  # Create a summary table by pivoting the data
+  performance_wide <- reshape2::dcast(performance_df, Model ~ .metric, value.var = ".estimate")
+
+  # Ensure main_metric exists in performance_wide
+  if (!(main_metric %in% names(performance_wide))) {
     stop(paste("The main metric", main_metric, "is not present in the performance metrics."))
   }
 
   # Sort by the main metric, handling NA values
   if (object$task == "regression") {
     # For regression, lower metrics like RMSE are better
-    performance_df <- performance_df[order(performance_df[[main_metric]], na.last = TRUE), ]
+    performance_wide <- performance_wide[order(performance_wide[[main_metric]], na.last = TRUE), ]
   } else {
     # For classification, higher metrics like Accuracy are better
-    performance_df <- performance_df[order(-performance_df[[main_metric]], na.last = TRUE), ]
+    performance_wide <- performance_wide[order(-performance_wide[[main_metric]], na.last = TRUE), ]
   }
 
   # Print the best model
@@ -89,11 +88,18 @@ summary.fastml_model <- function(object, sort_metric = NULL, ...) {
 
   # Print the performance table
   cat("Performance Metrics for All Models:\n\n")
-  print(performance_df, row.names = FALSE)
+  print(performance_wide, row.names = FALSE)
 
-  # Print the hyperparameters of the best model
-  cat("\nBest Model Hyperparameters:\n\n")
-  print(object$best_model$bestTune, row.names = FALSE)
+  # Check if best model has hyperparameters
+  best_model <- object$best_model
+  if ("spec" %in% names(best_model$fit$actions$model)) {
+    # Extract the hyperparameters
+    best_params <- best_model$fit$actions$model$spec$args
+    cat("\nBest Model Hyperparameters:\n\n")
+    print(best_params, row.names = FALSE)
+  } else {
+    cat("\nBest Model Hyperparameters are not available.\n")
+  }
 
   # Generate comparison plots
   cat("\nGenerating performance comparison plots...\n")
@@ -106,16 +112,15 @@ summary.fastml_model <- function(object, sort_metric = NULL, ...) {
     stop("The 'reshape2' package is required but not installed.")
   }
 
-  # Melt the data frame for plotting
-  performance_melt <- reshape2::melt(performance_df, id.vars = "Model")
+  # Melt the wide data frame for plotting
+  performance_melt <- reshape2::melt(performance_wide, id.vars = "Model", variable.name = "Measure", value.name = "Value")
 
   # Remove rows where the metric value is NA to clean the plot
-  performance_melt <- performance_melt[!is.na(performance_melt$value), ]
-  colnames(performance_melt)[2] <- "Measure"
+  performance_melt <- performance_melt[!is.na(performance_melt$Value), ]
 
   # Plot performance metrics
   p <- ggplot2::ggplot(performance_melt,
-                       ggplot2::aes(x = Model, y = value, fill = Measure)) +
+                       ggplot2::aes(x = Model, y = Value, fill = Measure)) +
     ggplot2::geom_bar(stat = "identity", position = "dodge") +
     ggplot2::facet_wrap(~ Measure, scales = "free_y") +
     ggplot2::theme_bw() +

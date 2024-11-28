@@ -2,22 +2,31 @@
 % Please edit documentation in R/validate_tuneGrid.R
 \name{validate_tuneGrid}
 \alias{validate_tuneGrid}
-\title{Validate and Complete the tuneGrid}
+\title{Validate or Set the Tuning Grid for a Model Specification}
 \usage{
-validate_tuneGrid(tuneGrid, default_params, required_params, is_cv_enabled)
+validate_tuneGrid(
+  tune_grid,
+  model_spec,
+  default_params,
+  required_params,
+  resampling_enabled
+)
 }
 \arguments{
-\item{tuneGrid}{User-provided tuning grid.}
+\item{tune_grid}{The user-provided tuning grid (can be NULL).}
 
-\item{default_params}{Default hyperparameter ranges.}
+\item{model_spec}{The model specification object.}
 
-\item{required_params}{Required hyperparameters for the algorithm.}
+\item{default_params}{A list of default parameters to use if tune_grid is NULL.}
 
-\item{is_cv_enabled}{Logical indicating whether cross-validation is enabled.}
+\item{required_params}{A character vector of required parameter names.}
+
+\item{resampling_enabled}{Logical indicating if resampling (e.g., cross-validation) is enabled.}
 }
 \value{
-A validated and possibly modified tuneGrid.
+A tuning grid data frame.
 }
 \description{
-Ensures that the tuneGrid includes all required hyperparameters and adjusts it based on cross-validation.
+Ensures that all required hyperparameters are included in the tuning grid.
+If no tuning grid is provided, it sets a default grid based on the model's parameters.
 }
