@@ -33,5 +33,11 @@ Imports:
 Suggests:
     testthat (>= 3.0.0),
     knitr,
-    rmarkdown
+    rmarkdown,
+    C50,
+    glmnet,
+    xgboost,
+    ranger,
+    crayon, 
+    kernlab
 RoxygenNote: 7.3.2

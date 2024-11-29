@@ -28,6 +28,7 @@
 #' @param encode_categoricals Logical indicating whether to encode categorical variables. Default is \code{TRUE}.
 #' @param scaling_methods Vector of scaling methods to apply. Default is \code{c("center", "scale")}.
 #' @param summaryFunction A custom summary function for model evaluation. Default is \code{NULL}.
+#' @param use_default_tuning Logical indicating whether to use default tuning grids when \code{tune_params} is \code{NULL}. Default is \code{FALSE}.
 #' @param seed An integer value specifying the random seed for reproducibility.
 #' @importFrom magrittr %>%
 #' @importFrom rsample initial_split vfold_cv bootstraps training testing
@@ -53,6 +54,7 @@ fastml <- function(data,
                    encode_categoricals = TRUE,
                    scaling_methods = c("center", "scale"),
                    summaryFunction = NULL,
+                   use_default_tuning = FALSE,
                    seed = 123) {
   # Load required packages
   if (!requireNamespace("tidymodels", quietly = TRUE)) {
@@ -280,7 +282,8 @@ fastml <- function(data,
     metric = metric,
     summaryFunction = summaryFunction,
     seed = seed,
-    recipe = recipe
+    recipe = recipe,
+    use_default_tuning = use_default_tuning
   )
   # Stop parallel processing
   if (n_cores > 1) {
