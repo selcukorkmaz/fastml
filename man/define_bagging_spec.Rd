@@ -4,14 +4,16 @@
 \alias{define_bagging_spec}
 \title{Define Bagging Model Specification}
 \usage{
-define_bagging_spec(task)
+define_bagging_spec(task, tune = FALSE)
 }
 \arguments{
-\item{task}{A character string specifying the type of task: `"classification"` or `"regression"`.}
+\item{task}{Character string specifying the task type: "classification" or "regression".}
+
+\item{tune}{Logical indicating whether to use tuning parameters.}
 }
 \value{
-A list containing the model specification, default parameters, and required parameters.
+List containing the model specification (`model_spec`).
 }
 \description{
-Creates a bagged decision tree model specification using the `rpart` engine for classification or regression tasks.
+Define Bagging Model Specification
 }

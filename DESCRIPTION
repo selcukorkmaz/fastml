@@ -13,7 +13,6 @@ License: GPL (>= 2)
 Encoding: UTF-8
 LazyData: true
 Imports:
-    tidymodels (>= 1.0.0),
     recipes,
     dplyr,
     ggplot2,
@@ -24,12 +23,12 @@ Imports:
     parsnip,
     tune,
     workflows,
-    stacks,
     yardstick,
     tibble,
     rlang,
     stats,
-    utils
+    dials,
+    magrittr
 Suggests:
     testthat (>= 3.0.0),
     knitr,
@@ -39,5 +38,12 @@ Suggests:
     xgboost,
     ranger,
     crayon, 
-    kernlab
+    kernlab,
+    discrim,
+    baguette,
+    plsmod,
+    keras,
+    lightgbm,
+    bonsai,
+    rstanarm
 RoxygenNote: 7.3.2

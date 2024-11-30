@@ -2,16 +2,18 @@
 % Please edit documentation in R/train_models.R
 \name{define_deep_learning_spec}
 \alias{define_deep_learning_spec}
-\title{Define Deep Learning Model Specification with Keras}
+\title{Define Deep Learning Model Specification (keras)}
 \usage{
-define_deep_learning_spec(task)
+define_deep_learning_spec(task, tune = FALSE)
 }
 \arguments{
-\item{task}{A character string specifying the type of task: `"classification"` or `"regression"`.}
+\item{task}{Character string specifying the task type: "classification" or "regression".}
+
+\item{tune}{Logical indicating whether to use tuning parameters.}
 }
 \value{
-A list containing the model specification, default parameters, and required parameters.
+List containing the model specification (`model_spec`).
 }
 \description{
-Creates a deep learning model specification using the `keras` engine for classification or regression tasks.
+Define Deep Learning Model Specification (keras)
 }

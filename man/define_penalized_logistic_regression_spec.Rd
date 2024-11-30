@@ -4,14 +4,16 @@
 \alias{define_penalized_logistic_regression_spec}
 \title{Define Penalized Logistic Regression Model Specification}
 \usage{
-define_penalized_logistic_regression_spec(task)
+define_penalized_logistic_regression_spec(task, tune = FALSE)
 }
 \arguments{
-\item{task}{A character string specifying the type of task. Must be `"classification"`.}
+\item{task}{Character string specifying the task type ("classification").}
+
+\item{tune}{Logical indicating whether to use tuning parameters.}
 }
 \value{
-A list containing the model specification, default parameters, and required parameters.
+List containing the model specification (`model_spec`).
 }
 \description{
-Creates a penalized logistic regression model specification using the `glmnet` engine for classification tasks.
+Define Penalized Logistic Regression Model Specification
 }

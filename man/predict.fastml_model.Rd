@@ -17,7 +17,7 @@ Other options include \code{"prob"} for class probabilities (classification only
 \item{...}{Additional arguments (not used).}
 }
 \value{
-A vector of predictions.
+A vector or data frame of predictions.
 }
 \description{
 Makes predictions on new data using the trained model.

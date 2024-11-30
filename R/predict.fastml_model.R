@@ -7,12 +7,11 @@
 #' @param type Type of prediction. Default is \code{"auto"}, which returns class labels for classification and numeric predictions for regression.
 #'             Other options include \code{"prob"} for class probabilities (classification only).
 #' @param ... Additional arguments (not used).
-#' @return A vector of predictions.
+#' @return A vector or data frame of predictions.
 #'
-#' @importFrom recipes bake
+#' @importFrom recipes bake is_trained
 #' @importFrom tibble is_tibble
 #' @importFrom stats predict
-#'
 #' @export
 predict.fastml_model <- function(object, newdata, type = "auto", ...) {
   # Check if newdata is provided
@@ -34,8 +33,12 @@ predict.fastml_model <- function(object, newdata, type = "auto", ...) {
   }
 
   # Apply preprocessing to newdata using the recipe
-  if (!is.null(object$recipe)) {
-    newdata_processed <- recipes::bake(object$recipe, new_data = newdata)
+  if (!is.null(object$preprocessor)) {
+    # Check if the recipe is trained (prepped)
+    # if (!is_trained(object$preprocessor)) {
+      # stop("The recipe in the model object is not prepped. Please ensure the recipe is prepped during training.")
+    # }
+    newdata_processed <- bake(object$preprocessor, new_data = newdata)
   } else {
     stop("Preprocessing recipe is missing from the model object.")
   }
@@ -62,7 +65,7 @@ predict.fastml_model <- function(object, newdata, type = "auto", ...) {
   # Generate predictions
   predictions <- predict(best_model, new_data = newdata_processed, type = predict_type)
 
-  # If predictions are in a tibble, extract the vector
+  # If predictions are in a tibble, extract the vector or keep as is
   if (is.data.frame(predictions) || is_tibble(predictions)) {
     if (predict_type == "class") {
       predictions <- predictions$.pred_class

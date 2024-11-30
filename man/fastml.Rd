@@ -7,7 +7,7 @@
 fastml(
   data,
   label,
-  algorithms = NULL,
+  algorithms = "all",
   test_size = 0.2,
   resampling_method = "cv",
   folds = ifelse(grepl("cv", resampling_method), 10, 25),
@@ -20,6 +20,7 @@ fastml(
   encode_categoricals = TRUE,
   scaling_methods = c("center", "scale"),
   summaryFunction = NULL,
+  use_default_tuning = FALSE,
   seed = 123
 )
 }
@@ -28,8 +29,7 @@ fastml(
 
 \item{label}{A string specifying the name of the target variable.}
 
-\item{algorithms}{A vector of algorithm names to use. Default depends on the task.
-Use \code{"all"} to run all supported algorithms.}
+\item{algorithms}{A vector of algorithm names to use. Default is \code{"all"} to run all supported algorithms.}
 
 \item{test_size}{A numeric value between 0 and 1 indicating the proportion of the data to use for testing. Default is \code{0.2}.}
 
@@ -65,6 +65,8 @@ Default is \code{"error"}.}
 
 \item{summaryFunction}{A custom summary function for model evaluation. Default is \code{NULL}.}
 
+\item{use_default_tuning}{Logical indicating whether to use default tuning grids when \code{tune_params} is \code{NULL}. Default is \code{FALSE}.}
+
 \item{seed}{An integer value specifying the random seed for reproducibility.}
 }
 \value{
@@ -72,4 +74,34 @@ An object of class \code{fastml_model} containing the best model, performance me
 }
 \description{
 Trains and evaluates multiple classification or regression models automatically detecting the task based on the target variable type.
+}
+\examples{
+  # Example 1: Using the iris dataset for binary classification (excluding 'setosa')
+  data(iris)
+  iris <- iris[iris$Species != "setosa", ]  # Binary classification
+  iris$Species <- factor(iris$Species)
+
+  # Train models
+  model <- fastml(
+    data = iris,
+    label = "Species",
+    algorithms = c("random_forest", "xgboost", "svm_radial")
+  )
+
+  # View model summary
+  summary(model)
+
+  # Example 2: Using the mtcars dataset for regression
+  data(mtcars)
+
+  # Train models
+  model <- fastml(
+    data = mtcars,
+    label = "mpg",
+    algorithms = c("random_forest", "xgboost", "svm_radial")
+  )
+
+  # View model summary
+  summary(model)
+
 }

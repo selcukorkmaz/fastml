@@ -7,11 +7,11 @@
 define_linear_regression_spec(task)
 }
 \arguments{
-\item{task}{A character string specifying the type of task. Must be `"regression"`.}
+\item{task}{Character string specifying the task type ("regression").}
 }
 \value{
-A list containing the model specification, default parameters, and required parameters.
+List containing the model specification (`model_spec`).
 }
 \description{
-Creates a linear regression model specification using the `lm` engine for regression tasks.
+Define Linear Regression Model Specification
 }

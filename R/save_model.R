@@ -5,7 +5,6 @@
 #' @param model An object of class \code{fastml_model}.
 #' @param filepath A string specifying the file path to save the model.
 #' @return No return value, called for its side effect of saving the model object to a file.
-#' @importFrom utils saveRDS
 #' @export
 save_model <- function(model, filepath) {
   saveRDS(model, filepath)
@@ -18,7 +17,6 @@ save_model <- function(model, filepath) {
 #'
 #' @param filepath A string specifying the file path to load the model from.
 #' @return An object of class \code{fastml_model}.
-#' @importFrom utils readRDS
 #' @export
 load_model <- function(filepath) {
   model <- readRDS(filepath)

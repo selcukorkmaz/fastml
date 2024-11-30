@@ -4,14 +4,16 @@
 \alias{define_c5_0_spec}
 \title{Define C5.0 Model Specification}
 \usage{
-define_c5_0_spec(task)
+define_c5_0_spec(task, tune = FALSE)
 }
 \arguments{
-\item{task}{A character string specifying the type of task. Must be `"classification"`.}
+\item{task}{Character string specifying the task type: "classification" or "regression".}
+
+\item{tune}{Logical indicating whether to use tuning parameters.}
 }
 \value{
-A list containing the model specification, default parameters, and required parameters.
+List containing the model specification (`model_spec`).
 }
 \description{
-Creates a C5.0 decision tree model specification using the `C5.0` engine for classification tasks.
+Define C5.0 Model Specification
 }

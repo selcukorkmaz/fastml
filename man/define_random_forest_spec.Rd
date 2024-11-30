@@ -4,16 +4,20 @@
 \alias{define_random_forest_spec}
 \title{Define Random Forest Model Specification}
 \usage{
-define_random_forest_spec(task, train_data)
+define_random_forest_spec(task, train_data, label, tune = FALSE)
 }
 \arguments{
-\item{task}{A character string specifying the type of task: `"classification"` or `"regression"`.}
+\item{task}{Character string specifying the task type: "classification" or "regression".}
 
-\item{train_data}{A data frame containing the training data (used to determine the number of predictors).}
+\item{train_data}{Data frame containing the training data.}
+
+\item{label}{Character string specifying the name of the target variable.}
+
+\item{tune}{Logical indicating whether to use tuning parameters.}
 }
 \value{
-A list containing the model specification, default parameters, and required parameters.
+List containing the model specification (`model_spec`).
 }
 \description{
-Creates a random forest model specification using the `ranger` engine for classification or regression tasks.
+Define Random Forest Model Specification
 }

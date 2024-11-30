@@ -4,8 +4,7 @@
 #'
 #' @param data A data frame containing the features and target variable.
 #' @param label A string specifying the name of the target variable.
-#' @param algorithms A vector of algorithm names to use. Default depends on the task.
-#'                   Use \code{"all"} to run all supported algorithms.
+#' @param algorithms A vector of algorithm names to use. Default is \code{"all"} to run all supported algorithms.
 #' @param test_size A numeric value between 0 and 1 indicating the proportion of the data to use for testing. Default is \code{0.2}.
 #' @param resampling_method A string specifying the resampling method for cross-validation. Default is \code{"cv"} (cross-validation).
 #'                          Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.
@@ -35,13 +34,43 @@
 #' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake
 #' @importFrom dplyr select
 #' @importFrom foreach registerDoSEQ
-#' @importFrom doParallel makeCluster registerDoParallel
-#' @importFrom parallel stopCluster
+#' @importFrom doParallel registerDoParallel
+#' @importFrom parallel stopCluster makeCluster
+#' @importFrom stats as.formula
 #' @return An object of class \code{fastml_model} containing the best model, performance metrics, and other information.
+#' @examples
+#'   # Example 1: Using the iris dataset for binary classification (excluding 'setosa')
+#'   data(iris)
+#'   iris <- iris[iris$Species != "setosa", ]  # Binary classification
+#'   iris$Species <- factor(iris$Species)
+#'
+#'   # Train models
+#'   model <- fastml(
+#'     data = iris,
+#'     label = "Species",
+#'     algorithms = c("random_forest", "xgboost", "svm_radial")
+#'   )
+#'
+#'   # View model summary
+#'   summary(model)
+#'
+#'   # Example 2: Using the mtcars dataset for regression
+#'   data(mtcars)
+#'
+#'   # Train models
+#'   model <- fastml(
+#'     data = mtcars,
+#'     label = "mpg",
+#'     algorithms = c("random_forest", "xgboost", "svm_radial")
+#'   )
+#'
+#'   # View model summary
+#'   summary(model)
+#'
 #' @export
 fastml <- function(data,
                    label,
-                   algorithms = NULL,
+                   algorithms = "all",
                    test_size = 0.2,
                    resampling_method = "cv",
                    folds = ifelse(grepl("cv", resampling_method), 10, 25),
@@ -56,10 +85,7 @@ fastml <- function(data,
                    summaryFunction = NULL,
                    use_default_tuning = FALSE,
                    seed = 123) {
-  # Load required packages
-  if (!requireNamespace("tidymodels", quietly = TRUE)) {
-    stop("The 'tidymodels' package is required but not installed.")
-  }
+
   # Set random seed
   set.seed(seed)
   # Check if label exists in data
@@ -74,14 +100,6 @@ fastml <- function(data,
     task <- "regression"
   } else {
     stop("Unable to detect task type. The target variable must be numeric, factor, character, or logical.")
-  }
-  # Set default algorithms and metric based on the task
-  if (is.null(algorithms)) {
-    if (task == "classification") {
-      algorithms <- c("random_forest", "xgboost", "svm_radial", "neural_network", "gbm")
-    } else {
-      algorithms <- c("random_forest", "xgboost", "svm_radial", "neural_network", "gbm")
-    }
   }
   if (is.null(metric)) {
     if (task == "classification") {
@@ -102,10 +120,8 @@ fastml <- function(data,
     "c5.0",
     "random_forest",
     "ranger",
-    "gbm",
     "xgboost",
     "lightgbm",
-    # "catboost",
     "svm_linear",
     "svm_radial",
     "knn",
@@ -114,12 +130,7 @@ fastml <- function(data,
     "deep_learning",
     "lda",
     "qda",
-    "bagging",
-    # "adaboost",
-    # "logitboost",
-    "stacking",
-    "blending",
-    "voting"
+    "bagging"
   )
   supported_algorithms_regression <- c(
     "linear_regression",
@@ -128,7 +139,7 @@ fastml <- function(data,
     "elastic_net",
     "decision_tree",
     "random_forest",
-    "gbm",
+    # "gbm",
     "xgboost",
     "lightgbm",
     "svm_linear",
@@ -137,10 +148,7 @@ fastml <- function(data,
     "neural_network",
     "deep_learning",
     "pls",
-    "bayes_glm",
-    "stacking",
-    "blending",
-    "voting"
+    "bayes_glm"
   )
   if (task == "classification") {
     supported_algorithms <- supported_algorithms_classification
@@ -327,7 +335,7 @@ fastml <- function(data,
     task = task,
     models = models,
     metric = metric
-  )
+   )
   class(result) <- "fastml_model"
   # Return the result
   return(result)

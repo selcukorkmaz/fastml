@@ -9,7 +9,7 @@
 #' @return Prints a summary of the models' performances and displays comparison plots.
 #'
 #' @importFrom ggplot2 ggplot aes geom_bar facet_wrap theme_bw theme element_text labs
-#' @importFrom reshape2 melt
+#' @importFrom reshape2 melt dcast
 #' @export
 summary.fastml_model <- function(object, sort_metric = NULL, ...) {
   # Ensure object is a valid fastml_model
@@ -41,11 +41,7 @@ summary.fastml_model <- function(object, sort_metric = NULL, ...) {
   performance_df <- performance_df[, c("Model", names(performance_df)[names(performance_df) != "Model"])]
 
   # Define all possible metrics
-  if (object$task == "classification") {
-    all_metric_names <- unique(performance_df$.metric)
-  } else {
-    all_metric_names <- unique(performance_df$.metric)
-  }
+  all_metric_names <- unique(performance_df$.metric)
 
   # Determine the main metric used for sorting
   # Prioritize sort_metric if provided and available, else use the optimized metric
@@ -65,7 +61,7 @@ summary.fastml_model <- function(object, sort_metric = NULL, ...) {
   }
 
   # Create a summary table by pivoting the data
-  performance_wide <- reshape2::dcast(performance_df, Model ~ .metric, value.var = ".estimate")
+  performance_wide <- dcast(performance_df, Model ~ .metric, value.var = ".estimate")
 
   # Ensure main_metric exists in performance_wide
   if (!(main_metric %in% names(performance_wide))) {
@@ -113,19 +109,19 @@ summary.fastml_model <- function(object, sort_metric = NULL, ...) {
   }
 
   # Melt the wide data frame for plotting
-  performance_melt <- reshape2::melt(performance_wide, id.vars = "Model", variable.name = "Measure", value.name = "Value")
+  performance_melt <- melt(performance_wide, id.vars = "Model", variable.name = "Measure", value.name = "Value")
 
   # Remove rows where the metric value is NA to clean the plot
   performance_melt <- performance_melt[!is.na(performance_melt$Value), ]
 
   # Plot performance metrics
-  p <- ggplot2::ggplot(performance_melt,
-                       ggplot2::aes(x = Model, y = Value, fill = Measure)) +
-    ggplot2::geom_bar(stat = "identity", position = "dodge") +
-    ggplot2::facet_wrap(~ Measure, scales = "free_y") +
-    ggplot2::theme_bw() +
-    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1)) +
-    ggplot2::labs(title = "Model Performance Comparison", x = "Model", y = "Metric Value")
+  p <- ggplot(performance_melt,
+                       aes(x = Model, y = Value, fill = Measure)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    facet_wrap(~ Measure, scales = "free_y") +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+    labs(title = "Model Performance Comparison", x = "Model", y = "Metric Value")
 
   print(p)
 

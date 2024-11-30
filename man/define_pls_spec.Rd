@@ -4,14 +4,16 @@
 \alias{define_pls_spec}
 \title{Define Partial Least Squares Model Specification}
 \usage{
-define_pls_spec(task)
+define_pls_spec(task, tune = FALSE)
 }
 \arguments{
-\item{task}{A character string specifying the type of task. Must be `"regression"`.}
+\item{task}{Character string specifying the task type ("regression").}
+
+\item{tune}{Logical indicating whether to use tuning parameters.}
 }
 \value{
-A list containing the model specification, default parameters, and required parameters.
+List containing the model specification (`model_spec`).
 }
 \description{
-Creates a PLS model specification using the `mixOmics` engine for regression tasks.
+Define Partial Least Squares Model Specification
 }

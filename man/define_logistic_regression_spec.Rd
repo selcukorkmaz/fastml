@@ -4,14 +4,16 @@
 \alias{define_logistic_regression_spec}
 \title{Define Logistic Regression Model Specification}
 \usage{
-define_logistic_regression_spec(task)
+define_logistic_regression_spec(task, tune = FALSE)
 }
 \arguments{
-\item{task}{A character string specifying the type of task. Must be `"classification"`.}
+\item{task}{Character string specifying the task type ("classification").}
+
+\item{tune}{Logical indicating whether to use tuning parameters.}
 }
 \value{
-A list containing the model specification (`model_spec`), default parameters (`default_params`), and required parameters (`required_params`).
+List containing the model specification (`model_spec`).
 }
 \description{
-Creates a logistic regression model specification using the `glm` engine for classification tasks.
+Define Logistic Regression Model Specification
 }

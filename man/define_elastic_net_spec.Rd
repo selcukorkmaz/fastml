@@ -4,14 +4,16 @@
 \alias{define_elastic_net_spec}
 \title{Define Elastic Net Model Specification}
 \usage{
-define_elastic_net_spec(task)
+define_elastic_net_spec(task, tune = FALSE)
 }
 \arguments{
-\item{task}{A character string specifying the type of task. Must be `"regression"`.}
+\item{task}{Character string specifying the task type ("regression").}
+
+\item{tune}{Logical indicating whether to use tuning parameters.}
 }
 \value{
-A list containing the model specification, default parameters, and required parameters.
+List containing the model specification (`model_spec`).
 }
 \description{
-Creates an elastic net model specification using the `glmnet` engine for regression tasks.
+Define Elastic Net Model Specification
 }
