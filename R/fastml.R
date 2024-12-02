@@ -335,7 +335,7 @@ fastml <- function(data,
     task = task,
     models = models,
     metric = metric
-   )
+  )
   class(result) <- "fastml_model"
   # Return the result
   return(result)

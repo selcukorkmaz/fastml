@@ -7,6 +7,7 @@
 fastml(
   data,
   label,
+  recipe = NULL,
   algorithms = "all",
   test_size = 0.2,
   resampling_method = "cv",
@@ -29,6 +30,8 @@ fastml(
 
 \item{label}{A string specifying the name of the target variable.}
 
+\item{recipe}{A [recipes::recipe()] object specifying custom preprocessing steps. Default is \code{NULL}, which uses default preprocessing.}
+
 \item{algorithms}{A vector of algorithm names to use. Default is \code{"all"} to run all supported algorithms.}
 
 \item{test_size}{A numeric value between 0 and 1 indicating the proportion of the data to use for testing. Default is \code{0.2}.}
@@ -38,11 +41,11 @@ Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.}
 
 \item{folds}{An integer specifying the number of folds for cross-validation. Default is \code{10} for methods containing "cv" and \code{25} otherwise.}
 
-\item{repeats}{Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").}
+\item{repeats}{Number of times to repeat cross-validation (only applicable for methods like "repeatedcv"). Default is \code{1} for "repeatedcv" and \code{NA} otherwise.}
 
 \item{tune_params}{A list specifying hyperparameter tuning ranges. Default is \code{NULL}.}
 
-\item{metric}{The performance metric to optimize during training. Default depends on the task.}
+\item{metric}{The performance metric to optimize during training. Default depends on the task (\code{"accuracy"} for classification and \code{"rmse"} for regression).}
 
 \item{n_cores}{An integer specifying the number of CPU cores to use for parallel processing. Default is \code{1}.}
 
@@ -67,7 +70,7 @@ Default is \code{"error"}.}
 
 \item{use_default_tuning}{Logical indicating whether to use default tuning grids when \code{tune_params} is \code{NULL}. Default is \code{FALSE}.}
 
-\item{seed}{An integer value specifying the random seed for reproducibility.}
+\item{seed}{An integer value specifying the random seed for reproducibility. Default is \code{123}.}
 }
 \value{
 An object of class \code{fastml_model} containing the best model, performance metrics, and other information.
@@ -81,7 +84,7 @@ Trains and evaluates multiple classification or regression models automatically 
   iris <- iris[iris$Species != "setosa", ]  # Binary classification
   iris$Species <- factor(iris$Species)
 
-  # Train models
+  # Train models with default settings
   model <- fastml(
     data = iris,
     label = "Species",
@@ -95,13 +98,30 @@ Trains and evaluates multiple classification or regression models automatically 
   data(mtcars)
 
   # Train models
-  model <- fastml(
+  model_reg <- fastml(
     data = mtcars,
     label = "mpg",
     algorithms = c("random_forest", "xgboost", "svm_radial")
   )
 
   # View model summary
-  summary(model)
+  summary(model_reg)
+
+  # Example 3: Using a custom recipe
+  library(recipes)
+  custom_rec <- recipe(Species ~ ., data = iris) \%>\%
+    step_dummy(all_nominal_predictors()) \%>\%
+    step_center(all_numeric_predictors()) \%>\%
+    step_scale(all_numeric_predictors())
+
+  model_custom <- fastml(
+    data = iris,
+    label = "Species",
+    recipe = custom_rec,
+    algorithms = c("random_forest", "xgboost")
+  )
+
+  # View model summary
+  summary(model_custom)
 
 }

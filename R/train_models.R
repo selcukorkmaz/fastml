@@ -900,11 +900,11 @@ define_neural_network_spec <- function(task, tune = FALSE) {
   list(model_spec = model_spec)
 }
 
-#' Define Deep Learning Model Specification (keras)
-#'
-#' @inheritParams define_neural_network_spec
-#' @return List containing the model specification (`model_spec`).
-#' @importFrom parsnip mlp set_mode set_engine
+# Define Deep Learning Model Specification (keras)
+#
+# @inheritParams define_neural_network_spec
+# @return List containing the model specification (`model_spec`).
+# @importFrom parsnip mlp set_mode set_engine
 # define_deep_learning_spec <- function(task, tune = FALSE) {
 #   if (!requireNamespace("keras", quietly = TRUE)) {
 #     stop("The 'keras' package is required for deep learning but is not installed.")
