@@ -127,7 +127,7 @@ fastml <- function(data,
     "knn",
     "naive_bayes",
     "neural_network",
-    "deep_learning",
+    # "deep_learning",
     "lda",
     "qda",
     "bagging"
@@ -146,7 +146,7 @@ fastml <- function(data,
     "svm_radial",
     "knn",
     "neural_network",
-    "deep_learning",
+    # "deep_learning",
     "pls",
     "bayes_glm"
   )

@@ -147,7 +147,7 @@ train_models <- function(train_data,
                          "knn" = define_knn_spec(task, tune = perform_tuning),
                          "naive_bayes" = define_naive_bayes_spec(task, tune = perform_tuning),
                          "neural_network" = define_neural_network_spec(task, tune = perform_tuning),
-                         "deep_learning" = define_deep_learning_spec(task, tune = perform_tuning),
+                         # "deep_learning" = define_deep_learning_spec(task, tune = perform_tuning),
                          "lda" = define_lda_spec(task),
                          "qda" = define_qda_spec(task),
                          "bagging" = define_bagging_spec(task, tune = perform_tuning),
@@ -289,7 +289,7 @@ get_default_params <- function(algo, num_predictors = NULL) {
            learn_rate = 0.1,
            loss_reduction = 0,
            min_n = 5,
-           sample_size = 1,
+           sample_size = 0.5,
            mtry = if (!is.null(num_predictors)) max(1, floor(sqrt(num_predictors))) else 2
          ),
          # 6. LightGBM
@@ -299,7 +299,7 @@ get_default_params <- function(algo, num_predictors = NULL) {
            learn_rate = 0.1,
            loss_reduction = 0,
            min_n = 5,
-           sample_size = 1,
+           sample_size = 0.5,
            mtry = if (!is.null(num_predictors)) max(1, floor(sqrt(num_predictors))) else 2
          ),
          # 7. Logistic Regression
@@ -415,7 +415,7 @@ get_default_tune_params <- function(algo, train_data, label) {
            learn_rate = c(-2, -1),  # log scale
            loss_reduction = c(0, 5),  # Reduced upper limit
            min_n = c(2, 5),
-           sample_size = c(0.5, 1),
+           sample_size = c(0.5, 0.99),
            mtry = c(1, num_predictors)
          ),
 
@@ -426,7 +426,7 @@ get_default_tune_params <- function(algo, train_data, label) {
            learn_rate = c(-2, -1),  # log scale
            loss_reduction = c(0, 5),  # Reduced upper limit
            min_n = c(2, 5),
-           sample_size = c(0.5, 1),
+           sample_size = c(0.5, 0.99),
            mtry = c(1, num_predictors)
          ),
 
@@ -905,31 +905,31 @@ define_neural_network_spec <- function(task, tune = FALSE) {
 #' @inheritParams define_neural_network_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip mlp set_mode set_engine
-define_deep_learning_spec <- function(task, tune = FALSE) {
-  if (!requireNamespace("keras", quietly = TRUE)) {
-    stop("The 'keras' package is required for deep learning but is not installed.")
-  }
-  defaults <- get_default_params("deep_learning")
-
-  if (tune) {
-    model_spec <- mlp(
-      hidden_units = tune(),
-      penalty = tune(),
-      epochs = tune()
-    ) %>%
-      set_mode(task) %>%
-      set_engine("keras")
-  } else {
-    model_spec <- mlp(
-      hidden_units = defaults$hidden_units,
-      penalty = defaults$penalty,
-      epochs = defaults$epochs
-    ) %>%
-      set_mode(task) %>%
-      set_engine("keras")
-  }
-  list(model_spec = model_spec)
-}
+# define_deep_learning_spec <- function(task, tune = FALSE) {
+#   if (!requireNamespace("keras", quietly = TRUE)) {
+#     stop("The 'keras' package is required for deep learning but is not installed.")
+#   }
+#   defaults <- get_default_params("deep_learning")
+#
+#   if (tune) {
+#     model_spec <- mlp(
+#       hidden_units = tune(),
+#       penalty = tune(),
+#       epochs = tune()
+#     ) %>%
+#       set_mode(task) %>%
+#       set_engine("keras")
+#   } else {
+#     model_spec <- mlp(
+#       hidden_units = defaults$hidden_units,
+#       penalty = defaults$penalty,
+#       epochs = defaults$epochs
+#     ) %>%
+#       set_mode(task) %>%
+#       set_engine("keras")
+#   }
+#   list(model_spec = model_spec)
+# }
 
 #' Define Linear Discriminant Analysis Model Specification
 #'
