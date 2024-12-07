@@ -29,8 +29,9 @@
 #' @param summaryFunction A custom summary function for model evaluation. Default is \code{NULL}.
 #' @param use_default_tuning Logical indicating whether to use default tuning grids when \code{tune_params} is \code{NULL}. Default is \code{FALSE}.
 #' @param seed An integer value specifying the random seed for reproducibility.
+#' @param recipe A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.
 #' @importFrom magrittr %>%
-#' @importFrom rsample initial_split vfold_cv bootstraps training testing
+#' @importFrom rsample initial_split training testing
 #' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake
 #' @importFrom dplyr select
 #' @importFrom foreach registerDoSEQ
@@ -84,14 +85,17 @@ fastml <- function(data,
                    scaling_methods = c("center", "scale"),
                    summaryFunction = NULL,
                    use_default_tuning = FALSE,
-                   seed = 123) {
+                   seed = 123,
+                   recipe = NULL) {
 
   # Set random seed
   set.seed(seed)
+
   # Check if label exists in data
   if (!(label %in% names(data))) {
     stop("The specified label does not exist in the data.")
   }
+
   # Detect task based on target variable type
   target_var <- data[[label]]
   if (is.factor(target_var) || is.character(target_var) || is.logical(target_var)) {
@@ -101,6 +105,7 @@ fastml <- function(data,
   } else {
     stop("Unable to detect task type. The target variable must be numeric, factor, character, or logical.")
   }
+
   if (is.null(metric)) {
     if (task == "classification") {
       metric <- "accuracy"
@@ -108,10 +113,12 @@ fastml <- function(data,
       metric <- "rmse"
     }
   }
+
   # Set default stratify based on task
   if (is.null(stratify)) {
     stratify <- ifelse(task == "classification", TRUE, FALSE)
   }
+
   # Handle algorithms
   supported_algorithms_classification <- c(
     "logistic_regression",
@@ -127,7 +134,6 @@ fastml <- function(data,
     "knn",
     "naive_bayes",
     "neural_network",
-    # "deep_learning",
     "lda",
     "qda",
     "bagging"
@@ -139,22 +145,22 @@ fastml <- function(data,
     "elastic_net",
     "decision_tree",
     "random_forest",
-    # "gbm",
     "xgboost",
     "lightgbm",
     "svm_linear",
     "svm_radial",
     "knn",
     "neural_network",
-    # "deep_learning",
     "pls",
     "bayes_glm"
   )
+
   if (task == "classification") {
     supported_algorithms <- supported_algorithms_classification
   } else {
     supported_algorithms <- supported_algorithms_regression
   }
+
   if ("all" %in% algorithms) {
     algorithms <- supported_algorithms
   } else {
@@ -185,101 +191,85 @@ fastml <- function(data,
       algorithms <- valid_algorithms
     }
   }
+
   # Split data into training and testing sets
   if (stratify && task == "classification") {
-    split <- initial_split(data, prop = 1 - test_size, strata = label)
+    split <- rsample::initial_split(data, prop = 1 - test_size, strata = label)
   } else {
-    split <- initial_split(data, prop = 1 - test_size)
+    split <- rsample::initial_split(data, prop = 1 - test_size)
   }
-  train_data <- training(split)
-  test_data <- testing(split)
-  # Preprocess data using recipes
-  # Create a recipe
-  recipe <- recipe(as.formula(paste(label, "~ .")), data = train_data)
-  # Handle missing values
-  if (impute_method == "medianImpute") {
-    recipe <- recipe %>% step_impute_median(all_numeric_predictors())
-  } else if (impute_method == "knnImpute") {
-    recipe <- recipe %>% step_impute_knn(all_predictors())
-  } else if (impute_method == "bagImpute") {
-    recipe <- recipe %>% step_impute_bag(all_predictors())
-  } else if (impute_method == "remove") {
-    recipe <- recipe %>% step_naomit(all_predictors(), skip = TRUE)
-  } else if (impute_method == "error" || is.null(impute_method)) {
-    # Do nothing, let the recipe throw an error if there are missing values
-  } else {
-    stop("Invalid impute_method specified.")
-  }
-  # Encode categorical variables
-  if (encode_categoricals) {
-    recipe <- recipe %>% step_dummy(all_nominal_predictors(), -all_outcomes())
-  }
-  # Scaling methods
-  if (!is.null(scaling_methods)) {
-    if ("center" %in% scaling_methods) {
-      recipe <- recipe %>% step_center(all_numeric_predictors())
-    }
-    if ("scale" %in% scaling_methods) {
-      recipe <- recipe %>% step_scale(all_numeric_predictors())
-    }
-  }
-  # Prepare the recipe
-  recipe_prep <- prep(recipe, training = train_data)
-  # Apply the recipe to training and test data
-  train_processed <- bake(recipe_prep, new_data = NULL)
-  test_processed <- bake(recipe_prep, new_data = test_data)
-  # Adjust target variable based on task
+
+  train_data <- rsample::training(split)
+  test_data <- rsample::testing(split)
+
+  # Adjust target variable type based on task
   if (task == "classification") {
-    # Adjust factor levels of the target variable in training data
-    train_processed[[label]] <- as.factor(train_processed[[label]])
-    # Adjust factor levels of the target variable in test data to match training data
-    test_processed[[label]] <- factor(test_processed[[label]], levels = levels(train_processed[[label]]))
+    train_data[[label]] <- as.factor(train_data[[label]])
+    test_data[[label]] <- factor(test_data[[label]], levels = levels(train_data[[label]]))
   } else {
-    # For regression, ensure the target variable is numeric
-    train_processed[[label]] <- as.numeric(train_processed[[label]])
-    test_processed[[label]] <- as.numeric(test_processed[[label]])
+    train_data[[label]] <- as.numeric(train_data[[label]])
+    test_data[[label]] <- as.numeric(test_data[[label]])
   }
-  # Check for missing values in preprocessed training data
-  if (any(is.na(train_processed))) {
-    # Provide detailed error message
-    na_counts <- colSums(is.na(train_processed))
-    na_vars <- names(na_counts[na_counts > 0])
-    na_info <- paste(na_vars, "(", na_counts[na_vars], " missing)", collapse = ", ")
-    stop(
-      paste(
-        "Preprocessed training data contains missing values in the following variables:",
-        na_info,
-        "\nPlease check the preprocessing steps or specify an appropriate 'impute_method'."
-      )
-    )
+
+  # If user did not provide a recipe, create and prep one internally
+  if (is.null(recipe)) {
+    recipe <- recipes::recipe(as.formula(paste(label, "~ .")), data = train_data)
+
+    # Handle missing values
+    if (impute_method == "medianImpute") {
+      recipe <- recipe %>% recipes::step_impute_median(recipes::all_numeric_predictors())
+    } else if (impute_method == "knnImpute") {
+      recipe <- recipe %>% recipes::step_impute_knn(recipes::all_predictors())
+    } else if (impute_method == "bagImpute") {
+      recipe <- recipe %>% recipes::step_impute_bag(recipes::all_predictors())
+    } else if (impute_method == "remove") {
+      recipe <- recipe %>% recipes::step_naomit(recipes::all_predictors(), skip = TRUE)
+    } else if (impute_method == "error" || is.null(impute_method)) {
+      # Do nothing
+    } else {
+      stop("Invalid impute_method specified.")
+    }
+
+    # Encode categorical variables
+    if (encode_categoricals) {
+      recipe <- recipe %>% recipes::step_dummy(recipes::all_nominal_predictors(), -recipes::all_outcomes())
+    }
+
+    # Scaling methods
+    if (!is.null(scaling_methods)) {
+      if ("center" %in% scaling_methods) {
+        recipe <- recipe %>% recipes::step_center(recipes::all_numeric_predictors())
+      }
+      if ("scale" %in% scaling_methods) {
+        recipe <- recipe %>% recipes::step_scale(recipes::all_numeric_predictors())
+      }
+    }
+
+    # Prep the recipe internally when user did not provide it
+    # Because we are controlling this scenario, we can prep it
+    # and then bake it in train_models
+    recipe_prep <- recipes::prep(recipe, training = train_data)
+  } else {
+    # User provided a custom recipe
+    # DO NOT PREP this recipe here, just pass it as is
+    # The workflow will prep it internally when fitting
+    recipe_prep <- recipe
   }
-  # Check for missing values in preprocessed test data
-  if (any(is.na(test_processed))) {
-    # Provide detailed error message
-    na_counts <- colSums(is.na(test_processed))
-    na_vars <- names(na_counts[na_counts > 0])
-    na_info <- paste(na_vars, "(", na_counts[na_vars], " missing)", collapse = ", ")
-    stop(
-      paste(
-        "Preprocessed test data contains missing values in the following variables:",
-        na_info,
-        "\nPlease check the preprocessing steps or specify an appropriate 'impute_method'."
-      )
-    )
-  }
+
   # Initialize parallel processing if n_cores > 1
   if (n_cores > 1) {
     if (!requireNamespace("doParallel", quietly = TRUE)) {
       stop("The 'doParallel' package is required for parallel processing but is not installed.")
     }
-    cl <- makeCluster(n_cores)
-    registerDoParallel(cl)
+    cl <- parallel::makeCluster(n_cores)
+    doParallel::registerDoParallel(cl)
   } else {
-    registerDoSEQ()
+    foreach::registerDoSEQ()
   }
-  # Train models
+
+  # Train models (pass the raw or prepped recipe depending on scenario)
   models <- train_models(
-    train_data = train_processed,
+    train_data = train_data,
     label = label,
     task = task,
     algorithms = algorithms,
@@ -290,53 +280,50 @@ fastml <- function(data,
     metric = metric,
     summaryFunction = summaryFunction,
     seed = seed,
-    recipe = recipe,
+    recipe = recipe_prep,
     use_default_tuning = use_default_tuning
   )
+
   # Stop parallel processing
   if (n_cores > 1) {
-    stopCluster(cl)
+    parallel::stopCluster(cl)
   }
-  # Check if any models were successfully trained
+
   if (length(models) == 0) {
     stop("No models were successfully trained. Please check your data and parameters.")
   }
+
   # Evaluate models
-  performance <- evaluate_models(models, train_processed, test_processed, label, task, metric)
-  # Calculate best model index using the metric specified
-  metric_values <- sapply(performance, function(x) x %>% filter(.metric == metric) %>% pull(.estimate))
-  # Handle possible NA values
+  performance <- evaluate_models(models, train_data, test_data, label, task, metric)
+
+  metric_values <- sapply(performance, function(x) x %>% dplyr::filter(.metric == metric) %>% dplyr::pull(.estimate))
   if (any(is.na(metric_values))) {
-    warning(
-      "Some models did not return the specified metric. Check the metric name and model performance."
-    )
-    metric_values[is.na(metric_values)] <- if (task == "regression") Inf else -Inf  # Adjust based on task
+    warning("Some models did not return the specified metric. Check the metric name and model performance.")
+    metric_values[is.na(metric_values)] <- if (task == "regression") Inf else -Inf
   }
-  # Check if all metric_values are Inf or -Inf
+
   if (all(metric_values == if (task == "regression") Inf else -Inf)) {
-    stop(
-      "None of the models returned the specified metric. Please check the 'metric' parameter."
-    )
+    stop("None of the models returned the specified metric. Please check the 'metric' parameter.")
   }
-  # Identify best model
+
   if (task == "regression") {
     best_model_idx <- which.min(metric_values)
   } else {
     best_model_idx <- which.max(metric_values)
   }
+
   best_model_name <- names(models)[best_model_idx]
-  # Store the result
+
   result <- list(
     best_model = models[[best_model_idx]],
     best_model_name = best_model_name,
     performance = performance,
-    preprocessor = recipe_prep,
+    preprocessor = if (is.null(recipe)) recipe_prep else recipe_prep,
     label = label,
     task = task,
     models = models,
     metric = metric
   )
   class(result) <- "fastml_model"
-  # Return the result
   return(result)
 }
