@@ -15,8 +15,8 @@ Default is \code{NULL}, which prioritizes the optimized metric.}
 \item{...}{Additional arguments (not used).}
 }
 \value{
-Prints a summary of the models' performances and displays comparison plots.
+Prints a concise and user-friendly summary of the models' performances.
 }
 \description{
-Provides a detailed summary of the models' performances.
+Provides a concise and user-friendly summary of the model's performances.
 }

@@ -88,15 +88,12 @@ fastml <- function(data,
                    seed = 123,
                    recipe = NULL) {
 
-  # Set random seed
   set.seed(seed)
 
-  # Check if label exists in data
   if (!(label %in% names(data))) {
     stop("The specified label does not exist in the data.")
   }
 
-  # Detect task based on target variable type
   target_var <- data[[label]]
   if (is.factor(target_var) || is.character(target_var) || is.logical(target_var)) {
     task <- "classification"
@@ -107,19 +104,13 @@ fastml <- function(data,
   }
 
   if (is.null(metric)) {
-    if (task == "classification") {
-      metric <- "accuracy"
-    } else {
-      metric <- "rmse"
-    }
+    metric <- if (task == "classification") "accuracy" else "rmse"
   }
 
-  # Set default stratify based on task
   if (is.null(stratify)) {
-    stratify <- ifelse(task == "classification", TRUE, FALSE)
+    stratify <- (task == "classification")
   }
 
-  # Handle algorithms
   supported_algorithms_classification <- c(
     "logistic_regression",
     "penalized_logistic_regression",
@@ -164,35 +155,16 @@ fastml <- function(data,
   if ("all" %in% algorithms) {
     algorithms <- supported_algorithms
   } else {
-    invalid_algorithms <- setdiff(algorithms, supported_algorithms)
-    valid_algorithms <- intersect(algorithms, supported_algorithms)
-    if (length(invalid_algorithms) > 0) {
-      warning(
-        paste(
-          "Invalid algorithm(s) specified:",
-          paste(invalid_algorithms, collapse = ", "),
-          "\nSupported algorithms for",
-          task,
-          "are:",
-          paste(supported_algorithms, collapse = ", ")
-        )
-      )
+    invalid_algos <- setdiff(algorithms, supported_algorithms)
+    if (length(invalid_algos) > 0) {
+      warning("Invalid algorithm(s) specified: ", paste(invalid_algos, collapse = ", "))
     }
-    if (length(valid_algorithms) == 0) {
-      stop(
-        paste(
-          "No valid algorithms specified. Please choose from the supported algorithms for",
-          task,
-          ":\n",
-          paste(supported_algorithms, collapse = ", ")
-        )
-      )
-    } else {
-      algorithms <- valid_algorithms
+    algorithms <- intersect(algorithms, supported_algorithms)
+    if (length(algorithms) == 0) {
+      stop("No valid algorithms specified.")
     }
   }
 
-  # Split data into training and testing sets
   if (stratify && task == "classification") {
     split <- rsample::initial_split(data, prop = 1 - test_size, strata = label)
   } else {
@@ -202,7 +174,6 @@ fastml <- function(data,
   train_data <- rsample::training(split)
   test_data <- rsample::testing(split)
 
-  # Adjust target variable type based on task
   if (task == "classification") {
     train_data[[label]] <- as.factor(train_data[[label]])
     test_data[[label]] <- factor(test_data[[label]], levels = levels(train_data[[label]]))
@@ -211,11 +182,9 @@ fastml <- function(data,
     test_data[[label]] <- as.numeric(test_data[[label]])
   }
 
-  # If user did not provide a recipe, create and prep one internally
   if (is.null(recipe)) {
     recipe <- recipes::recipe(as.formula(paste(label, "~ .")), data = train_data)
 
-    # Handle missing values
     if (impute_method == "medianImpute") {
       recipe <- recipe %>% recipes::step_impute_median(recipes::all_numeric_predictors())
     } else if (impute_method == "knnImpute") {
@@ -225,17 +194,15 @@ fastml <- function(data,
     } else if (impute_method == "remove") {
       recipe <- recipe %>% recipes::step_naomit(recipes::all_predictors(), skip = TRUE)
     } else if (impute_method == "error" || is.null(impute_method)) {
-      # Do nothing
+      # do nothing
     } else {
       stop("Invalid impute_method specified.")
     }
 
-    # Encode categorical variables
     if (encode_categoricals) {
       recipe <- recipe %>% recipes::step_dummy(recipes::all_nominal_predictors(), -recipes::all_outcomes())
     }
 
-    # Scaling methods
     if (!is.null(scaling_methods)) {
       if ("center" %in% scaling_methods) {
         recipe <- recipe %>% recipes::step_center(recipes::all_numeric_predictors())
@@ -245,18 +212,17 @@ fastml <- function(data,
       }
     }
 
-    # Prep the recipe internally when user did not provide it
-    # Because we are controlling this scenario, we can prep it
-    # and then bake it in train_models
-    recipe_prep <- recipes::prep(recipe, training = train_data)
+    # Do not prep, leave untrained
   } else {
-    # User provided a custom recipe
-    # DO NOT PREP this recipe here, just pass it as is
-    # The workflow will prep it internally when fitting
-    recipe_prep <- recipe
+    # User provided a recipe, must be untrained
+    if (!inherits(recipe, "recipe")) {
+      stop("The provided recipe is not a valid recipe object.")
+    }
+    if (length(recipe$steps) > 0 && any(sapply(recipe$steps, function(x) x$trained))) {
+      stop("The provided recipe is already trained. Please supply an untrained recipe.")
+    }
   }
 
-  # Initialize parallel processing if n_cores > 1
   if (n_cores > 1) {
     if (!requireNamespace("doParallel", quietly = TRUE)) {
       stop("The 'doParallel' package is required for parallel processing but is not installed.")
@@ -267,7 +233,6 @@ fastml <- function(data,
     foreach::registerDoSEQ()
   }
 
-  # Train models (pass the raw or prepped recipe depending on scenario)
   models <- train_models(
     train_data = train_data,
     label = label,
@@ -280,45 +245,42 @@ fastml <- function(data,
     metric = metric,
     summaryFunction = summaryFunction,
     seed = seed,
-    recipe = recipe_prep,
+    recipe = recipe,
     use_default_tuning = use_default_tuning
   )
 
-  # Stop parallel processing
   if (n_cores > 1) {
     parallel::stopCluster(cl)
   }
 
   if (length(models) == 0) {
-    stop("No models were successfully trained. Please check your data and parameters.")
+    stop("No models were successfully trained.")
   }
 
-  # Evaluate models
-  performance <- evaluate_models(models, train_data, test_data, label, task, metric)
+  eval_output <- evaluate_models(models, train_data, test_data, label, task, metric)
+  performance <- eval_output$performance
+  predictions <- eval_output$predictions
 
   metric_values <- sapply(performance, function(x) x %>% dplyr::filter(.metric == metric) %>% dplyr::pull(.estimate))
+
   if (any(is.na(metric_values))) {
-    warning("Some models did not return the specified metric. Check the metric name and model performance.")
+    warning("Some models did not return the specified metric.")
     metric_values[is.na(metric_values)] <- if (task == "regression") Inf else -Inf
   }
 
   if (all(metric_values == if (task == "regression") Inf else -Inf)) {
-    stop("None of the models returned the specified metric. Please check the 'metric' parameter.")
+    stop("None of the models returned the specified metric.")
   }
 
-  if (task == "regression") {
-    best_model_idx <- which.min(metric_values)
-  } else {
-    best_model_idx <- which.max(metric_values)
-  }
-
+  best_model_idx <- if (task == "regression") which.min(metric_values) else which.max(metric_values)
   best_model_name <- names(models)[best_model_idx]
 
   result <- list(
     best_model = models[[best_model_idx]],
     best_model_name = best_model_name,
     performance = performance,
-    preprocessor = if (is.null(recipe)) recipe_prep else recipe_prep,
+    predictions = predictions,
+    preprocessor = recipe,
     label = label,
     task = task,
     models = models,

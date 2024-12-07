@@ -20,7 +20,11 @@ evaluate_models(models, train_data, test_data, label, task, metric = NULL)
 \item{metric}{The performance metric to optimize (e.g., "accuracy", "rmse").}
 }
 \value{
-A list of performance metrics for each model.
+A list with two elements:
+  \describe{
+    \item{performance}{A named list of performance metric tibbles for each model.}
+    \item{predictions}{A named list of data frames with columns including truth, predictions, and probabilities per model.}
+  }
 }
 \description{
 Evaluates the trained models on the test data and computes performance metrics.

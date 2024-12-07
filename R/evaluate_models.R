@@ -15,7 +15,11 @@
 #' @importFrom tune select_best finalize_model
 #' @importFrom rlang sym syms
 #' @importFrom tibble tibble
-#' @return A list of performance metrics for each model.
+#' @return A list with two elements:
+#'   \describe{
+#'     \item{performance}{A named list of performance metric tibbles for each model.}
+#'     \item{predictions}{A named list of data frames with columns including truth, predictions, and probabilities per model.}
+#'   }
 #' @export
 evaluate_models <- function(models, train_data, test_data, label, task, metric = NULL) {
   # Load required packages
@@ -43,6 +47,8 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
 
   # Initialize performance list
   performance <- list()
+  # Initialize predictions list
+  predictions_list <- list()
 
   # Extract true labels
   true_labels <- test_data[[label]]
@@ -88,9 +94,9 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
       pred_class <- predict(final_model, new_data = test_data, type = "class")$.pred_class
       pred_prob <- predict(final_model, new_data = test_data, type = "prob")
       data_metrics <- test_data %>%
-        select(truth = !!sym(label)) %>%
-        mutate(estimate = pred_class) %>%
-        bind_cols(pred_prob)
+        dplyr::select(truth = !!sym(label)) %>%
+        dplyr::mutate(estimate = pred_class) %>%
+        dplyr::bind_cols(pred_prob)
 
       # Determine number of classes
       num_classes <- length(unique(data_metrics$truth))
@@ -118,7 +124,7 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
         )
 
         # Combine metrics
-        perf <- bind_rows(perf_class, roc_auc_value)
+        perf <- dplyr::bind_rows(perf_class, roc_auc_value)
       } else {
         # Multiclass classification
         # Compute metrics with macro averaging
@@ -147,7 +153,7 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
         )
 
         # Combine all metrics
-        perf <- bind_rows(
+        perf <- dplyr::bind_rows(
           perf_class,
           perf_roc_auc
         )
@@ -166,6 +172,11 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
 
     # Add metrics to performance list
     performance[[model_name]] <- metrics_list
+
+    # Store the predictions for this model
+    predictions_list[[model_name]] <- data_metrics
   }
-  return(performance)
+
+  # Return both performance and predictions
+  return(list(performance = performance, predictions = predictions_list))
 }
