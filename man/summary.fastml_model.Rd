@@ -4,7 +4,7 @@
 \alias{summary.fastml_model}
 \title{Summary Function for fastml_model}
 \usage{
-\method{summary}{fastml_model}(object, sort_metric = NULL, ...)
+\method{summary}{fastml_model}(object, sort_metric = NULL, plot = TRUE, combined_roc = TRUE, ...)
 }
 \arguments{
 \item{object}{An object of class \code{fastml_model}.}
@@ -12,11 +12,21 @@
 \item{sort_metric}{A string specifying which metric to sort the models by.
 Default is \code{NULL}, which prioritizes the optimized metric.}
 
+\item{plot}{Logical. If \code{TRUE}, produce a bar plot of metrics and also ROC curves for binary classification tasks.}
+
+\item{combined_roc}{Logical. If \code{TRUE}, shows a single combined ROC plot for all models.
+If \code{FALSE}, shows separate ROC curves for each model.}
+
 \item{...}{Additional arguments (not used).}
 }
 \value{
-Prints a concise and user-friendly summary of the models' performances.
+Prints a concise and user-friendly summary of the models' performances, hyperparameters,
+        and optionally plots performance bar charts and ROC curves.
 }
 \description{
-Provides a concise and user-friendly summary of the model's performances.
+Provides a concise and user-friendly summary of the models' performances.
+If \code{plot = TRUE}, also generates a bar plot of metrics using ggplot2.
+For classification tasks, if \code{plot = TRUE} and \code{combined_roc = TRUE},
+a single ROC plot with all curves is displayed using pROC. If \code{combined_roc = FALSE},
+separate ROC plots are displayed for each algorithm using pROC.
 }
