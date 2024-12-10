@@ -4,29 +4,33 @@
 \alias{summary.fastml_model}
 \title{Summary Function for fastml_model}
 \usage{
-\method{summary}{fastml_model}(object, sort_metric = NULL, plot = TRUE, combined_roc = TRUE, ...)
+\method{summary}{fastml_model}(
+  object,
+  sort_metric = NULL,
+  plot = TRUE,
+  combined_roc = TRUE,
+  notes = "",
+  ...
+)
 }
 \arguments{
 \item{object}{An object of class \code{fastml_model}.}
 
-\item{sort_metric}{A string specifying which metric to sort the models by.
-Default is \code{NULL}, which prioritizes the optimized metric.}
+\item{sort_metric}{The metric to sort by. Default uses optimized metric.}
 
-\item{plot}{Logical. If \code{TRUE}, produce a bar plot of metrics and also ROC curves for binary classification tasks.}
+\item{plot}{Logical. If TRUE, produce bar plot and ROC curves.}
 
-\item{combined_roc}{Logical. If \code{TRUE}, shows a single combined ROC plot for all models.
-If \code{FALSE}, shows separate ROC curves for each model.}
+\item{combined_roc}{Logical. If TRUE, combined ROC plot; else separate ROC plots.}
 
-\item{...}{Additional arguments (not used).}
+\item{notes}{User-defined commentary.}
+
+\item{...}{Not used.}
 }
 \value{
-Prints a concise and user-friendly summary of the models' performances, hyperparameters,
-        and optionally plots performance bar charts and ROC curves.
+Prints summary and plots if requested.
 }
 \description{
-Provides a concise and user-friendly summary of the models' performances.
-If \code{plot = TRUE}, also generates a bar plot of metrics using ggplot2.
-For classification tasks, if \code{plot = TRUE} and \code{combined_roc = TRUE},
-a single ROC plot with all curves is displayed using pROC. If \code{combined_roc = FALSE},
-separate ROC plots are displayed for each algorithm using pROC.
+Provides a concise, user-friendly summary of model performances.
+For classification, shows Accuracy, F1 Score, Kappa, Precision, ROC AUC, Sensitivity, Specificity.
+Produces a bar plot of these metrics and ROC curves in the same RStudio device.
 }

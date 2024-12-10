@@ -1,146 +1,251 @@
 #' Summary Function for fastml_model
 #'
-#' Provides a concise and user-friendly summary of the models' performances.
-#' If \code{plot = TRUE}, also generates a bar plot of metrics using ggplot2.
-#' For classification tasks, if \code{plot = TRUE} and \code{combined_roc = TRUE},
-#' a single ROC plot with all curves is displayed using pROC. If \code{combined_roc = FALSE},
-#' separate ROC plots are displayed for each algorithm using pROC.
+#' Provides a concise, user-friendly summary of model performances.
+#' For classification, shows Accuracy, F1 Score, Kappa, Precision, ROC AUC, Sensitivity, Specificity.
+#' Produces a bar plot of these metrics and ROC curves in the same RStudio device.
 #'
 #' @param object An object of class \code{fastml_model}.
-#' @param sort_metric A string specifying which metric to sort the models by.
-#'                    Default is \code{NULL}, which prioritizes the optimized metric.
-#' @param plot Logical. If \code{TRUE}, produce a bar plot of metrics and also ROC curves for binary classification tasks.
-#' @param combined_roc Logical. If \code{TRUE}, shows a single combined ROC plot for all models.
-#'                     If \code{FALSE}, shows separate ROC curves for each model.
-#' @param ... Additional arguments (not used).
-#' @return Prints a concise and user-friendly summary of the models' performances, hyperparameters,
-#'         and optionally plots performance bar charts and ROC curves.
+#' @param sort_metric The metric to sort by. Default uses optimized metric.
+#' @param plot Logical. If TRUE, produce bar plot and ROC curves.
+#' @param combined_roc Logical. If TRUE, combined ROC plot; else separate ROC plots.
+#' @param notes User-defined commentary.
+#' @param ... Not used.
+#' @return Prints summary and plots if requested.
 #'
 #' @importFrom dplyr filter select mutate bind_rows
 #' @importFrom magrittr %>%
-#' @importFrom tibble tibble
 #' @importFrom reshape2 melt dcast
 #' @importFrom tune extract_fit_parsnip
-#' @importFrom ggplot2 ggplot aes geom_line geom_bar facet_wrap theme_bw theme element_text labs scale_color_discrete
-#' @importFrom rlang sym syms get_expr get_env
-#' @importFrom pROC roc coords plot.roc
+#' @importFrom ggplot2 ggplot aes geom_bar facet_wrap theme_bw theme element_text labs
+#' @importFrom pROC roc plot.roc
 #' @importFrom RColorBrewer brewer.pal
 #' @export
-summary.fastml_model <- function(object, sort_metric = NULL, plot = TRUE, combined_roc = TRUE, ...) {
-  # Ensure object is a valid fastml_model
+summary.fastml_model <- function(object,
+                                 sort_metric = NULL,
+                                 plot = TRUE,
+                                 combined_roc = TRUE,
+                                 notes = "",
+                                 ...) {
   if (!inherits(object, "fastml_model")) {
     stop("The input must be a 'fastml_model' object.")
   }
 
   performance <- object$performance
   predictions_list <- object$predictions
+  task <- object$task
+  best_model_name <- object$best_model_name
+  optimized_metric <- object$metric
+  model_count <- length(object$models)
 
-  # Combine all performance metrics into one data frame
-  metrics_list <- list()
-  for (model_name in names(performance)) {
-    model_metrics <- performance[[model_name]]
-    model_metrics_df <- as.data.frame(model_metrics)
-    model_metrics_df$Model <- model_name
-    metrics_list[[model_name]] <- model_metrics_df
-  }
-
+  # Combine performance metrics
+  metrics_list <- lapply(names(performance), function(mn) {
+    df <- as.data.frame(performance[[mn]])
+    df$Model <- mn
+    df
+  })
   performance_df <- do.call(rbind, metrics_list)
 
-  # Determine main metric for sorting
   all_metric_names <- unique(performance_df$.metric)
-  if (!is.null(sort_metric)) {
-    if (!(sort_metric %in% all_metric_names)) {
-      stop(paste("Invalid sort_metric. Choose from:", paste(all_metric_names, collapse = ", ")))
-    }
-    main_metric <- sort_metric
-  } else {
-    optimized_metric <- object$metric
+  if (is.null(sort_metric)) {
     if (optimized_metric %in% all_metric_names) {
       main_metric <- optimized_metric
     } else {
       main_metric <- all_metric_names[1]
-      warning(paste("Optimized metric", optimized_metric, "is not available. Using", main_metric, "as the sorting metric."))
+      warning("Optimized metric not available; using first metric.")
     }
+  } else {
+    if (!(sort_metric %in% all_metric_names)) {
+      stop("Invalid sort_metric. Available: ", paste(all_metric_names, collapse = ", "))
+    }
+    main_metric <- sort_metric
   }
 
-  # Pivot wider for performance metrics
-  performance_wide <- reshape2::dcast(performance_df, Model ~ .metric, value.var = ".estimate")
+  # Desired metrics for classification
+  if (task == "classification") {
+    desired_metrics <- c("accuracy", "f_meas", "kap", "precision", "sens", "spec", "roc_auc")
+  } else {
+    desired_metrics <- c("rmse", "rsq", "mae")
+  }
+  desired_metrics <- intersect(desired_metrics, all_metric_names)
+  if (length(desired_metrics) == 0) desired_metrics <- main_metric
 
-  # Sort by main_metric
-  if (object$task == "regression") {
+  performance_sub <- performance_df[performance_df$.metric %in% desired_metrics, ]
+  performance_wide <- reshape2::dcast(performance_sub, Model ~ .metric, value.var = ".estimate")
+
+  if (task == "regression") {
     performance_wide <- performance_wide[order(performance_wide[[main_metric]], na.last = TRUE), ]
   } else {
     performance_wide <- performance_wide[order(-performance_wide[[main_metric]], na.last = TRUE), ]
   }
 
-  best_model_name <- object$best_model_name
+  display_names <- c(
+    accuracy = "Accuracy",
+    f_meas = "F1 Score",
+    kap = "Kappa",
+    precision = "Precision",
+    roc_auc = "ROC AUC",
+    sens = "Sensitivity",
+    spec = "Specificity",
+    rsq = "R-squared",
+    mae = "MAE",
+    rmse = "RMSE"
+  )
 
   cat("\n===== fastml Model Summary =====\n")
-  cat("Best Model:", best_model_name, "\n\n")
+  cat("Task:", task, "\n")
+  cat("Number of Models Trained:", model_count, "\n")
+  best_val <- performance_wide[performance_wide$Model == best_model_name, main_metric]
+  cat("Best Model:", best_model_name, sprintf("(%s: %.3f)", main_metric, best_val), "\n\n")
 
-  cat("Performance Metrics for All Models:\n\n")
-  print(performance_wide, row.names = FALSE)
-  cat("\n")
+  cat("Performance Metrics (Sorted by", main_metric, "):\n\n")
 
-  cat("Best Model Hyperparameters:\n\n")
+  # Prepare table
+  # Columns: Model and desired_metrics
+  # Use format to align columns nicely
+  # 3 decimal places for numeric
+  metrics_to_print <- c("Model", desired_metrics)
+  best_idx <- which(performance_wide$Model == best_model_name)
 
-  # Attempt to extract the final fitted parsnip model
-  parsnip_fit <- tryCatch({
-    tune::extract_fit_parsnip(object$best_model)
-  }, error = function(e) {
-    NULL
+  # Convert numeric to strings with 3 decimals
+  for (m in desired_metrics) {
+    performance_wide[[m]] <- format(performance_wide[[m]], digits = 3, nsmall = 3)
+  }
+
+  # Rename metrics in header
+  header <- c("Model", sapply(desired_metrics, function(m) {
+    if (m %in% names(display_names)) display_names[[m]] else m
+  }))
+
+  # Compute column widths based on the widest entry in each column
+  data_str <- performance_wide
+  data_str$Model <- as.character(data_str$Model)
+  if (length(best_idx) == 1) data_str$Model[best_idx] <- paste0(data_str$Model[best_idx], "*")
+
+  col_widths <- sapply(seq_along(header), function(i) {
+    col_name <- header[i]
+    col_data <- data_str[[c("Model", desired_metrics)[i]]] # corresponding column in data_str
+    max(nchar(col_name), max(nchar(col_data)))
   })
 
+  # Print header line
+  header_line <- paste(mapply(function(h, w) format(h, width = w, justify = "left"), header, col_widths), collapse = "  ")
+  # Single line of dashes
+  line_sep <- paste(rep("-", sum(col_widths) + 2*(length(col_widths)-1)), collapse = "")
+
+  cat(line_sep, "\n")
+  cat(header_line, "\n")
+  cat(line_sep, "\n")
+
+  # Rows
+  for (i in seq_len(nrow(data_str))) {
+    row_line <- paste(mapply(function(v, w) format(v, width = w, justify = "left"),
+                             data_str[i, c("Model", desired_metrics), drop=FALSE], col_widths),
+                      collapse = "  ")
+    cat(row_line, "\n")
+  }
+
+  cat(line_sep, "\n")
+  cat("(* Best model)\n\n")
+
+  # Best model hyperparams
+  cat("Best Model Hyperparameters:\n\n")
+  parsnip_fit <- tryCatch(tune::extract_fit_parsnip(object$best_model), error = function(e) NULL)
   if (is.null(parsnip_fit)) {
     cat("Could not extract final fitted model details.\n")
-  } else {
-    if ("spec" %in% names(parsnip_fit) && "args" %in% names(parsnip_fit$spec)) {
-      params <- parsnip_fit$spec$args
-      if (length(params) > 0) {
-        cleaned_params <- list()
-        for (pname in names(params)) {
-          val <- params[[pname]]
-          if (inherits(val, "quosure")) {
-            evaluated_val <- tryCatch(eval(rlang::get_expr(val), envir = rlang::get_env(val)),
-                                      error = function(e) val)
-            cleaned_params[[pname]] <- evaluated_val
-          } else {
-            cleaned_params[[pname]] <- val
-          }
+  } else if ("spec" %in% names(parsnip_fit) && "args" %in% names(parsnip_fit$spec)) {
+    params <- parsnip_fit$spec$args
+    if (length(params) > 0) {
+      cleaned_params <- list()
+      for (pname in names(params)) {
+        val <- params[[pname]]
+        if (inherits(val, "quosure")) {
+          val <- tryCatch(eval(rlang::get_expr(val), envir = rlang::get_env(val)), error = function(e) val)
         }
-
-        printed_any <- FALSE
+        cleaned_params[[pname]] <- val
+      }
+      if (length(cleaned_params) == 0) {
+        cat("No hyperparameters found.\n")
+      } else {
         for (pname in names(cleaned_params)) {
           val <- cleaned_params[[pname]]
-          if (is.numeric(val)) {
-            val <- as.character(val)
-          }
+          if (is.numeric(val)) val <- as.character(val)
           cat(pname, ": ", val, "\n", sep = "")
-          printed_any <- TRUE
         }
-
-        if (!printed_any) {
-          cat("No hyperparameters found.\n")
-        }
-      } else {
-        cat("No hyperparameters found.\n")
       }
     } else {
       cat("No hyperparameters found.\n")
     }
+  } else {
+    cat("No hyperparameters found.\n")
   }
 
-  cat("\nTo make predictions, use the 'predict' function.\n")
+  # Interpretation
+  cat("\nInterpretation:\n")
+  if (task == "classification") {
+    cat("The best model shows strong discriminative ability. Close performances suggest ensemble or tuning.\n")
+  } else {
+    cat("The best model shows superior accuracy on key metrics.\n")
+  }
+
+  cat("\n(Optional) Additional diagnostics (calibration, residuals) for deeper insights.\n")
+
+  # User notes
+  if (nzchar(notes)) {
+    cat("\nUser Notes:\n", notes, "\n", sep = "")
+  }
+
   cat("=================================\n")
 
-  # If plot = FALSE, do not generate plots
-  if (!plot) {
-    return(invisible(object))
-  }
+  if (!plot) return(invisible(object))
 
-  # Create a bar plot of performance metrics using ggplot2
+  # Bar plot
   performance_melt <- reshape2::melt(performance_wide, id.vars = "Model", variable.name = "Metric", value.name = "Value")
   performance_melt <- performance_melt[!is.na(performance_melt$Value), ]
+
+  # Convert Value back to numeric for plotting
+  performance_melt$Value <- as.numeric(performance_melt$Value)
+
+
+  performance_melt$Metric <- as.character(performance_melt$Metric)
+
+  # Rename metrics in performance_melt for plotting
+  performance_melt$Metric <- ifelse(
+    performance_melt$Metric %in% names(display_names),
+    display_names[performance_melt$Metric],
+    performance_melt$Metric
+  )
+
+  # if (task == "regression") {
+  #   # Desired order for regression metrics:
+  #   desired_order <- c("RMSE", "R-squared", "MAE")
+  #   present_metrics <- unique(performance_melt$Metric)
+  #   final_order <- intersect(desired_order, present_metrics)
+  #   if (length(final_order) > 0) {
+  #     performance_melt$Metric <- factor(performance_melt$Metric, levels = final_order)
+  #   }
+  # }
+
+  if (task == "classification") {
+    # Original order: accuracy, f_meas, kap, precision, sens, spec, roc_auc
+    # Display names: Accuracy, F1 Score, Kappa, Precision, Sensitivity, Specificity, ROC AUC
+    class_order <- c("Accuracy", "F1 Score", "Kappa", "Precision", "Sensitivity", "Specificity", "ROC AUC")
+
+    # Intersect with present metrics to avoid errors if some are missing
+    present_class_metrics <- intersect(class_order, unique(performance_melt$Metric))
+    if (length(present_class_metrics) > 0) {
+      performance_melt$Metric <- factor(performance_melt$Metric, levels = present_class_metrics)
+    }
+
+  } else if (task == "regression") {
+    # Desired order: rmse, rsq, mae
+    # Display names: RMSE, R-squared, MAE
+    reg_order <- c("RMSE", "R-squared", "MAE")
+
+    present_reg_metrics <- intersect(reg_order, unique(performance_melt$Metric))
+    if (length(present_reg_metrics) > 0) {
+      performance_melt$Metric <- factor(performance_melt$Metric, levels = present_reg_metrics)
+    }
+  }
 
   p_bar <- ggplot2::ggplot(performance_melt, ggplot2::aes(x = Model, y = Value, fill = Model)) +
     ggplot2::geom_bar(stat = "identity", position = "dodge") +
@@ -152,85 +257,81 @@ summary.fastml_model <- function(object, sort_metric = NULL, plot = TRUE, combin
     ) +
     ggplot2::labs(title = "Model Performance Comparison", x = "Model", y = "Metric Value")
 
-  # Print the bar plot
   print(p_bar)
 
-  # If classification and binary, produce ROC curves using pROC base plotting
-  if (object$task == "classification") {
-    any_model_name <- names(predictions_list)[1]
-    df_example <- predictions_list[[any_model_name]]
-    truth <- df_example$truth
-    num_classes <- length(unique(truth))
+  # ROC curves for binary classification
+  if (task == "classification" && !is.null(predictions_list) && length(predictions_list) > 0) {
+    model_names_pred <- names(predictions_list)
+    if (length(model_names_pred) > 0) {
+      any_model_name <- model_names_pred[1]
+      df_example <- predictions_list[[any_model_name]]
+      if (!is.null(df_example) && "truth" %in% names(df_example)) {
+        unique_classes <- unique(df_example$truth)
+        if (length(unique_classes) == 2) {
+          positive_class <- levels(df_example$truth)[2]
+          roc_objs <- list()
 
-    if (num_classes == 2) {
-      positive_class <- levels(truth)[2]
-      roc_objs <- list()
+          for (model_name in model_names_pred) {
+            df <- predictions_list[[model_name]]
+            prob_cols <- grep("^\\.pred_", names(df), value = TRUE)
+            if (length(prob_cols) == 2) {
+              pred_col <- paste0(".pred_", positive_class)
+              if (pred_col %in% prob_cols) {
+                # direction = "auto"
+                roc_obj <- suppressMessages(
+                                    pROC::roc(response = df$truth,
+                                     predictor = df[[pred_col]],
+                                     levels = levels(df$truth),
+                                     positive = positive_class,
+                                     direction = "auto")
+                          )
+                  roc_objs[[model_name]] <- roc_obj
 
-      # Create roc object for each model
-      for (model_name in names(predictions_list)) {
-        df <- predictions_list[[model_name]]
-        prob_cols <- grep("^\\.pred_", names(df), value = TRUE)
-        if (length(prob_cols) == 2) {
-          pred_col <- paste0(".pred_", positive_class)
-          if (pred_col %in% prob_cols) {
-            roc_obj <- pROC::roc(response = df$truth,
-                                 predictor = df[[pred_col]],
-                                 levels = levels(df$truth),
-                                 positive = positive_class)
-            roc_objs[[model_name]] <- roc_obj
-          }
-        }
-      }
-
-      if (length(roc_objs) > 0) {
-        # Colors: Use RColorBrewer for up to 16 curves
-        num_curves <- length(roc_objs)
-        if (num_curves <= 8) {
-          colors <- RColorBrewer::brewer.pal(num_curves, "Set1")
-        } else if (num_curves <= 12) {
-          colors <- RColorBrewer::brewer.pal(num_curves, "Set3")
-        } else {
-          # More than 12, create a color ramp from Set3
-          colors <- colorRampPalette(RColorBrewer::brewer.pal(12, "Set3"))(num_curves)
-        }
-
-        # Open a new device if supported, so that ROC curves appear separately
-        if (capabilities("X11") || capabilities("cairo") || capabilities("quartz")) {
-          dev.new()
-        }
-
-        model_names <- names(roc_objs)
-
-        if (combined_roc) {
-          # Combined ROC: plot the first ROC, then add others
-          first_model <- model_names[1]
-          pROC::plot.roc(roc_objs[[first_model]], col = colors[1], main = "Combined ROC Curves for All Models")
-          if (num_curves > 1) {
-            for (i in 2:num_curves) {
-              pROC::plot.roc(roc_objs[[model_names[i]]], col = colors[i], add = TRUE)
+              }
             }
           }
-          legend("bottomright", legend = model_names, col = colors, lwd = 2, cex = 0.8)
-        } else {
-          # Separate ROC plots for each model
-          # If multiple models, it might overwrite. The user can navigate back to previous plots if needed.
-          # Or open a new device for each curve.
-          i <- 1
-          for (model_name in model_names) {
-            if (capabilities("X11") || capabilities("cairo") || capabilities("quartz")) {
-              dev.new()
+
+          if (length(roc_objs) > 0) {
+            num_curves <- length(roc_objs)
+            if (num_curves <= 8) {
+              colors <- RColorBrewer::brewer.pal(num_curves, "Set1")
+            } else if (num_curves <= 12) {
+              colors <- RColorBrewer::brewer.pal(num_curves, "Set3")
+            } else {
+              colors <- colorRampPalette(RColorBrewer::brewer.pal(12, "Set3"))(num_curves)
             }
-            pROC::plot.roc(roc_objs[[model_name]],
-                           main = paste("ROC Curve:", model_name),
-                           col = colors[i])
-            i <- i + 1
+
+            model_names <- names(roc_objs)
+            if (combined_roc) {
+              first_model <- model_names[1]
+              pROC::plot.roc(roc_objs[[first_model]], col = colors[1], lwd = 2,
+                             main = "Combined ROC Curves for All Models",
+                             legacy.axes = TRUE)
+              if (num_curves > 1) {
+                for (i in 2:num_curves) {
+                  pROC::plot.roc(roc_objs[[model_names[i]]], col = colors[i], add = TRUE, lwd = 2, legacy.axes = TRUE)
+                }
+              }
+              legend("bottomright", legend = model_names, col = colors, lwd = 2, cex = 0.8, bty = "n")
+            } else {
+              # Separate ROC curves
+              for (i in seq_along(model_names)) {
+                pROC::plot.roc(roc_objs[[model_names[i]]], col = colors[i], lwd = 2,
+                               main = paste("ROC Curve:", model_names[i]),
+                               legacy.axes = TRUE)
+              }
+            }
+          } else {
+            cat("\nNo suitable probability predictions for ROC curves.\n")
           }
+        } else {
+          cat("\nROC curves are only generated for binary classification tasks.\n")
         }
       } else {
-        cat("\nCould not generate ROC curves. No suitable probability predictions were returned by the models.\n")
+        cat("\nNo predictions available to generate ROC curves.\n")
       }
     } else {
-      cat("\nROC curves are only generated for binary classification tasks.\n")
+      cat("\nNo predictions available to generate ROC curves.\n")
     }
   }
 
