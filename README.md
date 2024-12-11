@@ -21,6 +21,12 @@ You can install the latest stable version of **fastml** from CRAN using:
 install.packages("fastml")
 ```
 
+You can install all dependencies (additional models) using:
+```r
+# install all dependencies - recommended
+install.packages("fastml", dependencies = TRUE)
+```
+
 ### From GitHub
 For the development version, install directly from GitHub using the devtools package:
 
