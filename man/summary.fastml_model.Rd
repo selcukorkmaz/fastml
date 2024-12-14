@@ -2,7 +2,7 @@
 % Please edit documentation in R/summary.fastml_model.R
 \name{summary.fastml_model}
 \alias{summary.fastml_model}
-\title{Summary Function for fastml_model}
+\title{Summary Function for fastml_model (No Calibration Dependency)}
 \usage{
 \method{summary}{fastml_model}(
   object,
@@ -16,9 +16,10 @@
 \arguments{
 \item{object}{An object of class \code{fastml_model}.}
 
-\item{sort_metric}{The metric to sort by. Default uses optimized metric.}
+\item{sort_metric}{The metric to sort by. Default uses the optimized metric.}
 
-\item{plot}{Logical. If TRUE, produce bar plot and ROC curves.}
+\item{plot}{Logical. If TRUE, produce bar plot, ROC curves (for classification), confusion matrix (classification),
+a custom calibration plot (if probabilities available), and residual plots (regression).}
 
 \item{combined_roc}{Logical. If TRUE, combined ROC plot; else separate ROC plots.}
 
@@ -27,10 +28,15 @@
 \item{...}{Not used.}
 }
 \value{
-Prints summary and plots if requested.
+Prints summary, plots, and additional diagnostics if requested.
 }
 \description{
 Provides a concise, user-friendly summary of model performances.
 For classification, shows Accuracy, F1 Score, Kappa, Precision, ROC AUC, Sensitivity, Specificity.
 Produces a bar plot of these metrics and ROC curves in the same RStudio device.
+}
+\details{
+Additionally:
+- For classification: shows a confusion matrix and, if probabilities are available, a custom calibration plot.
+- For regression: shows residual plots (distribution of residuals and truth vs predicted).
 }

@@ -2,11 +2,17 @@
 #'
 #' Trains and evaluates multiple classification or regression models automatically detecting the task based on the target variable type.
 #'
+#' Fast Machine Learning Function
+#'
+#' Trains and evaluates multiple classification or regression models. The function automatically
+#' detects the task based on the target variable type and can perform advanced hyperparameter tuning
+#' using various tuning strategies.
+#'
 #' @param data A data frame containing the features and target variable.
 #' @param label A string specifying the name of the target variable.
 #' @param algorithms A vector of algorithm names to use. Default is \code{"all"} to run all supported algorithms.
 #' @param test_size A numeric value between 0 and 1 indicating the proportion of the data to use for testing. Default is \code{0.2}.
-#' @param resampling_method A string specifying the resampling method for cross-validation. Default is \code{"cv"} (cross-validation).
+#' @param resampling_method A string specifying the resampling method for model evaluation. Default is \code{"cv"} (cross-validation).
 #'                          Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.
 #' @param folds An integer specifying the number of folds for cross-validation. Default is \code{10} for methods containing "cv" and \code{25} otherwise.
 #' @param repeats Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").
@@ -28,32 +34,34 @@
 #' @param scaling_methods Vector of scaling methods to apply. Default is \code{c("center", "scale")}.
 #' @param summaryFunction A custom summary function for model evaluation. Default is \code{NULL}.
 #' @param use_default_tuning Logical indicating whether to use default tuning grids when \code{tune_params} is \code{NULL}. Default is \code{FALSE}.
+#' @param tuning_strategy A string specifying the tuning strategy. Options might include \code{"grid"}, \code{"bayes"}, or \code{"none"}. Default is \code{"grid"}.
+#' @param tuning_iterations Number of tuning iterations (applicable for Bayesian or other iterative search methods). Default is \code{10}.
+#' @param early_stopping Logical indicating whether to use early stopping in Bayesian tuning methods (if supported). Default is \code{FALSE}.
+#' @param adaptive Logical indicating whether to use adaptive/racing methods for tuning. Default is \code{FALSE}.
 #' @param seed An integer value specifying the random seed for reproducibility.
 #' @param recipe A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.
 #' @importFrom magrittr %>%
 #' @importFrom rsample initial_split training testing
 #' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake
-#' @importFrom dplyr select
-#' @importFrom foreach registerDoSEQ
-#' @importFrom doParallel registerDoParallel
-#' @importFrom parallel stopCluster makeCluster
+#' @importFrom dplyr filter pull
 #' @importFrom stats as.formula
+#' @importFrom doFuture registerDoFuture
+#' @importFrom future plan multisession sequential
 #' @return An object of class \code{fastml_model} containing the best model, performance metrics, and other information.
 #' @examples
-#'   # Example 1: Using the iris dataset for binary classification (excluding 'setosa')
-#'   data(iris)
-#'   iris <- iris[iris$Species != "setosa", ]  # Binary classification
-#'   iris$Species <- factor(iris$Species)
+#' # Example 1: Using the iris dataset for binary classification (excluding 'setosa')
+#' data(iris)
+#' iris <- iris[iris$Species != "setosa", ]  # Binary classification
+#' iris$Species <- factor(iris$Species)
 #'
-#'   # Train models
-#'   model <- fastml(
-#'     data = iris,
-#'     label = "Species",
-#'     algorithms = c("random_forest", "xgboost", "svm_radial")
-#'   )
+#' # Train models with Bayesian optimization
+#' model <- fastml(
+#'   data = iris,
+#'   label = "Species"
+#' )
 #'
-#'   # View model summary
-#'   summary(model)
+#' # View model summary
+#' summary(model)
 #'
 #'   # Example 2: Using the mtcars dataset for regression
 #'   data(mtcars)
@@ -85,11 +93,13 @@ fastml <- function(data,
                    scaling_methods = c("center", "scale"),
                    summaryFunction = NULL,
                    use_default_tuning = FALSE,
+                   tuning_strategy = "grid",
+                   tuning_iterations = 10,
+                   early_stopping = FALSE,
+                   adaptive = FALSE,
                    seed = 123,
                    recipe = NULL) {
-
   set.seed(seed)
-
   if (!(label %in% names(data))) {
     stop("The specified label does not exist in the data.")
   }
@@ -212,7 +222,7 @@ fastml <- function(data,
       }
     }
 
-    # Do not prep, leave untrained
+    # Do not prep yet
   } else {
     # User provided a recipe, must be untrained
     if (!inherits(recipe, "recipe")) {
@@ -223,14 +233,29 @@ fastml <- function(data,
     }
   }
 
+  # Set up parallel processing using future
   if (n_cores > 1) {
-    if (!requireNamespace("doParallel", quietly = TRUE)) {
-      stop("The 'doParallel' package is required for parallel processing but is not installed.")
+    if (!requireNamespace("doFuture", quietly = TRUE)) {
+      stop("The 'doFuture' package is required for parallel processing but is not installed.")
     }
-    cl <- parallel::makeCluster(n_cores)
-    doParallel::registerDoParallel(cl)
+    if (!requireNamespace("future", quietly = TRUE)) {
+      stop("The 'future' package is required for parallel processing but is not installed.")
+    }
+    doFuture::registerDoFuture()
+    future::plan(future::multisession, workers = n_cores)
   } else {
-    foreach::registerDoSEQ()
+    if (!requireNamespace("future", quietly = TRUE)) {
+      stop("The 'future' package is required but is not installed.")
+    }
+    future::plan(future::sequential)
+  }
+
+  # Determine tuning strategy if use_default_tuning is TRUE and tune_params is NULL
+  if (use_default_tuning && is.null(tune_params)) {
+    # Automatically switch to Bayesian approach if not specified
+    if (tuning_strategy == "grid") {
+      tuning_strategy <- "bayes"
+    }
   }
 
   models <- train_models(
@@ -246,12 +271,12 @@ fastml <- function(data,
     summaryFunction = summaryFunction,
     seed = seed,
     recipe = recipe,
-    use_default_tuning = use_default_tuning
+    use_default_tuning = use_default_tuning,
+    tuning_strategy = tuning_strategy,
+    tuning_iterations = tuning_iterations,
+    early_stopping = early_stopping,
+    adaptive = adaptive
   )
-
-  if (n_cores > 1) {
-    parallel::stopCluster(cl)
-  }
 
   if (length(models) == 0) {
     stop("No models were successfully trained.")
@@ -275,12 +300,18 @@ fastml <- function(data,
   best_model_idx <- if (task == "regression") which.min(metric_values) else which.max(metric_values)
   best_model_name <- names(models)[best_model_idx]
 
+  # Now store processed training data for explainability:
+  # Prep and bake the recipe on train_data to store processed_train_data
+  trained_recipe <- recipes::prep(recipe, training = train_data, retain = TRUE)
+  processed_train_data <- recipes::bake(trained_recipe, new_data = NULL)
+
   result <- list(
     best_model = models[[best_model_idx]],
     best_model_name = best_model_name,
     performance = performance,
     predictions = predictions,
-    preprocessor = recipe,
+    preprocessor = trained_recipe, # Store the trained recipe
+    processed_train_data = processed_train_data, # Store processed training data
     label = label,
     task = task,
     models = models,

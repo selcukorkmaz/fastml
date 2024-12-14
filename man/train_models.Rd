@@ -17,7 +17,11 @@ train_models(
   summaryFunction = NULL,
   seed = 123,
   recipe,
-  use_default_tuning = FALSE
+  use_default_tuning = FALSE,
+  tuning_strategy = "grid",
+  tuning_iterations = 10,
+  early_stopping = FALSE,
+  adaptive = FALSE
 )
 }
 \arguments{
@@ -45,7 +49,15 @@ train_models(
 
 \item{recipe}{A recipe object for preprocessing.}
 
-\item{use_default_tuning}{Logical indicating whether to use default tuning grids when \code{tune_params} is \code{NULL}. Default is \code{FALSE}.}
+\item{use_default_tuning}{Logical indicating whether to use default tuning grids when \code{tune_params} is \code{NULL}.}
+
+\item{tuning_strategy}{A string specifying the tuning strategy ("grid", "bayes", or "none"), possibly with adaptive methods.}
+
+\item{tuning_iterations}{Number of iterations for iterative tuning methods.}
+
+\item{early_stopping}{Logical for early stopping in Bayesian tuning.}
+
+\item{adaptive}{Logical indicating whether to use adaptive/racing methods.}
 }
 \value{
 A list of trained model objects.

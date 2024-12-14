@@ -1,9 +1,8 @@
-utils::globalVariables("if_else")
-
 #' Train Specified Machine Learning Algorithms on the Training Data
 #'
 #' Trains specified machine learning algorithms on the preprocessed training data.
 #'
+#' @param train_data Preprocessed training data frame.
 #' @param train_data Preprocessed training data frame.
 #' @param label Name of the target variable.
 #' @param task Type of task: "classification" or "regression".
@@ -16,21 +15,25 @@ utils::globalVariables("if_else")
 #' @param summaryFunction A custom summary function for model evaluation. Default is \code{NULL}.
 #' @param seed An integer value specifying the random seed for reproducibility.
 #' @param recipe A recipe object for preprocessing.
-#' @param use_default_tuning Logical indicating whether to use default tuning grids when \code{tune_params} is \code{NULL}. Default is \code{FALSE}.
+#' @param use_default_tuning Logical indicating whether to use default tuning grids when \code{tune_params} is \code{NULL}.
+#' @param tuning_strategy A string specifying the tuning strategy ("grid", "bayes", or "none"), possibly with adaptive methods.
+#' @param tuning_iterations Number of iterations for iterative tuning methods.
+#' @param early_stopping Logical for early stopping in Bayesian tuning.
+#' @param adaptive Logical indicating whether to use adaptive/racing methods.
 #' @importFrom magrittr %>%
-#' @importFrom dplyr filter mutate select
+#' @importFrom dplyr filter mutate select if_else
 #' @importFrom tibble tibble
 #' @importFrom rlang sym
 #' @importFrom dials range_set value_set grid_regular grid_latin_hypercube finalize
 #' @importFrom parsnip fit extract_parameter_set_dials
 #' @importFrom workflows workflow add_model add_recipe
-#' @importFrom tune tune_grid control_grid select_best finalize_workflow finalize_model
+#' @importFrom tune tune_grid control_grid select_best finalize_workflow finalize_model tune_bayes control_grid control_bayes
 #' @importFrom yardstick metric_set accuracy kap roc_auc sens spec precision f_meas rmse rsq mae
 #' @importFrom rsample vfold_cv bootstraps validation_split
 #' @importFrom recipes all_nominal_predictors all_numeric_predictors all_outcomes all_predictors
+#' @importFrom finetune control_race tune_race_anova
 #' @return A list of trained model objects.
 #' @export
-
 train_models <- function(train_data,
                          label,
                          task,
@@ -43,12 +46,14 @@ train_models <- function(train_data,
                          summaryFunction = NULL,
                          seed = 123,
                          recipe,
-                         use_default_tuning = FALSE) {
+                         use_default_tuning = FALSE,
+                         tuning_strategy = "grid",
+                         tuning_iterations = 10,
+                         early_stopping = FALSE,
+                         adaptive = FALSE) {
 
-  # Set random seed
   set.seed(seed)
 
-  # Decide on metrics
   if (task == "classification") {
     metrics <- metric_set(
       accuracy,
@@ -63,7 +68,6 @@ train_models <- function(train_data,
     metrics <- metric_set(rmse, rsq, mae)
   }
 
-  # Set up resampling
   if (resampling_method == "cv") {
     resamples <- vfold_cv(train_data, v = folds, repeats = 1, strata = if (task == "classification") all_of(label) else NULL)
   } else if (resampling_method == "boot") {
@@ -76,32 +80,26 @@ train_models <- function(train_data,
     stop("Unsupported resampling method.")
   }
 
-  # Initialize models list
   models <- list()
 
-  # Helper function to update parameters
   update_params <- function(params_model, new_params) {
     for (param_name in names(new_params)) {
       param_value <- new_params[[param_name]]
 
-      # Locate the parameter in the parameter set
-      param_row <- params_model %>% filter(id == param_name)
+      param_row <- params_model %>% dplyr::filter(id == param_name)
       if (nrow(param_row) == 0) {
-        next  # Parameter not found, skip to the next one
+        next
       }
 
-      # Get the parameter object
       param_obj <- param_row$object[[1]]
 
       if (length(param_value) == 2) {
-        # It's a range; ensure the type matches
         if (inherits(param_obj, "integer_parameter")) {
           param_obj <- param_obj %>% range_set(c(as.integer(param_value[1]), as.integer(param_value[2])))
         } else {
           param_obj <- param_obj %>% range_set(param_value)
         }
       } else {
-        # Single value or vector of values; set value_set
         if (inherits(param_obj, "integer_parameter")) {
           param_obj <- param_obj %>% value_set(as.integer(param_value))
         } else {
@@ -109,30 +107,24 @@ train_models <- function(train_data,
         }
       }
 
-      # Update the parameter in the parameter set
       params_model <- params_model %>%
-        mutate(object = if_else(id == param_name, list(param_obj), object))
+        dplyr::mutate(object = if_else(id == param_name, list(param_obj), object))
     }
     return(params_model)
   }
 
-  # Loop over each algorithm
   for (algo in algorithms) {
     set.seed(seed)
     model <- NULL
 
-    # Determine if tuning parameters are provided for this algorithm
     algo_tune_params <- if (!is.null(tune_params)) tune_params[[algo]] else NULL
 
-    # If tune_params is NULL and use_default_tuning is TRUE, get default tuning parameters
     if (is.null(algo_tune_params) && use_default_tuning) {
       algo_tune_params <- get_default_tune_params(algo, train_data, label)
     }
 
-    # Determine if tuning will be performed
     perform_tuning <- !is.null(algo_tune_params) && !is.null(resamples)
 
-    # Define model specification and tuning grid
     model_info <- switch(algo,
                          "random_forest" = define_random_forest_spec(task, train_data, label, tune = perform_tuning),
                          "ranger" = define_ranger_spec(task, train_data, label, tune = perform_tuning),
@@ -147,7 +139,6 @@ train_models <- function(train_data,
                          "knn" = define_knn_spec(task, tune = perform_tuning),
                          "naive_bayes" = define_naive_bayes_spec(task, tune = perform_tuning),
                          "neural_network" = define_neural_network_spec(task, tune = perform_tuning),
-                         # "deep_learning" = define_deep_learning_spec(task, tune = perform_tuning),
                          "lda" = define_lda_spec(task),
                          "qda" = define_qda_spec(task),
                          "bagging" = define_bagging_spec(task, tune = perform_tuning),
@@ -157,81 +148,115 @@ train_models <- function(train_data,
                          "linear_regression" = define_linear_regression_spec(task),
                          "ridge_regression" = define_ridge_regression_spec(task, tune = perform_tuning),
                          "lasso_regression" = define_lasso_regression_spec(task, tune = perform_tuning),
-                         {
-                           warning(paste("Algorithm", algo, "is not supported or failed to train."))
-                           next
-                         })
+                         { warning(paste("Algorithm", algo, "is not supported or failed to train.")); next }
+    )
     model_spec <- model_info$model_spec
 
-    # Obtain tunable parameters
     if (perform_tuning) {
       tune_params_model <- extract_parameter_set_dials(model_spec)
-
-      # Finalize parameters that depend on the data
       tune_params_model <- finalize(
         tune_params_model,
-        x = train_data %>% select(-all_of(label))
+        x = train_data %>% dplyr::select(-all_of(label))
       )
 
-      # Update parameter ranges with user-provided tune_params
       if (!is.null(algo_tune_params)) {
         tune_params_model <- update_params(tune_params_model, algo_tune_params)
       }
 
-      # Now create the tuning grid
       if (nrow(tune_params_model) > 0) {
-        # For parameters on log scale, use grid_latin_hypercube
-        if (any(sapply(tune_params_model$object, function(x) {
-          if (!is.null(x$trans) && !is.null(x$trans$value)) {
-            x$trans$value %in% c("log2", "log10", "log", "ln")
-          } else {
-            FALSE
-          }
-        }))) {
-          tune_grid <- grid_latin_hypercube(
-            tune_params_model,
-            size = 10
-          )
-        } else {
+        # If tuning_strategy is grid, we create a grid.
+        # For bayes, we do not create a full grid upfront.
+        # For adaptive (racing), we rely on tune_race_anova.
+        if (tuning_strategy == "grid" && !adaptive) {
           tune_grid <- grid_regular(
             tune_params_model,
-            levels = 3  # Adjust levels for efficiency
+            levels = 3
           )
+        } else {
+          # For bayes or adaptive methods, we won't predefine a full grid like this.
+          tune_grid <- NULL
         }
       } else {
-        # No tunable parameters
         tune_grid <- NULL
       }
     } else {
       tune_grid <- NULL
     }
 
-    # Create a workflow
     workflow <- workflow() %>%
       add_model(model_spec) %>%
       add_recipe(recipe)
 
-    # Perform tuning or fit the model directly if no tuning parameters
     tryCatch({
-      if (!is.null(tune_grid)) {
-        if (!is.null(resamples)) {
-          # Perform tuning using resamples
+      if (perform_tuning) {
+        # Control objects
+        ctrl_grid <- control_grid(save_pred = TRUE)
+        ctrl_bayes <- control_bayes(save_pred = TRUE)
+        ctrl_race <- control_race(save_pred = TRUE)
+
+        # Adjust control for early_stopping in bayes (if desired)
+        # There's no direct early_stopping parameter, but we can use no_improve in control_bayes
+        if (early_stopping && tuning_strategy == "bayes") {
+          # Stop if no improvement after a few iterations
+          ctrl_bayes <- control_bayes(save_pred = TRUE, no_improve = 5)
+        }
+
+        if (is.null(resamples)) {
+          stop("Tuning cannot be performed without resamples.")
+        }
+
+        # Select tuning function based on strategy
+        if (tuning_strategy == "bayes") {
+          # Bayesian optimization
+          model_tuned <- tune_bayes(
+            workflow,
+            resamples = resamples,
+            param_info = tune_params_model,
+            iter = tuning_iterations,
+            metrics = metrics,
+            control = ctrl_bayes
+          )
+        } else if (adaptive) {
+          # Adaptive/racing methods
+          # Use tune_race_anova as an example adaptive method
+          model_tuned <- tune_race_anova(
+            workflow,
+            resamples = resamples,
+            param_info = tune_params_model,
+            grid = if (is.null(tune_grid)) 20 else tune_grid, # If no predefined grid, choose something
+            metrics = metrics,
+            control = ctrl_race
+          )
+        } else if (tuning_strategy == "grid") {
+          # Grid search
+          if (is.null(tune_grid)) {
+            # If no tuning parameters ended up defined, fallback to some default grid
+            tune_grid <- grid_regular(
+              tune_params_model,
+              levels = 3
+            )
+          }
           model_tuned <- tune_grid(
             workflow,
             resamples = resamples,
             grid = tune_grid,
             metrics = metrics,
-            control = control_grid(save_pred = TRUE)
+            control = ctrl_grid
           )
-          # Finalize the workflow with the best parameters
-          best_params <- select_best(model_tuned, metric = metric)
-          final_workflow <- finalize_workflow(workflow, best_params)
-          # Fit the final model on the entire training data
-          model <- fit(final_workflow, data = train_data)
         } else {
-          # This block should not be reached because tune_grid is NULL when resamples is NULL
-          stop("Tuning cannot be performed without resamples.")
+          # No recognized strategy, fallback to tune_grid with minimal grid
+          model_tuned <- tune_grid(
+            workflow,
+            resamples = resamples,
+            grid = if (is.null(tune_grid)) 5 else tune_grid,
+            metrics = metrics,
+            control = ctrl_grid
+          )
         }
+
+        best_params <- select_best(model_tuned, metric = metric)
+        final_workflow <- finalize_workflow(workflow, best_params)
+        model <- fit(final_workflow, data = train_data)
       } else {
         # No tuning parameters, fit the model directly
         model <- fit(workflow, data = train_data)
@@ -253,6 +278,7 @@ train_models <- function(train_data,
 
   return(models)
 }
+
 
 
 # Declare global variables

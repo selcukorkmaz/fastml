@@ -1,24 +1,30 @@
-#' Summary Function for fastml_model
+#' Summary Function for fastml_model (No Calibration Dependency)
 #'
 #' Provides a concise, user-friendly summary of model performances.
 #' For classification, shows Accuracy, F1 Score, Kappa, Precision, ROC AUC, Sensitivity, Specificity.
 #' Produces a bar plot of these metrics and ROC curves in the same RStudio device.
 #'
+#' Additionally:
+#' - For classification: shows a confusion matrix and, if probabilities are available, a custom calibration plot.
+#' - For regression: shows residual plots (distribution of residuals and truth vs predicted).
+#'
 #' @param object An object of class \code{fastml_model}.
-#' @param sort_metric The metric to sort by. Default uses optimized metric.
-#' @param plot Logical. If TRUE, produce bar plot and ROC curves.
+#' @param sort_metric The metric to sort by. Default uses the optimized metric.
+#' @param plot Logical. If TRUE, produce bar plot, ROC curves (for classification), confusion matrix (classification),
+#'   a custom calibration plot (if probabilities available), and residual plots (regression).
 #' @param combined_roc Logical. If TRUE, combined ROC plot; else separate ROC plots.
 #' @param notes User-defined commentary.
 #' @param ... Not used.
-#' @return Prints summary and plots if requested.
+#' @return Prints summary, plots, and additional diagnostics if requested.
 #'
-#' @importFrom dplyr filter select mutate bind_rows
+#' @importFrom dplyr filter select mutate bind_rows %>% group_by summarise
 #' @importFrom magrittr %>%
 #' @importFrom reshape2 melt dcast
 #' @importFrom tune extract_fit_parsnip
-#' @importFrom ggplot2 ggplot aes geom_bar facet_wrap theme_bw theme element_text labs
+#' @importFrom ggplot2 ggplot aes geom_bar facet_wrap theme_bw theme element_text labs geom_point geom_line geom_histogram
 #' @importFrom pROC roc plot.roc
 #' @importFrom RColorBrewer brewer.pal
+#' @importFrom yardstick conf_mat
 #' @export
 summary.fastml_model <- function(object,
                                  sort_metric = NULL,
@@ -60,7 +66,6 @@ summary.fastml_model <- function(object,
     main_metric <- sort_metric
   }
 
-  # Desired metrics for classification
   if (task == "classification") {
     desired_metrics <- c("accuracy", "f_meas", "kap", "precision", "sens", "spec", "roc_auc")
   } else {
@@ -99,44 +104,34 @@ summary.fastml_model <- function(object,
 
   cat("Performance Metrics (Sorted by", main_metric, "):\n\n")
 
-  # Prepare table
-  # Columns: Model and desired_metrics
-  # Use format to align columns nicely
-  # 3 decimal places for numeric
   metrics_to_print <- c("Model", desired_metrics)
   best_idx <- which(performance_wide$Model == best_model_name)
 
-  # Convert numeric to strings with 3 decimals
   for (m in desired_metrics) {
     performance_wide[[m]] <- format(performance_wide[[m]], digits = 3, nsmall = 3)
   }
 
-  # Rename metrics in header
   header <- c("Model", sapply(desired_metrics, function(m) {
     if (m %in% names(display_names)) display_names[[m]] else m
   }))
 
-  # Compute column widths based on the widest entry in each column
   data_str <- performance_wide
   data_str$Model <- as.character(data_str$Model)
   if (length(best_idx) == 1) data_str$Model[best_idx] <- paste0(data_str$Model[best_idx], "*")
 
   col_widths <- sapply(seq_along(header), function(i) {
     col_name <- header[i]
-    col_data <- data_str[[c("Model", desired_metrics)[i]]] # corresponding column in data_str
+    col_data <- data_str[[c("Model", desired_metrics)[i]]]
     max(nchar(col_name), max(nchar(col_data)))
   })
 
-  # Print header line
   header_line <- paste(mapply(function(h, w) format(h, width = w, justify = "left"), header, col_widths), collapse = "  ")
-  # Single line of dashes
   line_sep <- paste(rep("-", sum(col_widths) + 2*(length(col_widths)-1)), collapse = "")
 
   cat(line_sep, "\n")
   cat(header_line, "\n")
   cat(line_sep, "\n")
 
-  # Rows
   for (i in seq_len(nrow(data_str))) {
     row_line <- paste(mapply(function(v, w) format(v, width = w, justify = "left"),
                              data_str[i, c("Model", desired_metrics), drop=FALSE], col_widths),
@@ -147,7 +142,6 @@ summary.fastml_model <- function(object,
   cat(line_sep, "\n")
   cat("(* Best model)\n\n")
 
-  # Best model hyperparams
   cat("Best Model Hyperparameters:\n\n")
   parsnip_fit <- tryCatch(tune::extract_fit_parsnip(object$best_model), error = function(e) NULL)
   if (is.null(parsnip_fit)) {
@@ -179,17 +173,6 @@ summary.fastml_model <- function(object,
     cat("No hyperparameters found.\n")
   }
 
-  # Interpretation
-  cat("\nInterpretation:\n")
-  if (task == "classification") {
-    cat("The best model shows strong discriminative ability. Close performances suggest ensemble or tuning.\n")
-  } else {
-    cat("The best model shows superior accuracy on key metrics.\n")
-  }
-
-  cat("\n(Optional) Additional diagnostics (calibration, residuals) for deeper insights.\n")
-
-  # User notes
   if (nzchar(notes)) {
     cat("\nUser Notes:\n", notes, "\n", sep = "")
   }
@@ -198,49 +181,24 @@ summary.fastml_model <- function(object,
 
   if (!plot) return(invisible(object))
 
-  # Bar plot
   performance_melt <- reshape2::melt(performance_wide, id.vars = "Model", variable.name = "Metric", value.name = "Value")
   performance_melt <- performance_melt[!is.na(performance_melt$Value), ]
-
-  # Convert Value back to numeric for plotting
   performance_melt$Value <- as.numeric(performance_melt$Value)
-
-
   performance_melt$Metric <- as.character(performance_melt$Metric)
-
-  # Rename metrics in performance_melt for plotting
   performance_melt$Metric <- ifelse(
     performance_melt$Metric %in% names(display_names),
     display_names[performance_melt$Metric],
     performance_melt$Metric
   )
 
-  # if (task == "regression") {
-  #   # Desired order for regression metrics:
-  #   desired_order <- c("RMSE", "R-squared", "MAE")
-  #   present_metrics <- unique(performance_melt$Metric)
-  #   final_order <- intersect(desired_order, present_metrics)
-  #   if (length(final_order) > 0) {
-  #     performance_melt$Metric <- factor(performance_melt$Metric, levels = final_order)
-  #   }
-  # }
-
   if (task == "classification") {
-    # Original order: accuracy, f_meas, kap, precision, sens, spec, roc_auc
-    # Display names: Accuracy, F1 Score, Kappa, Precision, Sensitivity, Specificity, ROC AUC
     class_order <- c("Accuracy", "F1 Score", "Kappa", "Precision", "Sensitivity", "Specificity", "ROC AUC")
-
-    # Intersect with present metrics to avoid errors if some are missing
     present_class_metrics <- intersect(class_order, unique(performance_melt$Metric))
     if (length(present_class_metrics) > 0) {
       performance_melt$Metric <- factor(performance_melt$Metric, levels = present_class_metrics)
     }
-
   } else if (task == "regression") {
-    # Desired order: rmse, rsq, mae
-    # Display names: RMSE, R-squared, MAE
     reg_order <- c("RMSE", "R-squared", "MAE")
-
     present_reg_metrics <- intersect(reg_order, unique(performance_melt$Metric))
     if (length(present_reg_metrics) > 0) {
       performance_melt$Metric <- factor(performance_melt$Metric, levels = present_reg_metrics)
@@ -277,16 +235,14 @@ summary.fastml_model <- function(object,
             if (length(prob_cols) == 2) {
               pred_col <- paste0(".pred_", positive_class)
               if (pred_col %in% prob_cols) {
-                # direction = "auto"
                 roc_obj <- suppressMessages(
-                                    pROC::roc(response = df$truth,
-                                     predictor = df[[pred_col]],
-                                     levels = levels(df$truth),
-                                     positive = positive_class,
-                                     direction = "auto")
-                          )
-                  roc_objs[[model_name]] <- roc_obj
-
+                  pROC::roc(response = df$truth,
+                            predictor = df[[pred_col]],
+                            levels = levels(df$truth),
+                            positive = positive_class,
+                            direction = "auto")
+                )
+                roc_objs[[model_name]] <- roc_obj
               }
             }
           }
@@ -298,7 +254,7 @@ summary.fastml_model <- function(object,
             } else if (num_curves <= 12) {
               colors <- RColorBrewer::brewer.pal(num_curves, "Set3")
             } else {
-              colors <- colorRampPalette(RColorBrewer::brewer.pal(12, "Set3"))(num_curves)
+              colors <- grDevices::colorRampPalette(RColorBrewer::brewer.pal(12, "Set3"))(num_curves)
             }
 
             model_names <- names(roc_objs)
@@ -314,7 +270,6 @@ summary.fastml_model <- function(object,
               }
               legend("bottomright", legend = model_names, col = colors, lwd = 2, cex = 0.8, bty = "n")
             } else {
-              # Separate ROC curves
               for (i in seq_along(model_names)) {
                 pROC::plot.roc(roc_objs[[model_names[i]]], col = colors[i], lwd = 2,
                                main = paste("ROC Curve:", model_names[i]),
@@ -332,6 +287,63 @@ summary.fastml_model <- function(object,
       }
     } else {
       cat("\nNo predictions available to generate ROC curves.\n")
+    }
+  }
+
+  # Additional Diagnostics
+  if (plot && !is.null(predictions_list) && best_model_name %in% names(predictions_list)) {
+    df_best <- predictions_list[[best_model_name]]
+    if (task == "classification") {
+      if (!is.null(df_best) && "truth" %in% names(df_best) && "estimate" %in% names(df_best)) {
+        cm <- yardstick::conf_mat(df_best, truth = truth, estimate = estimate)
+        cat("\nConfusion Matrix for Best Model:\n")
+        print(cm)
+
+        # Custom Calibration Plot if probability predictions available
+        prob_cols <- grep("^\\.pred_", names(df_best), value = TRUE)
+        if (length(prob_cols) > 1) {
+          # Assuming binary classification
+          positive_class <- levels(df_best$truth)[2]
+          pred_col <- paste0(".pred_", positive_class)
+          if (pred_col %in% prob_cols) {
+            # Bin predictions and compute observed freq
+            df_cal <- df_best %>%
+              dplyr::mutate(prob = !!rlang::sym(pred_col)) %>%
+              dplyr::mutate(bin = cut(prob, breaks = seq(0,1, by=0.1), include.lowest = TRUE)) %>%
+              dplyr::group_by(bin) %>%
+              dplyr::summarise(mean_prob = mean(prob), obs_freq = mean(truth == positive_class))
+
+            cat("\nCalibration Plot for Best Model:\n")
+            p_cal <- ggplot2::ggplot(df_cal, ggplot2::aes(x = mean_prob, y = obs_freq)) +
+              ggplot2::geom_point() +
+              ggplot2::geom_line() +
+              ggplot2::geom_abline(linetype = "dashed", color = "red") +
+              ggplot2::labs(title = "Calibration Plot", x = "Mean Predicted Probability", y = "Observed Frequency") +
+              ggplot2::theme_bw()
+            print(p_cal)
+          }
+        }
+      }
+    } else if (task == "regression") {
+      if (!is.null(df_best) && "truth" %in% names(df_best) && "estimate" %in% names(df_best)) {
+        df_best <- df_best %>% dplyr::mutate(residual = truth - estimate)
+        cat("\nResidual Diagnostics for Best Model:\n")
+
+        p_truth_pred <- ggplot2::ggplot(df_best, ggplot2::aes(x = estimate, y = truth)) +
+          ggplot2::geom_point(alpha = 0.6) +
+          ggplot2::geom_abline(linetype = "dashed", color = "red") +
+          ggplot2::labs(title = "Truth vs Predicted", x = "Predicted", y = "Truth") +
+          ggplot2::theme_bw()
+
+        print(p_truth_pred)
+
+        p_resid_hist <- ggplot2::ggplot(df_best, ggplot2::aes(x = residual)) +
+          ggplot2::geom_histogram(bins = 30, fill = "steelblue", color = "white", alpha = 0.7) +
+          ggplot2::labs(title = "Residual Distribution", x = "Residual", y = "Count") +
+          ggplot2::theme_bw()
+
+        print(p_resid_hist)
+      }
     }
   }
 
