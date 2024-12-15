@@ -2,7 +2,7 @@
 % Please edit documentation in R/summary.fastml_model.R
 \name{summary.fastml_model}
 \alias{summary.fastml_model}
-\title{Summary Function for fastml_model (Updated to Avoid RColorBrewer Warning)}
+\title{Summary Function for fastml_model (Using yardstick for ROC Curves)}
 \usage{
 \method{summary}{fastml_model}(
   object,
@@ -18,8 +18,8 @@
 
 \item{sort_metric}{The metric to sort by. Default uses optimized metric.}
 
-\item{plot}{Logical. If TRUE, produce bar plot, ROC curves (for binary classification),
-confusion matrix (classification), calibration plot (classification if probabilities),
+\item{plot}{Logical. If TRUE, produce bar plot, yardstick-based ROC curves (for binary classification),
+confusion matrix (classification), smooth calibration plot (if probabilities),
 and residual plots (regression).}
 
 \item{combined_roc}{Logical. If TRUE, combined ROC plot; else separate ROC plots.}
@@ -36,8 +36,8 @@ Provides a concise, user-friendly summary of model performances.
 For classification:
 - Shows Accuracy, F1 Score, Kappa, Precision, ROC AUC, Sensitivity, Specificity.
 - Produces a bar plot of these metrics.
-- Shows ROC curves for binary classification.
-- Displays a confusion matrix and a calibration plot if probabilities are available.
+- Shows ROC curves for binary classification using yardstick::roc_curve().
+- Displays a confusion matrix and a smooth nonparametric calibration plot if probabilities are available (requires probably).
 }
 \details{
 For regression:
@@ -45,8 +45,6 @@ For regression:
 - Produces a bar plot of these metrics.
 - Displays residual diagnostics (truth vs predicted, residual distribution).
 
-Additionally, this version fixes a warning from RColorBrewer:
-If the number of ROC curves is less than 3, we still request at least 3 colors from `brewer.pal`
-and then select the needed number of colors. This avoids the warning:
-"minimal value for n is 3, returning requested palette with 3 different levels".
+The ROC curves are now plotted with yardstick. If multiple models exist, their ROC curves are plotted on the same plot (if combined_roc=TRUE) or separately.
+We fix the RColorBrewer warning by ensuring at least 3 colors.
 }

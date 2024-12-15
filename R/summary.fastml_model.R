@@ -1,40 +1,39 @@
-#' Summary Function for fastml_model (Updated to Avoid RColorBrewer Warning)
+#' Summary Function for fastml_model (Using yardstick for ROC Curves)
 #'
 #' Provides a concise, user-friendly summary of model performances.
 #' For classification:
 #' - Shows Accuracy, F1 Score, Kappa, Precision, ROC AUC, Sensitivity, Specificity.
 #' - Produces a bar plot of these metrics.
-#' - Shows ROC curves for binary classification.
-#' - Displays a confusion matrix and a calibration plot if probabilities are available.
+#' - Shows ROC curves for binary classification using yardstick::roc_curve().
+#' - Displays a confusion matrix and a smooth nonparametric calibration plot if probabilities are available (requires probably).
 #'
 #' For regression:
 #' - Shows RMSE, R-squared, and MAE.
 #' - Produces a bar plot of these metrics.
 #' - Displays residual diagnostics (truth vs predicted, residual distribution).
 #'
-#' Additionally, this version fixes a warning from RColorBrewer:
-#' If the number of ROC curves is less than 3, we still request at least 3 colors from `brewer.pal`
-#' and then select the needed number of colors. This avoids the warning:
-#' "minimal value for n is 3, returning requested palette with 3 different levels".
+#' The ROC curves are now plotted with yardstick. If multiple models exist, their ROC curves are plotted on the same plot (if combined_roc=TRUE) or separately.
+#' We fix the RColorBrewer warning by ensuring at least 3 colors.
 #'
 #' @param object An object of class \code{fastml_model}.
 #' @param sort_metric The metric to sort by. Default uses optimized metric.
-#' @param plot Logical. If TRUE, produce bar plot, ROC curves (for binary classification),
-#'   confusion matrix (classification), calibration plot (classification if probabilities),
+#' @param plot Logical. If TRUE, produce bar plot, yardstick-based ROC curves (for binary classification),
+#'   confusion matrix (classification), smooth calibration plot (if probabilities),
 #'   and residual plots (regression).
 #' @param combined_roc Logical. If TRUE, combined ROC plot; else separate ROC plots.
 #' @param notes User-defined commentary.
 #' @param ... Not used.
 #' @return Prints summary and plots if requested.
 #'
-#' @importFrom dplyr filter select mutate bind_rows
+#' @importFrom dplyr filter select mutate bind_rows group_by summarise n
 #' @importFrom magrittr %>%
 #' @importFrom reshape2 melt dcast
 #' @importFrom tune extract_fit_parsnip
 #' @importFrom ggplot2 ggplot aes geom_bar facet_wrap theme_bw theme element_text labs geom_point geom_line geom_histogram
-#' @importFrom pROC roc plot.roc
+#' @importFrom yardstick roc_curve
 #' @importFrom RColorBrewer brewer.pal
 #' @importFrom yardstick conf_mat
+#' @importFrom probably cal_plot_breaks
 #' @export
 summary.fastml_model <- function(object,
                                  sort_metric = NULL,
@@ -227,7 +226,7 @@ summary.fastml_model <- function(object,
 
   print(p_bar)
 
-  # ROC curves for binary classification
+  # ROC curves for binary classification using yardstick
   if (task == "classification" && !is.null(predictions_list) && length(predictions_list) > 0) {
     model_names_pred <- names(predictions_list)
     if (length(model_names_pred) > 0) {
@@ -236,63 +235,62 @@ summary.fastml_model <- function(object,
       if (!is.null(df_example) && "truth" %in% names(df_example)) {
         unique_classes <- unique(df_example$truth)
         if (length(unique_classes) == 2) {
-          positive_class <- levels(df_example$truth)[2]
-          roc_objs <- list()
+          positive_class <- levels(df_example$truth)[1]
 
+          # We'll create a combined data frame for ROC curves from all models
+          roc_dfs <- list()
           for (model_name in model_names_pred) {
             df <- predictions_list[[model_name]]
             prob_cols <- grep("^\\.pred_", names(df), value = TRUE)
             if (length(prob_cols) == 2) {
               pred_col <- paste0(".pred_", positive_class)
               if (pred_col %in% prob_cols) {
-                roc_obj <- suppressMessages(
-                  pROC::roc(response = df$truth,
-                            predictor = df[[pred_col]],
-                            levels = levels(df$truth),
-                            positive = positive_class,
-                            direction = "auto")
-                )
-                roc_objs[[model_name]] <- roc_obj
+                # Use yardstick::roc_curve
+                roc_df <- yardstick::roc_curve(df, truth, !!rlang::sym(pred_col))
+                roc_df$Model <- model_name
+                roc_dfs[[model_name]] <- roc_df
               }
             }
           }
 
-          if (length(roc_objs) > 0) {
-            num_curves <- length(roc_objs)
-            # Fix the warning from RColorBrewer: minimal value for n is 3
-            if (num_curves < 3) {
-              base_colors <- RColorBrewer::brewer.pal(3, "Set1")
-              colors <- base_colors[1:num_curves]
-            } else if (num_curves <= 8) {
-              colors <- RColorBrewer::brewer.pal(num_curves, "Set1")
-            } else if (num_curves <= 12) {
-              colors <- RColorBrewer::brewer.pal(num_curves, "Set3")
-            } else {
-              colors <- grDevices::colorRampPalette(RColorBrewer::brewer.pal(12, "Set3"))(num_curves)
-            }
+          if (length(roc_dfs) > 0) {
+            all_roc <- dplyr::bind_rows(roc_dfs)
 
-            model_names <- names(roc_objs)
-            if (combined_roc) {
-              first_model <- model_names[1]
-              pROC::plot.roc(roc_objs[[first_model]], col = colors[1], lwd = 2,
-                             main = "Combined ROC Curves for All Models",
-                             legacy.axes = TRUE)
-              if (num_curves > 1) {
-                for (i in 2:num_curves) {
-                  pROC::plot.roc(roc_objs[[model_names[i]]], col = colors[i], add = TRUE, lwd = 2, legacy.axes = TRUE)
-                }
-              }
-              legend("bottomright", legend = model_names, col = colors, lwd = 2, cex = 0.8, bty = "n")
+            num_curves <- length(roc_dfs)
+            if (num_curves > 1) {
+              # Generate a sequence of pretty colors with viridis
+              colors <- viridisLite::viridis(num_curves)
             } else {
-              for (i in seq_along(model_names)) {
-                pROC::plot.roc(roc_objs[[model_names[i]]], col = colors[i], lwd = 2,
-                               main = paste("ROC Curve:", model_names[i]),
-                               legacy.axes = TRUE)
-              }
+              # If there's only one curve, just use black or any single color
+              colors <- "#000000"
+            }
+            if (combined_roc) {
+              p_roc <- ggplot2::ggplot(all_roc, ggplot2::aes(x = 1 - specificity, y = sensitivity, color = Model)) +
+                ggplot2::geom_path() +
+                ggplot2::geom_abline(lty = 3) +
+                ggplot2::coord_equal() +
+                ggplot2::theme_bw() +
+                ggplot2::labs(title = "Combined ROC Curves for All Models") +
+                ggplot2::scale_color_manual(values = colors)
+              print(p_roc)
+            } else {
+              # Separate plots for each model
+              # We'll just facet by Model
+              p_roc_sep <- ggplot2::ggplot(all_roc, ggplot2::aes(x = 1 - specificity, y = sensitivity, color = Model)) +
+                ggplot2::geom_path() +
+                ggplot2::geom_abline(lty = 3) +
+                ggplot2::coord_equal() +
+                ggplot2::facet_wrap(~ Model) +
+                ggplot2::theme_bw() +
+                ggplot2::labs(title = "ROC Curves by Model") +
+                ggplot2::scale_color_manual(values = colors) +
+                ggplot2::theme(legend.position = "none")
+              print(p_roc_sep)
             }
           } else {
             cat("\nNo suitable probability predictions for ROC curves.\n")
           }
+
         } else {
           cat("\nROC curves are only generated for binary classification tasks.\n")
         }
@@ -313,28 +311,20 @@ summary.fastml_model <- function(object,
         cat("\nConfusion Matrix for Best Model:\n")
         print(cm)
 
-        # Calibration plot if probability predictions available
-        prob_cols <- grep("^\\.pred_", names(df_best), value = TRUE)
-        if (length(prob_cols) > 1) {
-          positive_class <- levels(df_best$truth)[2]
-          pred_col <- paste0(".pred_", positive_class)
-          if (pred_col %in% prob_cols) {
-            # Bin predictions and compute observed freq
-            df_cal <- df_best %>%
-              dplyr::mutate(prob = !!rlang::sym(pred_col)) %>%
-              dplyr::mutate(bin = cut(prob, breaks = seq(0,1, by=0.1), include.lowest = TRUE)) %>%
-              dplyr::group_by(bin) %>%
-              dplyr::summarise(mean_prob = mean(prob), obs_freq = mean(truth == positive_class), .groups = 'drop')
-
-            cat("\nCalibration Plot for Best Model:\n")
-            p_cal <- ggplot2::ggplot(df_cal, ggplot2::aes(x = mean_prob, y = obs_freq)) +
-              ggplot2::geom_line() +
-              ggplot2::geom_point() +
-              ggplot2::geom_abline(linetype = "dashed", color = "red") +
-              ggplot2::labs(title = "Calibration Plot", x = "Mean Predicted Probability", y = "Observed Frequency") +
-              ggplot2::theme_bw()
-            print(p_cal)
+        # Smooth Nonparametric Calibration Plot using probably::cal_plot_logistic
+        if (requireNamespace("probably", quietly = TRUE)) {
+          prob_cols <- grep("^\\.pred_", names(df_best), value = TRUE)
+          if (length(prob_cols) > 1) {
+            positive_class <- levels(df_best$truth)[1]
+            pred_col <- paste0(".pred_", positive_class)
+            if (pred_col %in% prob_cols) {
+              p_cal <- probably::cal_plot_breaks(df_best, truth = truth, estimate = !!rlang::sym(pred_col)) +
+                labs(title = "Calibration Plot")
+              print(p_cal)
+            }
           }
+        } else {
+          cat("\nInstall the 'probably' package for a smooth nonparametric calibration plot.\n")
         }
       }
     } else if (task == "regression") {
@@ -362,4 +352,3 @@ summary.fastml_model <- function(object,
 
   invisible(object)
 }
-

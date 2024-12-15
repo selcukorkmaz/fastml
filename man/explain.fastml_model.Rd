@@ -2,7 +2,7 @@
 % Please edit documentation in R/explain.fastml_model.R
 \name{explain.fastml_model}
 \alias{explain.fastml_model}
-\title{Explain the fastml_model (Only DALEX + SHAP + Permutation-based VI)}
+\title{Explain the fastml_model (DALEX + SHAP + Permutation-based VI, Enhanced)}
 \usage{
 \method{explain}{fastml_model}(
   object,
@@ -10,6 +10,10 @@
   features = NULL,
   grid_size = 20,
   shap_sample = 5,
+  vi_iterations = 10,
+  colormap = "viridis",
+  top_features = NULL,
+  seed = 123,
   ...
 )
 }
@@ -24,13 +28,19 @@
 
 \item{shap_sample}{Integer number of observations from processed training data to compute SHAP values for. Default 5.}
 
+\item{vi_iterations}{Integer. Number of permutations for variable importance. Default 10.}
+
+\item{colormap}{Character. Name of a color palette to use (e.g., "viridis"). Default "viridis".}
+
+\item{top_features}{Integer. Limit the SHAP summary plot to top N features by mean abs SHAP. Default NULL (no limit).}
+
 \item{...}{Additional arguments (not currently used).}
 }
 \value{
-Prints DALEX explanations: variable importance table & plot, model profiles (if any), SHAP table & summary plot.
+Prints DALEX explanations: variable importance table & plot, model profiles (if any), SHAP table & summary plot, and optionally a calibration plot.
 }
 \description{
-Provides model explainability using DALEX only. This function:
+Provides model explainability using DALEX. This function:
 - Creates a DALEX explainer.
 - Computes permutation-based variable importance with boxplots showing variability, displays the table and plot.
 - Computes partial dependency-like model profiles if `features` are provided.
@@ -38,13 +48,22 @@ Provides model explainability using DALEX only. This function:
   and plots a summary bar chart of mean(|SHAP value|) per feature. For classification, it shows separate bars for each class.
 }
 \details{
-The bars in the variable importance plot start at the RMSE value for the model on the original data (x-axis),
-and the length of each bar corresponds to the RMSE loss after permutations.
-Boxplots show how random permutations differ, indicating stability.
+**Enhancements added:**
+1. **Custom number of permutations for VI (vi_iterations):**
+   You can now specify how many permutations (B) to use for permutation-based variable importance.
+   More permutations yield more stable estimates but take longer.
 
-For SHAP:
-- We use the individual SHAP values from `predict_parts(..., type="shap")`.
-- We aggregate mean absolute SHAP values by feature (and by class if classification).
-- Class names are taken from the model predictions (the 'label' column if available).
-- We print the SHAP table and then produce a summary plot similar to the provided example.
+2. **Custom color palette (colormap):**
+   A `colormap` parameter allows you to select a color palette (e.g., "viridis") for SHAP summary plots and variable importance plots.
+   This improves aesthetics over default palettes.
+
+3. **Top Features in SHAP Summary (top_features):**
+   You can limit the SHAP summary plot to the top N features by mean absolute SHAP value. This helps focus on the most influential features.
+
+4. **Support for calibration plot if probably is available (calibration):**
+   If `calibration = TRUE` and `probably` is installed, it attempts to produce a model-based calibration plot (e.g., `cal_plot_logistic`).
+   This provides a smoothed, nonparametric view of model calibration.
+
+5. **Better error messages and checks:**
+   Improved checks and messages if certain packages or conditions are not met.
 }
