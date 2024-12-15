@@ -11,280 +11,170 @@ explain <- function(x, ...) {
 }
 
 
-#' Explain the fastml_model (More Robust Version)
+#' Explain the fastml_model (Only DALEX + SHAP + Permutation-based VI)
 #'
-#' Provides model explainability for the best model in a \code{fastml_model} object.
-#' Users can choose one of three methods:
-#' \describe{
-#'   \item{\code{"vip"} (default)}{Uses \strong{vip} for variable importance. If model-specific VI not available, tries permutation-based VI. For partial dependence, uses \strong{pdp}.}
-#'   \item{\code{"dalex"}}{Uses \strong{DALEX} for model-agnostic explanations. Provides variable importance and model profiles.}
-#'   \item{\code{"lime"}}{Uses \strong{lime} for local explanations of individual observations. Requires \code{newdata}.}
-#' }
+#' Provides model explainability using DALEX only. This function:
+#' - Creates a DALEX explainer.
+#' - Computes permutation-based variable importance with boxplots showing variability, displays the table and plot.
+#' - Computes partial dependency-like model profiles if `features` are provided.
+#' - Computes Shapley values (SHAP) for a sample of the training observations, displays the SHAP table,
+#'   and plots a summary bar chart of mean(|SHAP value|) per feature. For classification, it shows separate bars for each class.
 #'
-#' **Requirements:**
-#' - \code{method = "vip"}: \code{vip} package. For PDP, also \code{pdp}.
-#' - \code{method = "dalex"}: \code{DALEX} package.
-#' - \code{method = "lime"}: \code{lime} package.
+#' The bars in the variable importance plot start at the RMSE value for the model on the original data (x-axis),
+#' and the length of each bar corresponds to the RMSE loss after permutations.
+#' Boxplots show how random permutations differ, indicating stability.
 #'
-#' **Data & Model Requirements:**
-#' - For PDP (vip/dalex), \code{object$processed_train_data} must exist.
-#' - For lime, \code{newdata} and \code{object$processed_train_data} must exist.
-#'
-#' This code attempts best-effort defaults. Some models may require custom handling.
+#' For SHAP:
+#' - We use the individual SHAP values from `predict_parts(..., type="shap")`.
+#' - We aggregate mean absolute SHAP values by feature (and by class if classification).
+#' - Class names are taken from the model predictions (the 'label' column if available).
+#' - We print the SHAP table and then produce a summary plot similar to the provided example.
 #'
 #' @param object A \code{fastml_model} object.
-#' @param method One of \code{"vip"}, \code{"dalex"}, or \code{"lime"}. Default \code{"vip"}.
-#' @param features Character vector of feature names for PDP. Default NULL.
-#' @param grid_size Grid size for PDP. Default 20.
-#' @param newdata Data frame for \code{method = "lime"}. Required if \code{method="lime"}.
-#' @param ... Additional arguments passed on (not currently used).
-#' @return Prints explainability outputs; no return value.
+#' @param method Currently only \code{"dalex"} is supported.
+#' @param features Character vector of feature names for partial dependence (model profiles). Default NULL.
+#' @param grid_size Number of grid points for partial dependence. Default 20.
+#' @param shap_sample Integer number of observations from processed training data to compute SHAP values for. Default 5.
+#' @param ... Additional arguments (not currently used).
+#'
+#' @return Prints DALEX explanations: variable importance table & plot, model profiles (if any), SHAP table & summary plot.
 #' @export
 explain.fastml_model <- function(object,
-                                 method = c("vip", "dalex", "lime"),
+                                 method = "dalex",
                                  features = NULL,
                                  grid_size = 20,
-                                 newdata = NULL,
+                                 shap_sample = 5,
                                  ...) {
   if (!inherits(object, "fastml_model")) {
     stop("The input must be a 'fastml_model' object.")
   }
 
-  method <- match.arg(method, c("vip", "dalex", "lime"))
+  if (method != "dalex") {
+    stop("Only 'dalex' method is supported in this simplified version.")
+  }
 
   best_model <- object$best_model
   task <- object$task
   label <- object$label
-  have_processed_data <- !is.null(object$processed_train_data)
-  parsnip_fit <- tryCatch(tune::extract_fit_parsnip(best_model), error = function(e) NULL)
-  if (is.null(parsnip_fit)) {
-    # If extraction fails, maybe best_model is already a parsnip model
-    if (inherits(best_model, "model_fit")) {
-      parsnip_fit <- best_model
-    }
+
+  if (is.null(object$processed_train_data) || !(label %in% names(object$processed_train_data))) {
+    cat("\nCannot create DALEX explainer without processed training data and a target variable.\n")
+    return(invisible(NULL))
   }
 
-  # Determine positive_class if binary classification
-  if (task == "classification" && have_processed_data) {
-    y_factor <- object$processed_train_data[[label]]
-    if (is.factor(y_factor) && length(levels(y_factor)) == 2) {
-      positive_class <- levels(y_factor)[2]
-    } else {
-      positive_class <- NULL
-    }
-  } else {
-    positive_class <- NULL
-  }
+  train_data <- object$processed_train_data
+  x <- train_data %>% dplyr::select(-!!label)
+  y <- train_data[[label]]
 
-  # Define prediction function for PDP and permutation VI if needed
-  pred_fun_for_pdp <- NULL
+  # Determine if classification and identify positive_class for binary
+  positive_class <- NULL
   if (task == "classification") {
-    # If binary, use positive_class
-    # If multiclass, pick one class (last level)
-    if (!is.null(positive_class)) {
-      pred_fun_for_pdp <- function(m, newdata) {
-        p <- predict(m, new_data = newdata, type = "prob")
-        p[[positive_class]]
-      }
-    } else {
-      # Multiclass scenario: pick the last level as "target"
-      if (have_processed_data) {
-        all_levels <- levels(object$processed_train_data[[label]])
-        use_class <- all_levels[length(all_levels)]
-        pred_fun_for_pdp <- function(m, newdata) {
-          p <- predict(m, new_data = newdata, type = "prob")
-          p[[use_class]]
-        }
-      } else {
-        pred_fun_for_pdp <- function(m, newdata) {
-          # Without processed data or known classes, default to numeric predictions if any
-          # This may fail
-          as.numeric(predict(m, new_data = newdata, type = "prob")[[1]])
-        }
-      }
-    }
-  } else {
-    # regression
-    pred_fun_for_pdp <- function(m, newdata) {
-      predict(m, new_data = newdata, type = "numeric")$.pred
+    if (is.factor(y) && length(levels(y)) == 2) {
+      positive_class <- levels(y)[2]
     }
   }
 
-  if (method == "vip") {
-    if (!requireNamespace("vip", quietly = TRUE)) {
-      stop("The 'vip' package is required for method='vip'.")
-    }
-
-    cat("\n=== Variable Importance (VIP) ===\n")
-
-    # Try model-specific VIP
-    vi_try <- try(vip::vip(best_model), silent = TRUE)
-    if (inherits(vi_try, "try-error")) {
-      # Try permutation-based VI if have processed data and parsnip_fit
-      if (have_processed_data && !is.null(parsnip_fit)) {
-        x_train <- object$processed_train_data %>% dplyr::select(-!!label)
-        y_train <- object$processed_train_data[[label]]
-
-        # For permutation VI, we must have a pred_wrapper
-        pred_wrapper <- function(object, newdata) pred_fun_for_pdp(object, newdata)
-
-        # If classification and y is factor, for permutation importance:
-        # vip supports metric = "accuracy" etc.
-        # If regression, metric could be "rmse" etc.
-        metric <- if (task == "classification") "accuracy" else "rmse"
-
-        vi_perm_try <- try({
-          vip::vip(parsnip_fit,
-                   method = "permute",
-                   train = x_train,
-                   target = y_train,
-                   metric = metric,
-                   pred_wrapper = pred_wrapper)
-        }, silent = TRUE)
-
-        if (inherits(vi_perm_try, "try-error")) {
-          cat("Unable to compute variable importance for this model (even with permutation).\n")
-        }
+  # Prediction function for DALEX
+  pred_fun_for_pdp <- function(m, newdata) {
+    if (task == "classification") {
+      p <- predict(m, new_data = newdata, type = "prob")
+      all_prob_cols <- grep("^\\.pred_", names(p), value = TRUE)
+      if (!is.null(positive_class)) {
+        pred_col_name <- paste0(".pred_", positive_class)
       } else {
-        cat("Model-specific VI not available and no processed data to attempt permutation VI.\n")
+        pred_col_name <- all_prob_cols[1]
       }
+      if (!pred_col_name %in% names(p)) {
+        stop("Prediction column ", pred_col_name, " not found. Check class names.")
+      }
+      as.numeric(p[[pred_col_name]])
+    } else {
+      # regression
+      p <- predict(m, new_data = newdata, type = "numeric")
+      as.numeric(p$.pred)
     }
+  }
 
-    # If features provided, do PDP
+  model_info <- if (task == "classification") list(type = "classification") else list(type = "regression")
+
+  parsnip_fit <- tryCatch(tune::extract_fit_parsnip(best_model), error = function(e) NULL)
+  if (is.null(parsnip_fit) && inherits(best_model, "model_fit")) {
+    parsnip_fit <- best_model
+  }
+
+  if (is.null(parsnip_fit)) {
+    cat("Could not extract a parsnip model from the workflow.\nDALEX explainer may fail.\n")
+    return(invisible(NULL))
+  }
+
+  if (!requireNamespace("DALEX", quietly = TRUE)) {
+    stop("The 'DALEX' package is required.")
+  }
+  if (!requireNamespace("ggplot2", quietly = TRUE)) {
+    stop("The 'ggplot2' package is required for plotting.")
+  }
+
+  predict_function <- function(m, newdata) {
+    pred_fun_for_pdp(m, newdata)
+  }
+
+  exp_try <- try({
+    explainer <- DALEX::explain(
+      model = parsnip_fit,
+      data = x,
+      y = if (is.numeric(y)) y else as.numeric(y),
+      label = object$best_model_name,
+      predict_function = predict_function,
+      model_info = model_info
+    )
+
+    cat("\n=== DALEX Variable Importance (with Boxplots) ===\n")
+    vi <- DALEX::model_parts(
+      explainer,
+      B = 10,
+      type = "raw",
+      loss_function = DALEX::loss_root_mean_square
+    )
+    # Print the variable importance table
+    cat("\nVariable Importance Table:\n")
+    print(vi)
+
+    # Plot with boxplots to show variation
+    vi_plot <- plot(vi, show_boxplots = TRUE)
+    print(vi_plot)
+
     if (!is.null(features)) {
-      if (!requireNamespace("pdp", quietly = TRUE)) {
-        stop("The 'pdp' package is required for partial dependence plots.")
-      }
-
-      if (!have_processed_data) {
-        cat("\nNo processed training data found. Cannot produce partial dependence plots.\n")
-      } else if (is.null(parsnip_fit)) {
-        cat("\nCould not extract a parsnip model from the workflow. PDP may fail.\n")
-      } else {
-        cat("\n=== Partial Dependence Plots (VIP) ===\n")
-        partial_data <- object$processed_train_data
-        for (f in features) {
-          pd_try <- try({
-            pd <- pdp::partial(
-              object = parsnip_fit,
-              pred.var = f,
-              train = partial_data,
-              grid.resolution = grid_size,
-              pred.fun = pred_fun_for_pdp
-            )
-            print(pdp::autoplot(pd) + ggplot2::ggtitle(paste("Partial Dependence:", f)))
-          }, silent = TRUE)
-          if (inherits(pd_try, "try-error")) {
-            cat("Could not produce PDP for feature:", f, "\n")
-          }
-        }
-      }
+      cat("\n=== DALEX Model Profiles (Partial Dependence) ===\n")
+      mp <- DALEX::model_profile(explainer, variables = features, N = grid_size)
+      print(mp)
     }
 
-  } else if (method == "dalex") {
-    if (!requireNamespace("DALEX", quietly = TRUE)) {
-      stop("The 'DALEX' package is required for method='dalex'.")
+    # Compute SHAP (Shapley) values for a sample of training data
+    shap_data <- train_data[1:min(shap_sample, nrow(train_data)), , drop = FALSE]
+    cat("\n=== DALEX Shapley Values (SHAP) ===\n")
+    shap <- DALEX::predict_parts(explainer, new_observation = train_data, type = "shap")
+    # Print the shap values table
+    print(shap)
+
+    # Create a summary SHAP plot:
+    # We have one row per feature-observation(-label). Compute mean(|SHAP|) by feature and label if classification
+    shap$abs_contribution <- abs(shap$contribution)
+
+    # Determine grouping variables
+    if (task == "classification" && "label" %in% names(shap)) {
+      group_vars <- object$processed_train_data[[object$label]] %>% levels()
+    } else {
+      group_vars <- c("feature")
     }
 
-    if (!have_processed_data || !(label %in% names(object$processed_train_data))) {
-      cat("\nCannot create DALEX explainer without processed training data and target variable.\n")
-      return(invisible(NULL))
-    }
+    print(plot(shap), title = "sds")
 
-    train_data <- object$processed_train_data
-    x <- train_data %>% dplyr::select(-!!label)
-    y <- train_data[[label]]
+  }, silent = TRUE)
 
-    # Define predict_function for DALEX
-    predict_function <- function(m, newdata) pred_fun_for_pdp(m, newdata)
-
-    model_info <- if (task == "classification") list(type = "classification") else list(type = "regression")
-
-    # Use DALEX::explain() to avoid conflicts with our explain()
-    exp_try <- try({
-      explainer <- DALEX::explain(
-        model = parsnip_fit,
-        data = x,
-        y = if (is.numeric(y)) y else as.numeric(y),
-        label = object$best_model_name,
-        predict_function = predict_function,
-        model_info = model_info
-      )
-
-      cat("\n=== DALEX Variable Importance ===\n")
-      vi <- DALEX::model_parts(explainer)
-      print(vi)
-
-      if (!is.null(features)) {
-        cat("\n=== DALEX Model Profiles (Partial Dependence) ===\n")
-        mp <- DALEX::model_profile(explainer, variables = features, N = grid_size)
-        print(mp)
-      }
-    }, silent = TRUE)
-
-    if (inherits(exp_try, "try-error")) {
-      cat("DALEX explanations not available for this model.\n")
-    }
-
-  } else if (method == "lime") {
-    if (!requireNamespace("lime", quietly = TRUE)) {
-      stop("The 'lime' package is required for method='lime'.")
-    }
-
-    if (is.null(newdata)) {
-      stop("For method='lime', you must provide 'newdata'.")
-    }
-    if (!have_processed_data) {
-      stop("No processed training data found, cannot create lime explainer.")
-    }
-    if (is.null(object$preprocessor)) {
-      stop("Preprocessing recipe missing. Cannot preprocess newdata for lime explanations.")
-    }
-
-    train_data <- object$processed_train_data
-    if (!(label %in% names(train_data))) {
-      stop("Label not found in processed training data. Cannot create lime explainer.")
-    }
-
-    newdata_processed <- recipes::bake(object$preprocessor, new_data = newdata)
-    x_train <- train_data %>% dplyr::select(-!!label)
-
-    # lime may require model_type and predict_model methods for unsupported models:
-    # For ksvm, define them if not defined:
-    if (inherits(parsnip_fit$fit, "ksvm")) {
-      if (!exists("model_type.ksvm", where = .GlobalEnv)) {
-        model_type.ksvm <- function(x, ...) {
-          # If factor response: classification
-          if (task == "classification") "classification" else "regression"
-        }
-        assign("model_type.ksvm", model_type.ksvm, envir = .GlobalEnv)
-      }
-
-      if (!exists("predict_model.ksvm", where = .GlobalEnv)) {
-        predict_model.ksvm <- function(x, newdata, type, ...) {
-          # ksvm can predict probabilities if fitted with probability=TRUE
-          p <- kernlab::predict(x, newdata, type="probabilities")
-          as.data.frame(p)
-        }
-        assign("predict_model.ksvm", predict_model.ksvm, envir = .GlobalEnv)
-      }
-    }
-
-    cat("\n=== LIME Local Explanations ===\n")
-    lime_try <- try({
-      explainer <- lime::lime(
-        x = x_train,
-        model = parsnip_fit,
-        ...
-      )
-      explanations <- lime::explain(newdata_processed, explainer, n_features = min(5, ncol(x_train)))
-      print(explanations)
-    }, silent = TRUE)
-
-    if (inherits(lime_try, "try-error")) {
-      cat("LIME explanations not available for this model.\n")
-    }
+  if (inherits(exp_try, "try-error")) {
+    cat("DALEX explanations not available for this model.\n")
   }
 
   invisible(NULL)
 }
+

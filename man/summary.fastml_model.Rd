@@ -2,7 +2,7 @@
 % Please edit documentation in R/summary.fastml_model.R
 \name{summary.fastml_model}
 \alias{summary.fastml_model}
-\title{Summary Function for fastml_model (No Calibration Dependency)}
+\title{Summary Function for fastml_model (Updated to Avoid RColorBrewer Warning)}
 \usage{
 \method{summary}{fastml_model}(
   object,
@@ -16,10 +16,11 @@
 \arguments{
 \item{object}{An object of class \code{fastml_model}.}
 
-\item{sort_metric}{The metric to sort by. Default uses the optimized metric.}
+\item{sort_metric}{The metric to sort by. Default uses optimized metric.}
 
-\item{plot}{Logical. If TRUE, produce bar plot, ROC curves (for classification), confusion matrix (classification),
-a custom calibration plot (if probabilities available), and residual plots (regression).}
+\item{plot}{Logical. If TRUE, produce bar plot, ROC curves (for binary classification),
+confusion matrix (classification), calibration plot (classification if probabilities),
+and residual plots (regression).}
 
 \item{combined_roc}{Logical. If TRUE, combined ROC plot; else separate ROC plots.}
 
@@ -28,15 +29,24 @@ a custom calibration plot (if probabilities available), and residual plots (regr
 \item{...}{Not used.}
 }
 \value{
-Prints summary, plots, and additional diagnostics if requested.
+Prints summary and plots if requested.
 }
 \description{
 Provides a concise, user-friendly summary of model performances.
-For classification, shows Accuracy, F1 Score, Kappa, Precision, ROC AUC, Sensitivity, Specificity.
-Produces a bar plot of these metrics and ROC curves in the same RStudio device.
+For classification:
+- Shows Accuracy, F1 Score, Kappa, Precision, ROC AUC, Sensitivity, Specificity.
+- Produces a bar plot of these metrics.
+- Shows ROC curves for binary classification.
+- Displays a confusion matrix and a calibration plot if probabilities are available.
 }
 \details{
-Additionally:
-- For classification: shows a confusion matrix and, if probabilities are available, a custom calibration plot.
-- For regression: shows residual plots (distribution of residuals and truth vs predicted).
+For regression:
+- Shows RMSE, R-squared, and MAE.
+- Produces a bar plot of these metrics.
+- Displays residual diagnostics (truth vs predicted, residual distribution).
+
+Additionally, this version fixes a warning from RColorBrewer:
+If the number of ROC curves is less than 3, we still request at least 3 colors from `brewer.pal`
+and then select the needed number of colors. This avoids the warning:
+"minimal value for n is 3, returning requested palette with 3 different levels".
 }

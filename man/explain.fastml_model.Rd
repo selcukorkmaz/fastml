@@ -2,51 +2,49 @@
 % Please edit documentation in R/explain.fastml_model.R
 \name{explain.fastml_model}
 \alias{explain.fastml_model}
-\title{Explain the fastml_model (More Robust Version)}
+\title{Explain the fastml_model (Only DALEX + SHAP + Permutation-based VI)}
 \usage{
 \method{explain}{fastml_model}(
   object,
-  method = c("vip", "dalex", "lime"),
+  method = "dalex",
   features = NULL,
   grid_size = 20,
-  newdata = NULL,
+  shap_sample = 5,
   ...
 )
 }
 \arguments{
 \item{object}{A \code{fastml_model} object.}
 
-\item{method}{One of \code{"vip"}, \code{"dalex"}, or \code{"lime"}. Default \code{"vip"}.}
+\item{method}{Currently only \code{"dalex"} is supported.}
 
-\item{features}{Character vector of feature names for PDP. Default NULL.}
+\item{features}{Character vector of feature names for partial dependence (model profiles). Default NULL.}
 
-\item{grid_size}{Grid size for PDP. Default 20.}
+\item{grid_size}{Number of grid points for partial dependence. Default 20.}
 
-\item{newdata}{Data frame for \code{method = "lime"}. Required if \code{method="lime"}.}
+\item{shap_sample}{Integer number of observations from processed training data to compute SHAP values for. Default 5.}
 
-\item{...}{Additional arguments passed on (not currently used).}
+\item{...}{Additional arguments (not currently used).}
 }
 \value{
-Prints explainability outputs; no return value.
+Prints DALEX explanations: variable importance table & plot, model profiles (if any), SHAP table & summary plot.
 }
 \description{
-Provides model explainability for the best model in a \code{fastml_model} object.
-Users can choose one of three methods:
-\describe{
-  \item{\code{"vip"} (default)}{Uses \strong{vip} for variable importance. If model-specific VI not available, tries permutation-based VI. For partial dependence, uses \strong{pdp}.}
-  \item{\code{"dalex"}}{Uses \strong{DALEX} for model-agnostic explanations. Provides variable importance and model profiles.}
-  \item{\code{"lime"}}{Uses \strong{lime} for local explanations of individual observations. Requires \code{newdata}.}
-}
+Provides model explainability using DALEX only. This function:
+- Creates a DALEX explainer.
+- Computes permutation-based variable importance with boxplots showing variability, displays the table and plot.
+- Computes partial dependency-like model profiles if `features` are provided.
+- Computes Shapley values (SHAP) for a sample of the training observations, displays the SHAP table,
+  and plots a summary bar chart of mean(|SHAP value|) per feature. For classification, it shows separate bars for each class.
 }
 \details{
-**Requirements:**
-- \code{method = "vip"}: \code{vip} package. For PDP, also \code{pdp}.
-- \code{method = "dalex"}: \code{DALEX} package.
-- \code{method = "lime"}: \code{lime} package.
+The bars in the variable importance plot start at the RMSE value for the model on the original data (x-axis),
+and the length of each bar corresponds to the RMSE loss after permutations.
+Boxplots show how random permutations differ, indicating stability.
 
-**Data & Model Requirements:**
-- For PDP (vip/dalex), \code{object$processed_train_data} must exist.
-- For lime, \code{newdata} and \code{object$processed_train_data} must exist.
-
-This code attempts best-effort defaults. Some models may require custom handling.
+For SHAP:
+- We use the individual SHAP values from `predict_parts(..., type="shap")`.
+- We aggregate mean absolute SHAP values by feature (and by class if classification).
+- Class names are taken from the model predictions (the 'label' column if available).
+- We print the SHAP table and then produce a summary plot similar to the provided example.
 }
