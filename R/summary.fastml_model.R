@@ -1,3 +1,5 @@
+utils::globalVariables(c("truth", "residual", "sensitivity", "specificity"))
+
 #' Summary Function for fastml_model (Using yardstick for ROC Curves)
 #'
 #' Provides a concise, user-friendly summary of model performances.
@@ -5,15 +7,13 @@
 #' - Shows Accuracy, F1 Score, Kappa, Precision, ROC AUC, Sensitivity, Specificity.
 #' - Produces a bar plot of these metrics.
 #' - Shows ROC curves for binary classification using yardstick::roc_curve().
-#' - Displays a confusion matrix and a smooth nonparametric calibration plot if probabilities are available (requires probably).
+#' - Displays a confusion matrix and a calibration plot if probabilities are available.
 #'
 #' For regression:
 #' - Shows RMSE, R-squared, and MAE.
 #' - Produces a bar plot of these metrics.
 #' - Displays residual diagnostics (truth vs predicted, residual distribution).
 #'
-#' The ROC curves are now plotted with yardstick. If multiple models exist, their ROC curves are plotted on the same plot (if combined_roc=TRUE) or separately.
-#' We fix the RColorBrewer warning by ensuring at least 3 colors.
 #'
 #' @param object An object of class \code{fastml_model}.
 #' @param sort_metric The metric to sort by. Default uses optimized metric.
@@ -22,18 +22,20 @@
 #'   and residual plots (regression).
 #' @param combined_roc Logical. If TRUE, combined ROC plot; else separate ROC plots.
 #' @param notes User-defined commentary.
-#' @param ... Not used.
+#' @param ... Additional arguments.
 #' @return Prints summary and plots if requested.
 #'
 #' @importFrom dplyr filter select mutate bind_rows group_by summarise n
 #' @importFrom magrittr %>%
 #' @importFrom reshape2 melt dcast
 #' @importFrom tune extract_fit_parsnip
-#' @importFrom ggplot2 ggplot aes geom_bar facet_wrap theme_bw theme element_text labs geom_point geom_line geom_histogram
-#' @importFrom yardstick roc_curve
+#' @importFrom ggplot2 ggplot aes geom_bar geom_path facet_wrap theme_bw theme element_text labs geom_point geom_line geom_histogram geom_abline coord_equal scale_color_manual
 #' @importFrom RColorBrewer brewer.pal
-#' @importFrom yardstick conf_mat
+#' @importFrom yardstick conf_mat roc_curve
 #' @importFrom probably cal_plot_breaks
+#' @importFrom rlang get_expr get_env sym
+#' @importFrom viridisLite viridis
+#'
 #' @export
 summary.fastml_model <- function(object,
                                  sort_metric = NULL,
@@ -84,7 +86,7 @@ summary.fastml_model <- function(object,
   if (length(desired_metrics) == 0) desired_metrics <- main_metric
 
   performance_sub <- performance_df[performance_df$.metric %in% desired_metrics, ]
-  performance_wide <- reshape2::dcast(performance_sub, Model ~ .metric, value.var = ".estimate")
+  performance_wide <- dcast(performance_sub, Model ~ .metric, value.var = ".estimate")
 
   if (task == "regression") {
     performance_wide <- performance_wide[order(performance_wide[[main_metric]], na.last = TRUE), ]
@@ -152,7 +154,7 @@ summary.fastml_model <- function(object,
   cat("(* Best model)\n\n")
 
   cat("Best Model Hyperparameters:\n\n")
-  parsnip_fit <- tryCatch(tune::extract_fit_parsnip(object$best_model), error = function(e) NULL)
+  parsnip_fit <- tryCatch(extract_fit_parsnip(object$best_model), error = function(e) NULL)
   if (is.null(parsnip_fit)) {
     cat("Could not extract final fitted model details.\n")
   } else if ("spec" %in% names(parsnip_fit) && "args" %in% names(parsnip_fit$spec)) {
@@ -162,7 +164,7 @@ summary.fastml_model <- function(object,
       for (pname in names(params)) {
         val <- params[[pname]]
         if (inherits(val, "quosure")) {
-          val <- tryCatch(eval(rlang::get_expr(val), envir = rlang::get_env(val)), error = function(e) val)
+          val <- tryCatch(eval(get_expr(val), envir = get_env(val)), error = function(e) val)
         }
         cleaned_params[[pname]] <- val
       }
@@ -190,7 +192,7 @@ summary.fastml_model <- function(object,
 
   if (!plot) return(invisible(object))
 
-  performance_melt <- reshape2::melt(performance_wide, id.vars = "Model", variable.name = "Metric", value.name = "Value")
+  performance_melt <- melt(performance_wide, id.vars = "Model", variable.name = "Metric", value.name = "Value")
   performance_melt <- performance_melt[!is.na(performance_melt$Value), ]
   performance_melt$Value <- as.numeric(performance_melt$Value)
   performance_melt$Metric <- as.character(performance_melt$Metric)
@@ -214,15 +216,15 @@ summary.fastml_model <- function(object,
     }
   }
 
-  p_bar <- ggplot2::ggplot(performance_melt, ggplot2::aes(x = Model, y = Value, fill = Model)) +
-    ggplot2::geom_bar(stat = "identity", position = "dodge") +
-    ggplot2::facet_wrap(~ Metric, scales = "free_y") +
-    ggplot2::theme_bw() +
-    ggplot2::theme(
-      axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+  p_bar <- ggplot(performance_melt, aes(x = Model, y = Value, fill = Model)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    facet_wrap(~ Metric, scales = "free_y") +
+    theme_bw() +
+    theme(
+      axis.text.x = element_text(angle = 45, hjust = 1),
       legend.position = "none"
     ) +
-    ggplot2::labs(title = "Model Performance Comparison", x = "Model", y = "Metric Value")
+    labs(title = "Model Performance Comparison", x = "Model", y = "Metric Value")
 
   print(p_bar)
 
@@ -245,8 +247,7 @@ summary.fastml_model <- function(object,
             if (length(prob_cols) == 2) {
               pred_col <- paste0(".pred_", positive_class)
               if (pred_col %in% prob_cols) {
-                # Use yardstick::roc_curve
-                roc_df <- yardstick::roc_curve(df, truth, !!rlang::sym(pred_col))
+                roc_df <- roc_curve(df, truth, !!sym(pred_col))
                 roc_df$Model <- model_name
                 roc_dfs[[model_name]] <- roc_df
               }
@@ -254,37 +255,37 @@ summary.fastml_model <- function(object,
           }
 
           if (length(roc_dfs) > 0) {
-            all_roc <- dplyr::bind_rows(roc_dfs)
+            all_roc <- bind_rows(roc_dfs)
 
             num_curves <- length(roc_dfs)
             if (num_curves > 1) {
               # Generate a sequence of pretty colors with viridis
-              colors <- viridisLite::viridis(num_curves)
+              colors <- viridis(num_curves)
             } else {
               # If there's only one curve, just use black or any single color
               colors <- "#000000"
             }
             if (combined_roc) {
-              p_roc <- ggplot2::ggplot(all_roc, ggplot2::aes(x = 1 - specificity, y = sensitivity, color = Model)) +
-                ggplot2::geom_path() +
-                ggplot2::geom_abline(lty = 3) +
-                ggplot2::coord_equal() +
-                ggplot2::theme_bw() +
-                ggplot2::labs(title = "Combined ROC Curves for All Models") +
-                ggplot2::scale_color_manual(values = colors)
+              p_roc <- ggplot(all_roc, aes(x = 1 - specificity, y = sensitivity, color = Model)) +
+                geom_path() +
+                geom_abline(lty = 3) +
+                coord_equal() +
+                theme_bw() +
+                labs(title = "Combined ROC Curves for All Models") +
+                scale_color_manual(values = colors)
               print(p_roc)
             } else {
               # Separate plots for each model
               # We'll just facet by Model
-              p_roc_sep <- ggplot2::ggplot(all_roc, ggplot2::aes(x = 1 - specificity, y = sensitivity, color = Model)) +
-                ggplot2::geom_path() +
-                ggplot2::geom_abline(lty = 3) +
-                ggplot2::coord_equal() +
-                ggplot2::facet_wrap(~ Model) +
-                ggplot2::theme_bw() +
-                ggplot2::labs(title = "ROC Curves by Model") +
-                ggplot2::scale_color_manual(values = colors) +
-                ggplot2::theme(legend.position = "none")
+              p_roc_sep <- ggplot(all_roc, aes(x = 1 - specificity, y = sensitivity, color = Model)) +
+                geom_path() +
+                geom_abline(lty = 3) +
+                coord_equal() +
+                facet_wrap(~ Model) +
+                theme_bw() +
+                labs(title = "ROC Curves by Model") +
+                scale_color_manual(values = colors) +
+                theme(legend.position = "none")
               print(p_roc_sep)
             }
           } else {
@@ -307,43 +308,43 @@ summary.fastml_model <- function(object,
     df_best <- predictions_list[[best_model_name]]
     if (task == "classification") {
       if (!is.null(df_best) && "truth" %in% names(df_best) && "estimate" %in% names(df_best)) {
-        cm <- yardstick::conf_mat(df_best, truth = truth, estimate = estimate)
+        cm <- conf_mat(df_best, truth = truth, estimate = estimate)
         cat("\nConfusion Matrix for Best Model:\n")
         print(cm)
 
-        # Smooth Nonparametric Calibration Plot using probably::cal_plot_logistic
+        # Calibration Plot
         if (requireNamespace("probably", quietly = TRUE)) {
           prob_cols <- grep("^\\.pred_", names(df_best), value = TRUE)
           if (length(prob_cols) > 1) {
             positive_class <- levels(df_best$truth)[1]
             pred_col <- paste0(".pred_", positive_class)
             if (pred_col %in% prob_cols) {
-              p_cal <- probably::cal_plot_breaks(df_best, truth = truth, estimate = !!rlang::sym(pred_col)) +
+              p_cal <- cal_plot_breaks(df_best, truth = truth, estimate = !!sym(pred_col)) +
                 labs(title = "Calibration Plot")
               print(p_cal)
             }
           }
         } else {
-          cat("\nInstall the 'probably' package for a smooth nonparametric calibration plot.\n")
+          cat("\nInstall the 'probably' package for a calibration plot.\n")
         }
       }
     } else if (task == "regression") {
       if (!is.null(df_best) && "truth" %in% names(df_best) && "estimate" %in% names(df_best)) {
-        df_best <- df_best %>% dplyr::mutate(residual = truth - estimate)
+        df_best <- df_best %>% mutate(residual = truth - estimate)
         cat("\nResidual Diagnostics for Best Model:\n")
 
-        p_truth_pred <- ggplot2::ggplot(df_best, ggplot2::aes(x = estimate, y = truth)) +
-          ggplot2::geom_point(alpha = 0.6) +
-          ggplot2::geom_abline(linetype = "dashed", color = "red") +
-          ggplot2::labs(title = "Truth vs Predicted", x = "Predicted", y = "Truth") +
-          ggplot2::theme_bw()
+        p_truth_pred <- ggplot(df_best, aes(x = estimate, y = truth)) +
+          geom_point(alpha = 0.6) +
+          geom_abline(linetype = "dashed", color = "red") +
+          labs(title = "Truth vs Predicted", x = "Predicted", y = "Truth") +
+          theme_bw()
 
         print(p_truth_pred)
 
-        p_resid_hist <- ggplot2::ggplot(df_best, ggplot2::aes(x = residual)) +
-          ggplot2::geom_histogram(bins = 30, fill = "steelblue", color = "white", alpha = 0.7) +
-          ggplot2::labs(title = "Residual Distribution", x = "Residual", y = "Count") +
-          ggplot2::theme_bw()
+        p_resid_hist <- ggplot(df_best, aes(x = residual)) +
+          geom_histogram(bins = 30, fill = "steelblue", color = "white", alpha = 0.7) +
+          labs(title = "Residual Distribution", x = "Residual", y = "Count") +
+          theme_bw()
 
         print(p_resid_hist)
       }

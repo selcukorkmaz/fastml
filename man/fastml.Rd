@@ -106,7 +106,8 @@ iris$Species <- factor(iris$Species)
 # Train models with Bayesian optimization
 model <- fastml(
   data = iris,
-  label = "Species"
+  label = "Species",
+  algorithms = c("random_forest", "xgboost", "svm_radial")
 )
 
 # View model summary

@@ -94,9 +94,9 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
       pred_class <- predict(final_model, new_data = test_data, type = "class")$.pred_class
       pred_prob <- predict(final_model, new_data = test_data, type = "prob")
       data_metrics <- test_data %>%
-        dplyr::select(truth = !!sym(label)) %>%
-        dplyr::mutate(estimate = pred_class) %>%
-        dplyr::bind_cols(pred_prob)
+        select(truth = !!sym(label)) %>%
+        mutate(estimate = pred_class) %>%
+        bind_cols(pred_prob)
 
       # Determine number of classes
       num_classes <- length(unique(data_metrics$truth))
@@ -124,7 +124,7 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
         )
 
         # Combine metrics
-        perf <- dplyr::bind_rows(perf_class, roc_auc_value)
+        perf <- bind_rows(perf_class, roc_auc_value)
       } else {
         # Multiclass classification
         # Compute metrics with macro averaging
@@ -153,7 +153,7 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
         )
 
         # Combine all metrics
-        perf <- dplyr::bind_rows(
+        perf <- bind_rows(
           perf_class,
           perf_roc_auc
         )

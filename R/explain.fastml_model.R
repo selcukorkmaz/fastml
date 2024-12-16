@@ -1,17 +1,4 @@
-#' Explain model (Generic)
-#'
-#' A generic function to provide explanations for models.
-#' Different objects can have specialized methods, such as \code{explain.fastml_model}.
-#'
-#' @param x An object to explain.
-#' @param ... Additional arguments passed to the method.
-#' @export
-explain <- function(x, ...) {
-  UseMethod("explain")
-}
-
-
-#' Explain the fastml_model (DALEX + SHAP + Permutation-based VI, Enhanced)
+#' Explain the fastml_model (DALEX + SHAP + Permutation-based VI)
 #'
 #' Provides model explainability using DALEX. This function:
 #' - Creates a DALEX explainer.
@@ -20,23 +7,22 @@ explain <- function(x, ...) {
 #' - Computes Shapley values (SHAP) for a sample of the training observations, displays the SHAP table,
 #'   and plots a summary bar chart of mean(|SHAP value|) per feature. For classification, it shows separate bars for each class.
 #'
-#' **Enhancements added:**
-#' 1. **Custom number of permutations for VI (vi_iterations):**
+#' 1. Custom number of permutations for VI (vi_iterations):
 #'    You can now specify how many permutations (B) to use for permutation-based variable importance.
 #'    More permutations yield more stable estimates but take longer.
 #'
-#' 2. **Custom color palette (colormap):**
+#' 2. Custom color palette (colormap):
 #'    A `colormap` parameter allows you to select a color palette (e.g., "viridis") for SHAP summary plots and variable importance plots.
 #'    This improves aesthetics over default palettes.
 #'
-#' 3. **Top Features in SHAP Summary (top_features):**
+#' 3. Top Features in SHAP Summary (top_features):
 #'    You can limit the SHAP summary plot to the top N features by mean absolute SHAP value. This helps focus on the most influential features.
 #'
-#' 4. **Support for calibration plot if probably is available (calibration):**
+#' 4. Support for calibration plot if probably is available (calibration):
 #'    If `calibration = TRUE` and `probably` is installed, it attempts to produce a model-based calibration plot (e.g., `cal_plot_logistic`).
 #'    This provides a smoothed, nonparametric view of model calibration.
 #'
-#' 5. **Better error messages and checks:**
+#' 5. Better error messages and checks:
 #'    Improved checks and messages if certain packages or conditions are not met.
 #'
 #' @param object A \code{fastml_model} object.
@@ -47,20 +33,26 @@ explain <- function(x, ...) {
 #' @param vi_iterations Integer. Number of permutations for variable importance. Default 10.
 #' @param colormap Character. Name of a color palette to use (e.g., "viridis"). Default "viridis".
 #' @param top_features Integer. Limit the SHAP summary plot to top N features by mean abs SHAP. Default NULL (no limit).
+#' @param seed Integer. A value specifying the random seed.
 #' @param ... Additional arguments (not currently used).
+#'
+#' @importFrom dplyr select
+#' @importFrom tune extract_fit_parsnip
+#' @importFrom DALEX explain model_parts loss_root_mean_square model_profile predict_parts
+#' @importFrom ggplot2 labs
 #'
 #' @return Prints DALEX explanations: variable importance table & plot, model profiles (if any), SHAP table & summary plot, and optionally a calibration plot.
 #' @export
-explain.fastml_model <- function(object,
-                                 method = "dalex",
-                                 features = NULL,
-                                 grid_size = 20,
-                                 shap_sample = 5,
-                                 vi_iterations = 10,
-                                 colormap = "viridis",
-                                 top_features = NULL,
-                                 seed = 123,
-                                 ...) {
+explain <- function(object,
+                    method = "dalex",
+                    features = NULL,
+                    grid_size = 20,
+                    shap_sample = 5,
+                    vi_iterations = 10,
+                    colormap = "viridis",
+                    top_features = NULL,
+                    seed = 123,
+                    ...) {
   if (!inherits(object, "fastml_model")) {
     stop("The input must be a 'fastml_model' object.")
   }
@@ -79,7 +71,7 @@ explain.fastml_model <- function(object,
   }
 
   train_data <- object$processed_train_data
-  x <- train_data %>% dplyr::select(-!!label)
+  x <- train_data %>% select(-!!label)
   y <- train_data[[label]]
 
   # Identify positive_class if binary classification
@@ -113,7 +105,7 @@ explain.fastml_model <- function(object,
 
   model_info <- if (task == "classification") list(type = "classification") else list(type = "regression")
 
-  parsnip_fit <- tryCatch(tune::extract_fit_parsnip(best_model), error = function(e) NULL)
+  parsnip_fit <- tryCatch(extract_fit_parsnip(best_model), error = function(e) NULL)
   if (is.null(parsnip_fit) && inherits(best_model, "model_fit")) {
     parsnip_fit <- best_model
   }
@@ -140,7 +132,7 @@ explain.fastml_model <- function(object,
   }
 
   exp_try <- try({
-    explainer <- DALEX::explain(
+    explainer <- explain(
       model = parsnip_fit,
       data = x,
       y = if (is.numeric(y)) y else as.numeric(y),
@@ -151,29 +143,23 @@ explain.fastml_model <- function(object,
 
     cat("\n=== DALEX Variable Importance (with Boxplots) ===\n")
     set.seed(seed)
-    vi <- DALEX::model_parts(
+    vi <- model_parts(
       explainer,
       B = vi_iterations,
       type = "raw",
-      loss_function = DALEX::loss_root_mean_square
+      loss_function = loss_root_mean_square
     )
     cat("\nVariable Importance Table:\n")
     print(vi)
 
     # Plot VI with chosen colormap if available
     vi_plot <- plot(vi, show_boxplots = TRUE)
-    # if (!is.null(colormap) && colormap == "viridis") {
-    #   # If we want to apply viridis to VI plot, we can attempt to modify scale
-    #   # But plot(vi) returns a ggplot - we can try a scale_color_viridis_d or scale_fill_viridis_d
-    #   if (requireNamespace("viridisLite", quietly = TRUE)) {
-    #     vi_plot <- vi_plot + ggplot2::scale_fill_viridis_d() + ggplot2::scale_color_viridis_d()
-    #   }
-    # }
+
     print(vi_plot)
 
     if (!is.null(features)) {
       cat("\n=== DALEX Model Profiles (Partial Dependence) ===\n")
-      mp <- DALEX::model_profile(explainer, variables = features, N = grid_size)
+      mp <- model_profile(explainer, variables = features, N = grid_size)
       print(mp)
     }
 
@@ -183,7 +169,7 @@ explain.fastml_model <- function(object,
 
     cat("\n=== DALEX Shapley Values (SHAP) ===\n")
     set.seed(seed)
-    shap <- DALEX::predict_parts(explainer, new_observation = shap_data, type = "shap")
+    shap <- predict_parts(explainer, new_observation = shap_data, type = "shap")
     print(shap)
 
     # SHAP aggregation
@@ -196,7 +182,7 @@ explain.fastml_model <- function(object,
       group_vars <- c("feature")
     }
 
-    print(plot(shap) + ggplot2::labs(title = paste("SHAP Values for", object$best_model_name)))
+    print(plot(shap) + labs(title = paste("SHAP Values for", object$best_model_name)))
 
 
   }, silent = TRUE)

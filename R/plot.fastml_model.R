@@ -47,14 +47,14 @@ plot.fastml_model <- function(x, ...) {
   }
 
   # Plot performance metrics
-  p <- ggplot2::ggplot(performance_df,
-                       ggplot2::aes(x = Model, y = .estimate, fill = Model)) +
-    ggplot2::geom_bar(stat = "identity", position = "dodge") +
-    ggplot2::facet_wrap(~ .metric, scales = "free_y") +
-    ggplot2::theme_bw() +
-    ggplot2::theme(axis.text.x = ggplot2::element_text(angle = 45, hjust = 1),
+  p <- ggplot(performance_df,
+                       aes(x = Model, y = .estimate, fill = Model)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    facet_wrap(~ .metric, scales = "free_y") +
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 45, hjust = 1),
                    legend.position = "none") +
-    ggplot2::labs(title = "Model Performance Comparison", x = "Model", y = "Metric Value")
+    labs(title = "Model Performance Comparison", x = "Model", y = "Metric Value")
 
   # Display the plot
   print(p)

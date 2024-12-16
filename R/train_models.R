@@ -86,7 +86,7 @@ train_models <- function(train_data,
     for (param_name in names(new_params)) {
       param_value <- new_params[[param_name]]
 
-      param_row <- params_model %>% dplyr::filter(id == param_name)
+      param_row <- params_model %>% filter(id == param_name)
       if (nrow(param_row) == 0) {
         next
       }
@@ -108,7 +108,7 @@ train_models <- function(train_data,
       }
 
       params_model <- params_model %>%
-        dplyr::mutate(object = if_else(id == param_name, list(param_obj), object))
+        mutate(object = if_else(id == param_name, list(param_obj), object))
     }
     return(params_model)
   }
@@ -156,7 +156,7 @@ train_models <- function(train_data,
       tune_params_model <- extract_parameter_set_dials(model_spec)
       tune_params_model <- finalize(
         tune_params_model,
-        x = train_data %>% dplyr::select(-all_of(label))
+        x = train_data %>% select(-all_of(label))
       )
 
       if (!is.null(algo_tune_params)) {
@@ -278,8 +278,6 @@ train_models <- function(train_data,
 
   return(models)
 }
-
-
 
 # Declare global variables
 utils::globalVariables(c(

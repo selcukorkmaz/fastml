@@ -530,6 +530,7 @@ define_decision_tree_spec <- function(task, tune = FALSE) {
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip logistic_reg set_engine
 #' @importFrom tune finalize_model
+#' @importFrom tibble tibble
 #' @noRd
 define_penalized_logistic_regression_spec <- function(task, tune = FALSE) {
   if (task != "classification") {
@@ -549,7 +550,7 @@ define_penalized_logistic_regression_spec <- function(task, tune = FALSE) {
       mixture = defaults$mixture
     ) %>%
       set_engine("glmnet")
-    model_spec <- finalize_model(model_spec, parameters = tibble::tibble())
+    model_spec <- finalize_model(model_spec, parameters = tibble())
   }
   list(model_spec = model_spec)
 }

@@ -42,7 +42,7 @@
 #' @param recipe A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.
 #' @importFrom magrittr %>%
 #' @importFrom rsample initial_split training testing
-#' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake
+#' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake all_numeric_predictors all_predictors all_nominal_predictors all_outcomes
 #' @importFrom dplyr filter pull
 #' @importFrom stats as.formula
 #' @importFrom doFuture registerDoFuture
@@ -57,7 +57,8 @@
 #' # Train models with Bayesian optimization
 #' model <- fastml(
 #'   data = iris,
-#'   label = "Species"
+#'   label = "Species",
+#'   algorithms = c("random_forest", "xgboost", "svm_radial")
 #' )
 #'
 #' # View model summary
@@ -176,13 +177,13 @@ fastml <- function(data,
   }
 
   if (stratify && task == "classification") {
-    split <- rsample::initial_split(data, prop = 1 - test_size, strata = label)
+    split <- initial_split(data, prop = 1 - test_size, strata = label)
   } else {
-    split <- rsample::initial_split(data, prop = 1 - test_size)
+    split <- initial_split(data, prop = 1 - test_size)
   }
 
-  train_data <- rsample::training(split)
-  test_data <- rsample::testing(split)
+  train_data <- training(split)
+  test_data <- testing(split)
 
   if (task == "classification") {
     train_data[[label]] <- as.factor(train_data[[label]])
@@ -193,16 +194,16 @@ fastml <- function(data,
   }
 
   if (is.null(recipe)) {
-    recipe <- recipes::recipe(as.formula(paste(label, "~ .")), data = train_data)
+    recipe <- recipe(as.formula(paste(label, "~ .")), data = train_data)
 
     if (impute_method == "medianImpute") {
-      recipe <- recipe %>% recipes::step_impute_median(recipes::all_numeric_predictors())
+      recipe <- recipe %>% step_impute_median(all_numeric_predictors())
     } else if (impute_method == "knnImpute") {
-      recipe <- recipe %>% recipes::step_impute_knn(recipes::all_predictors())
+      recipe <- recipe %>% step_impute_knn(all_predictors())
     } else if (impute_method == "bagImpute") {
-      recipe <- recipe %>% recipes::step_impute_bag(recipes::all_predictors())
+      recipe <- recipe %>% step_impute_bag(all_predictors())
     } else if (impute_method == "remove") {
-      recipe <- recipe %>% recipes::step_naomit(recipes::all_predictors(), skip = TRUE)
+      recipe <- recipe %>% step_naomit(all_predictors(), skip = TRUE)
     } else if (impute_method == "error" || is.null(impute_method)) {
       # do nothing
     } else {
@@ -210,15 +211,15 @@ fastml <- function(data,
     }
 
     if (encode_categoricals) {
-      recipe <- recipe %>% recipes::step_dummy(recipes::all_nominal_predictors(), -recipes::all_outcomes())
+      recipe <- recipe %>% step_dummy(all_nominal_predictors(), -all_outcomes())
     }
 
     if (!is.null(scaling_methods)) {
       if ("center" %in% scaling_methods) {
-        recipe <- recipe %>% recipes::step_center(recipes::all_numeric_predictors())
+        recipe <- recipe %>% step_center(all_numeric_predictors())
       }
       if ("scale" %in% scaling_methods) {
-        recipe <- recipe %>% recipes::step_scale(recipes::all_numeric_predictors())
+        recipe <- recipe %>% step_scale(all_numeric_predictors())
       }
     }
 
@@ -241,13 +242,13 @@ fastml <- function(data,
     if (!requireNamespace("future", quietly = TRUE)) {
       stop("The 'future' package is required for parallel processing but is not installed.")
     }
-    doFuture::registerDoFuture()
-    future::plan(future::multisession, workers = n_cores)
+    registerDoFuture()
+    plan(multisession, workers = n_cores)
   } else {
     if (!requireNamespace("future", quietly = TRUE)) {
       stop("The 'future' package is required but is not installed.")
     }
-    future::plan(future::sequential)
+    plan(sequential)
   }
 
   # Determine tuning strategy if use_default_tuning is TRUE and tune_params is NULL
@@ -286,7 +287,7 @@ fastml <- function(data,
   performance <- eval_output$performance
   predictions <- eval_output$predictions
 
-  metric_values <- sapply(performance, function(x) x %>% dplyr::filter(.metric == metric) %>% dplyr::pull(.estimate))
+  metric_values <- sapply(performance, function(x) x %>% filter(.metric == metric) %>% pull(.estimate))
 
   if (any(is.na(metric_values))) {
     warning("Some models did not return the specified metric.")
@@ -302,8 +303,8 @@ fastml <- function(data,
 
   # Now store processed training data for explainability:
   # Prep and bake the recipe on train_data to store processed_train_data
-  trained_recipe <- recipes::prep(recipe, training = train_data, retain = TRUE)
-  processed_train_data <- recipes::bake(trained_recipe, new_data = NULL)
+  trained_recipe <- prep(recipe, training = train_data, retain = TRUE)
+  processed_train_data <- bake(trained_recipe, new_data = NULL)
 
   result <- list(
     best_model = models[[best_model_idx]],

@@ -26,7 +26,7 @@ and residual plots (regression).}
 
 \item{notes}{User-defined commentary.}
 
-\item{...}{Not used.}
+\item{...}{Additional arguments.}
 }
 \value{
 Prints summary and plots if requested.
@@ -37,14 +37,11 @@ For classification:
 - Shows Accuracy, F1 Score, Kappa, Precision, ROC AUC, Sensitivity, Specificity.
 - Produces a bar plot of these metrics.
 - Shows ROC curves for binary classification using yardstick::roc_curve().
-- Displays a confusion matrix and a smooth nonparametric calibration plot if probabilities are available (requires probably).
+- Displays a confusion matrix and a calibration plot if probabilities are available.
 }
 \details{
 For regression:
 - Shows RMSE, R-squared, and MAE.
 - Produces a bar plot of these metrics.
 - Displays residual diagnostics (truth vs predicted, residual distribution).
-
-The ROC curves are now plotted with yardstick. If multiple models exist, their ROC curves are plotted on the same plot (if combined_roc=TRUE) or separately.
-We fix the RColorBrewer warning by ensuring at least 3 colors.
 }
