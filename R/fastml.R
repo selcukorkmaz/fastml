@@ -91,7 +91,7 @@ fastml <- function(data,
                    tune_params = NULL,
                    metric = NULL,
                    n_cores = 1,
-                   stratify = NULL,
+                   stratify = TRUE,
                    impute_method = "error",
                    encode_categoricals = TRUE,
                    scaling_methods = c("center", "scale"),
@@ -119,10 +119,6 @@ fastml <- function(data,
 
   if (is.null(metric)) {
     metric <- if (task == "classification") "accuracy" else "rmse"
-  }
-
-  if (is.null(stratify)) {
-    stratify <- (task == "classification")
   }
 
   supported_algorithms_classification <- c(
