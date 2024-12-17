@@ -12,6 +12,8 @@ fastml(
   resampling_method = "cv",
   folds = ifelse(grepl("cv", resampling_method), 10, 25),
   repeats = ifelse(resampling_method == "repeatedcv", 1, NA),
+  event_class = "first",
+  recipe = NULL,
   tune_params = NULL,
   metric = NULL,
   n_cores = 1,
@@ -25,8 +27,7 @@ fastml(
   tuning_iterations = 10,
   early_stopping = FALSE,
   adaptive = FALSE,
-  seed = 123,
-  recipe = NULL
+  seed = 123
 )
 }
 \arguments{
@@ -44,6 +45,10 @@ Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.}
 \item{folds}{An integer specifying the number of folds for cross-validation. Default is \code{10} for methods containing "cv" and \code{25} otherwise.}
 
 \item{repeats}{Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").}
+
+\item{event_class}{A single string. Either "first" or "second" to specify which level of truth to consider as the "event". Default is "first".}
+
+\item{recipe}{A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.}
 
 \item{tune_params}{A list specifying hyperparameter tuning ranges. Default is \code{NULL}.}
 
@@ -81,8 +86,6 @@ Default is \code{"error"}.}
 \item{adaptive}{Logical indicating whether to use adaptive/racing methods for tuning. Default is \code{FALSE}.}
 
 \item{seed}{An integer value specifying the random seed for reproducibility.}
-
-\item{recipe}{A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.}
 }
 \value{
 An object of class \code{fastml_model} containing the best model, performance metrics, and other information.

@@ -8,6 +8,7 @@
 #' @param label Name of the target variable.
 #' @param task Type of task: "classification" or "regression".
 #' @param metric The performance metric to optimize (e.g., "accuracy", "rmse").
+#' @param event_class A single string. Either "first" or "second" to specify which level of truth to consider as the "event".
 #' @importFrom dplyr filter bind_rows pull mutate select bind_cols
 #' @importFrom yardstick metric_set accuracy kap roc_auc sens spec precision f_meas rmse rsq mae
 #' @importFrom workflows pull_workflow_spec pull_workflow_preprocessor workflow add_model add_recipe
@@ -21,7 +22,7 @@
 #'     \item{predictions}{A named list of data frames with columns including truth, predictions, and probabilities per model.}
 #'   }
 #' @export
-evaluate_models <- function(models, train_data, test_data, label, task, metric = NULL) {
+evaluate_models <- function(models, train_data, test_data, label, task, metric = NULL, event_class) {
   # Load required packages
   if (!requireNamespace("yardstick", quietly = TRUE)) {
     stop("The 'yardstick' package is required but not installed.")
@@ -113,7 +114,8 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
           precision,
           f_meas
         )
-        perf_class <- metrics_class(data_metrics, truth = truth, estimate = estimate)
+
+        perf_class <- metrics_class(data_metrics, truth = truth, estimate = estimate, event_level = event_class)
 
         # Compute ROC AUC
         roc_auc_value <- roc_auc(
@@ -122,6 +124,16 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
           !!sym(paste0(".pred_", positive_class)),
           event_level = "second"
         )
+
+        if(roc_auc_value$.estimate == 0){
+
+          roc_auc_value <- roc_auc(
+            data_metrics,
+            truth = truth,
+            !!sym(paste0(".pred_", positive_class)),
+            event_level = "first"
+          )
+        }
 
         # Combine metrics
         perf <- bind_rows(perf_class, roc_auc_value)

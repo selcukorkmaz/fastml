@@ -16,6 +16,8 @@
 #'                          Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.
 #' @param folds An integer specifying the number of folds for cross-validation. Default is \code{10} for methods containing "cv" and \code{25} otherwise.
 #' @param repeats Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").
+#' @param event_class A single string. Either "first" or "second" to specify which level of truth to consider as the "event". Default is "first".
+#' @param recipe A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.
 #' @param tune_params A list specifying hyperparameter tuning ranges. Default is \code{NULL}.
 #' @param metric The performance metric to optimize during training. Default depends on the task.
 #' @param n_cores An integer specifying the number of CPU cores to use for parallel processing. Default is \code{1}.
@@ -39,7 +41,6 @@
 #' @param early_stopping Logical indicating whether to use early stopping in Bayesian tuning methods (if supported). Default is \code{FALSE}.
 #' @param adaptive Logical indicating whether to use adaptive/racing methods for tuning. Default is \code{FALSE}.
 #' @param seed An integer value specifying the random seed for reproducibility.
-#' @param recipe A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.
 #' @importFrom magrittr %>%
 #' @importFrom rsample initial_split training testing
 #' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake all_numeric_predictors all_predictors all_nominal_predictors all_outcomes
@@ -88,6 +89,8 @@ fastml <- function(data,
                    resampling_method = "cv",
                    folds = ifelse(grepl("cv", resampling_method), 10, 25),
                    repeats = ifelse(resampling_method == "repeatedcv", 1, NA),
+                   event_class = "first",
+                   recipe = NULL,
                    tune_params = NULL,
                    metric = NULL,
                    n_cores = 1,
@@ -101,8 +104,8 @@ fastml <- function(data,
                    tuning_iterations = 10,
                    early_stopping = FALSE,
                    adaptive = FALSE,
-                   seed = 123,
-                   recipe = NULL) {
+                   seed = 123
+                   ) {
   set.seed(seed)
   if (!(label %in% names(data))) {
     stop("The specified label does not exist in the data.")
@@ -274,7 +277,7 @@ fastml <- function(data,
     stop("No models were successfully trained.")
   }
 
-  eval_output <- evaluate_models(models, train_data, test_data, label, task, metric)
+  eval_output <- evaluate_models(models, train_data, test_data, label, task, metric, event_class)
   performance <- eval_output$performance
   predictions <- eval_output$predictions
 

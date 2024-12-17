@@ -4,7 +4,15 @@
 \alias{evaluate_models}
 \title{Evaluate Models Function}
 \usage{
-evaluate_models(models, train_data, test_data, label, task, metric = NULL)
+evaluate_models(
+  models,
+  train_data,
+  test_data,
+  label,
+  task,
+  metric = NULL,
+  event_class
+)
 }
 \arguments{
 \item{models}{A list of trained model objects.}
@@ -18,6 +26,8 @@ evaluate_models(models, train_data, test_data, label, task, metric = NULL)
 \item{task}{Type of task: "classification" or "regression".}
 
 \item{metric}{The performance metric to optimize (e.g., "accuracy", "rmse").}
+
+\item{event_class}{A single string. Either "first" or "second" to specify which level of truth to consider as the "event".}
 }
 \value{
 A list with two elements:
