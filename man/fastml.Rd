@@ -15,7 +15,7 @@ fastml(
   tune_params = NULL,
   metric = NULL,
   n_cores = 1,
-  stratify = NULL,
+  stratify = TRUE,
   impute_method = "error",
   encode_categoricals = TRUE,
   scaling_methods = c("center", "scale"),

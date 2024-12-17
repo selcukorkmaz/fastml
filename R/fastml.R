@@ -250,14 +250,6 @@ fastml <- function(data,
     plan(sequential)
   }
 
-  # Determine tuning strategy if use_default_tuning is TRUE and tune_params is NULL
-  if (use_default_tuning && is.null(tune_params)) {
-    # Automatically switch to Bayesian approach if not specified
-    if (tuning_strategy == "grid") {
-      tuning_strategy <- "bayes"
-    }
-  }
-
   models <- train_models(
     train_data = train_data,
     label = label,

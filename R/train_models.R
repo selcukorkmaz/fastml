@@ -270,6 +270,7 @@ train_models <- function(train_data,
         e$message
       ))
     })
+
   }
 
   if (length(models) == 0) {
@@ -487,7 +488,6 @@ get_default_tune_params <- function(algo, train_data, label) {
          # 12. KNN
          "knn" = list(
            neighbors = c(3, 7),  # Narrowed range for efficiency
-           weight_func = c("rectangular", "triangular"),
            dist_power = c(1, 2)
          ),
 
@@ -554,7 +554,6 @@ get_default_tune_params <- function(algo, train_data, label) {
          # Default case
          NULL)
 }
-
 
 
 
