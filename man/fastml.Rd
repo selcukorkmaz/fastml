@@ -21,7 +21,12 @@ fastml(
   scaling_methods = c("center", "scale"),
   summaryFunction = NULL,
   use_default_tuning = FALSE,
-  seed = 123
+  tuning_strategy = "grid",
+  tuning_iterations = 10,
+  early_stopping = FALSE,
+  adaptive = FALSE,
+  seed = 123,
+  recipe = NULL
 )
 }
 \arguments{
@@ -33,7 +38,7 @@ fastml(
 
 \item{test_size}{A numeric value between 0 and 1 indicating the proportion of the data to use for testing. Default is \code{0.2}.}
 
-\item{resampling_method}{A string specifying the resampling method for cross-validation. Default is \code{"cv"} (cross-validation).
+\item{resampling_method}{A string specifying the resampling method for model evaluation. Default is \code{"cv"} (cross-validation).
 Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.}
 
 \item{folds}{An integer specifying the number of folds for cross-validation. Default is \code{10} for methods containing "cv" and \code{25} otherwise.}
@@ -67,7 +72,17 @@ Default is \code{"error"}.}
 
 \item{use_default_tuning}{Logical indicating whether to use default tuning grids when \code{tune_params} is \code{NULL}. Default is \code{FALSE}.}
 
+\item{tuning_strategy}{A string specifying the tuning strategy. Options might include \code{"grid"}, \code{"bayes"}, or \code{"none"}. Default is \code{"grid"}.}
+
+\item{tuning_iterations}{Number of tuning iterations (applicable for Bayesian or other iterative search methods). Default is \code{10}.}
+
+\item{early_stopping}{Logical indicating whether to use early stopping in Bayesian tuning methods (if supported). Default is \code{FALSE}.}
+
+\item{adaptive}{Logical indicating whether to use adaptive/racing methods for tuning. Default is \code{FALSE}.}
+
 \item{seed}{An integer value specifying the random seed for reproducibility.}
+
+\item{recipe}{A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.}
 }
 \value{
 An object of class \code{fastml_model} containing the best model, performance metrics, and other information.
@@ -75,24 +90,31 @@ An object of class \code{fastml_model} containing the best model, performance me
 \description{
 Trains and evaluates multiple classification or regression models automatically detecting the task based on the target variable type.
 }
+\details{
+Fast Machine Learning Function
+
+Trains and evaluates multiple classification or regression models. The function automatically
+detects the task based on the target variable type and can perform advanced hyperparameter tuning
+using various tuning strategies.
+}
 \examples{
-  # Example 1: Using the iris dataset for binary classification (excluding 'setosa')
-  data(iris)
-  iris <- iris[iris$Species != "setosa", ]  # Binary classification
-  iris$Species <- factor(iris$Species)
+# Example 1: Using the iris dataset for binary classification (excluding 'setosa')
+data(iris)
+iris <- iris[iris$Species != "setosa", ]  # Binary classification
+iris$Species <- factor(iris$Species)
 
-  # Train models
-  model <- fastml(
-    data = iris,
-    label = "Species",
-    algorithms = c("random_forest", "xgboost", "svm_radial")
-  )
+# Train models with Bayesian optimization
+model <- fastml(
+  data = iris,
+  label = "Species",
+  algorithms = c("random_forest", "xgboost", "svm_radial")
+)
 
-  # View model summary
-  summary(model)
+# View model summary
+summary(model)
 
-  # Explain model with DALEX and SHAP
-  explain_model(model)
+# Explain model
+explain_model(model)
 
   # Example 2: Using the mtcars dataset for regression
   data(mtcars)
