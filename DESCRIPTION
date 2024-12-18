@@ -36,7 +36,8 @@ Imports:
     probably,
     viridisLite,
     DALEX,
-    magrittr
+    magrittr,
+    patchwork
 Suggests:
     testthat (>= 3.0.0),
     knitr,
@@ -49,5 +50,6 @@ Suggests:
     kernlab,
     keras,
     lightgbm,
-    rstanarm
+    rstanarm,
+    mixOmics
 RoxygenNote: 7.3.2

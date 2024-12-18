@@ -53,6 +53,7 @@ summary.fastml_model <- function(object,
   best_model_name <- object$best_model_name
   optimized_metric <- object$metric
   model_count <- length(object$models)
+  positive_class <- object$positive_class
 
   # Combine performance metrics
   metrics_list <- lapply(names(performance), function(mn) {
@@ -110,16 +111,16 @@ summary.fastml_model <- function(object,
   cat("\n===== fastml Model Summary =====\n")
   cat("Task:", task, "\n")
   cat("Number of Models Trained:", model_count, "\n")
-  best_val <- performance_wide[performance_wide$Model == best_model_name, main_metric]
-  cat("Best Model:", best_model_name, sprintf("(%s: %.3f)", main_metric, best_val), "\n\n")
+  best_val <- unique(performance_wide[performance_wide$Model %in% best_model_name, main_metric])
+  cat("Best Model(s):", best_model_name, sprintf("(%s: %.7f)", main_metric, best_val), "\n\n")
 
   cat("Performance Metrics (Sorted by", main_metric, "):\n\n")
 
   metrics_to_print <- c("Model", desired_metrics)
-  best_idx <- which(performance_wide$Model == best_model_name)
+  best_idx <- which(performance_wide$Model %in% best_model_name)
 
   for (m in desired_metrics) {
-    performance_wide[[m]] <- format(performance_wide[[m]], digits = 3, nsmall = 3)
+    performance_wide[[m]] <- format(performance_wide[[m]], digits = 7, nsmall = 7)
   }
 
   header <- c("Model", sapply(desired_metrics, function(m) {
@@ -128,7 +129,7 @@ summary.fastml_model <- function(object,
 
   data_str <- performance_wide
   data_str$Model <- as.character(data_str$Model)
-  if (length(best_idx) == 1) data_str$Model[best_idx] <- paste0(data_str$Model[best_idx], "*")
+  data_str$Model[best_idx] <- paste0(data_str$Model[best_idx], "*")
 
   col_widths <- sapply(seq_along(header), function(i) {
     col_name <- header[i]
@@ -151,30 +152,102 @@ summary.fastml_model <- function(object,
   }
 
   cat(line_sep, "\n")
-  cat("(* Best model)\n\n")
+  cat("(*Best model(s))\n\n")
 
   cat("Best Model Hyperparameters:\n\n")
-  parsnip_fit <- tryCatch(extract_fit_parsnip(object$best_model), error = function(e) NULL)
+
+  if(length(object$best_model) == 1){
+    parsnip_fit <- tryCatch(extract_fit_parsnip(object$best_model[[1]]), error = function(e) NULL)
+    nms_parsnip_fit <- names(parsnip_fit)
+    nms_parsnip_spec <- names(parsnip_fit$spec)
+  } else {
+    parsnip_fit <- tryCatch(lapply(object$best_model, extract_fit_parsnip), error = function(e) NULL)
+    nms_parsnip_fit <- unique(unlist(lapply(parsnip_fit, names)))
+    nms_parsnip_spec <- unique(unlist(lapply(lapply(parsnip_fit, function(model) model$spec), names)))
+  }
+
   if (is.null(parsnip_fit)) {
     cat("Could not extract final fitted model details.\n")
-  } else if ("spec" %in% names(parsnip_fit) && "args" %in% names(parsnip_fit$spec)) {
-    params <- parsnip_fit$spec$args
+  } else if ("spec" %in% nms_parsnip_fit && "args" %in% nms_parsnip_spec) {
+
+    if(length(object$best_model) == 1){
+      params <- parsnip_fit$spec$args
+    }else{
+      params <- lapply(parsnip_fit, function(model) model$spec$args)
+    }
     if (length(params) > 0) {
       cleaned_params <- list()
-      for (pname in names(params)) {
+      if(length(object$best_model) == 1){
+          for (pname in names(params)) {
         val <- params[[pname]]
         if (inherits(val, "quosure")) {
           val <- tryCatch(eval(get_expr(val), envir = get_env(val)), error = function(e) val)
         }
         cleaned_params[[pname]] <- val
       }
+      }else{
+
+        # Initialize a list to store cleaned parameters for each model
+        cleaned_params_list <- list()
+
+        # Process each model's parameters
+        for (model_name in names(params)) {
+          model_params <- params[[model_name]]
+          cleaned_params <- list()
+
+          for (pname in names(model_params)) {
+            val <- model_params[[pname]]
+
+            # Check if the parameter is a quosure
+            if (inherits(val, "quosure")) {
+              val <- tryCatch(
+                eval(rlang::get_expr(val), envir = rlang::get_env(val)),
+                error = function(e) val # Retain the quosure if evaluation fails
+              )
+            }
+
+            # Add the cleaned value to the cleaned_params list
+            cleaned_params[[pname]] <- val
+          }
+
+          # Store the cleaned parameters for the current model
+          cleaned_params_list[[model_name]] <- cleaned_params
+        }
+
+      }
       if (length(cleaned_params) == 0) {
         cat("No hyperparameters found.\n")
       } else {
-        for (pname in names(cleaned_params)) {
-          val <- cleaned_params[[pname]]
-          if (is.numeric(val)) val <- as.character(val)
-          cat(pname, ": ", val, "\n", sep = "")
+
+        if(length(object$best_model) == 1){
+          for (pname in names(cleaned_params)) {
+            val <- cleaned_params[[pname]]
+            if (is.numeric(val)) val <- as.character(val)
+            cat(pname, ": ", val, "\n", sep = "")
+          }
+        }else{
+
+          # Loop through the cleaned parameters for each model
+          for (model_name in names(cleaned_params_list)) {
+            cat("Model:", model_name, "\n")
+
+            # Extract cleaned parameters for the current model
+            cleaned_params <- cleaned_params_list[[model_name]]
+
+            # Process and print each parameter
+            for (pname in names(cleaned_params)) {
+              val <- cleaned_params[[pname]]
+
+              # Convert numeric values to character for consistent output
+              if (is.numeric(val)) val <- as.character(val)
+
+              # Print parameter name and value
+              cat("  ", pname, ": ", val, "\n", sep = "")
+            }
+
+            # Add a separator for readability between models
+            cat("\n")
+          }
         }
       }
     } else {
@@ -237,8 +310,6 @@ summary.fastml_model <- function(object,
       if (!is.null(df_example) && "truth" %in% names(df_example)) {
         unique_classes <- unique(df_example$truth)
         if (length(unique_classes) == 2) {
-          positive_class <- levels(df_example$truth)[1]
-
           # We'll create a combined data frame for ROC curves from all models
           roc_dfs <- list()
           for (model_name in model_names_pred) {
@@ -304,24 +375,87 @@ summary.fastml_model <- function(object,
   }
 
   # Additional Diagnostics
-  if (plot && !is.null(predictions_list) && best_model_name %in% names(predictions_list)) {
-    df_best <- predictions_list[[best_model_name]]
+  if (plot && !is.null(predictions_list) && all(best_model_name %in% names(predictions_list))) {
+
+    if(length(object$best_model) == 1){
+      df_best <- predictions_list[[best_model_name]]
+      names_df_best <- names(df_best)
+    }else{
+      df_best <- predictions_list[best_model_name]
+      names_df_best <- unique(unlist(lapply(df_best, names)))
+      }
+
     if (task == "classification") {
-      if (!is.null(df_best) && "truth" %in% names(df_best) && "estimate" %in% names(df_best)) {
-        cm <- conf_mat(df_best, truth = truth, estimate = estimate)
-        cat("\nConfusion Matrix for Best Model:\n")
-        print(cm)
+      if (!is.null(df_best) && "truth" %in% names_df_best && "estimate" %in% names_df_best) {
+        if(length(object$best_model) == 1){
+          cm <- conf_mat(df_best, truth = truth, estimate = estimate)
+          cat("\nConfusion Matrix for Best Model:",best_model_name, "\n")
+          print(cm)
+        }else{
+
+          # Iterate through the models in df_best
+          for (model_name in names(df_best)) {
+            cat("Confusion Matrix for Model:", model_name, "\n")
+
+            # Extract predictions for the current model
+            model_predictions <- df_best[[model_name]]
+
+            # Check if `truth` and `estimate` columns are available
+            if (!("truth" %in% colnames(model_predictions)) || !("estimate" %in% colnames(model_predictions))) {
+              cat("Error: Missing `truth` or `estimate` columns in predictions for model:", model_name, "\n")
+              next
+            }
+
+            # Compute confusion matrix
+            cm <- conf_mat(model_predictions, truth = truth, estimate = estimate)
+            print(cm)
+          }
+        }
 
         # Calibration Plot
         if (requireNamespace("probably", quietly = TRUE)) {
+          if(length(object$best_model) == 1){
           prob_cols <- grep("^\\.pred_", names(df_best), value = TRUE)
+
+          }else{
+
+            prob_cols <- grep("^\\.pred_", names_df_best, value = TRUE)
+
+          }
           if (length(prob_cols) > 1) {
-            positive_class <- levels(df_best$truth)[1]
             pred_col <- paste0(".pred_", positive_class)
             if (pred_col %in% prob_cols) {
+
+              if(length(object$best_model) == 1){
               p_cal <- cal_plot_breaks(df_best, truth = truth, estimate = !!sym(pred_col)) +
-                labs(title = "Calibration Plot")
+                labs(title = paste("Calibration Plot", best_model_name))
               print(p_cal)
+              }else{
+
+                # Loop through each model in df_best
+                for (model_name in names(df_best)) {
+                  cat("Calibration Plot for Model:", model_name, "\n")
+
+                  # Extract the predictions for the current model
+                  model_predictions <- df_best[[model_name]]
+
+                  # Ensure the pred_col exists in the data frame
+                  if (!pred_col %in% colnames(model_predictions)) {
+                    cat("Error: Column", pred_col, "not found in model predictions for", model_name, "\n")
+                    next
+                  }
+
+                  # Create the calibration plot
+                  p_cal <- cal_plot_breaks(
+                    model_predictions,
+                    truth = truth,
+                    estimate = !!sym(pred_col)
+                  ) +
+                    labs(title = paste("Calibration Plot for", model_name))
+
+                  print(p_cal)
+                }
+              }
             }
           }
         } else {

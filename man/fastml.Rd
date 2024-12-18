@@ -15,7 +15,7 @@ fastml(
   event_class = "first",
   recipe = NULL,
   tune_params = NULL,
-  metric = NULL,
+  metric = "accuracy",
   n_cores = 1,
   stratify = TRUE,
   impute_method = "error",
@@ -52,7 +52,7 @@ Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.}
 
 \item{tune_params}{A list specifying hyperparameter tuning ranges. Default is \code{NULL}.}
 
-\item{metric}{The performance metric to optimize during training. Default depends on the task.}
+\item{metric}{The performance metric to optimize during training. Default is "accuracy".}
 
 \item{n_cores}{An integer specifying the number of CPU cores to use for parallel processing. Default is \code{1}.}
 

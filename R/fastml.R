@@ -19,7 +19,7 @@
 #' @param event_class A single string. Either "first" or "second" to specify which level of truth to consider as the "event". Default is "first".
 #' @param recipe A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.
 #' @param tune_params A list specifying hyperparameter tuning ranges. Default is \code{NULL}.
-#' @param metric The performance metric to optimize during training. Default depends on the task.
+#' @param metric The performance metric to optimize during training. Default is "accuracy".
 #' @param n_cores An integer specifying the number of CPU cores to use for parallel processing. Default is \code{1}.
 #' @param stratify Logical indicating whether to use stratified sampling when splitting the data. Default is \code{TRUE} for classification and \code{FALSE} for regression.
 #' @param impute_method Method for handling missing values. Options include:
@@ -92,7 +92,7 @@ fastml <- function(data,
                    event_class = "first",
                    recipe = NULL,
                    tune_params = NULL,
-                   metric = NULL,
+                   metric = "accuracy",
                    n_cores = 1,
                    stratify = TRUE,
                    impute_method = "error",
@@ -112,6 +112,7 @@ fastml <- function(data,
   }
 
   target_var <- data[[label]]
+
   if (is.factor(target_var) || is.character(target_var) || is.logical(target_var)) {
     task <- "classification"
   } else if (is.numeric(target_var)) {
@@ -119,6 +120,10 @@ fastml <- function(data,
   } else {
     stop("Unable to detect task type. The target variable must be numeric, factor, character, or logical.")
   }
+
+  if(task == "classification"){
+    positive_class <- ifelse(event_class == "first", levels(data[[label]])[1], levels(data[[label]])[2])
+  }else{positive_class = NULL}
 
   if (is.null(metric)) {
     metric <- if (task == "classification") "accuracy" else "rmse"
@@ -292,8 +297,8 @@ fastml <- function(data,
     stop("None of the models returned the specified metric.")
   }
 
-  best_model_idx <- if (task == "regression") which.min(metric_values) else which.max(metric_values)
-  best_model_name <- names(models)[best_model_idx]
+  best_model_idx <- if (task == "regression") which.min(metric_values) else names(metric_values[metric_values == max(metric_values)])
+  best_model_name <- names(models)[names(models) %in% best_model_idx]
 
   # Now store processed training data for explainability:
   # Prep and bake the recipe on train_data to store processed_train_data
@@ -301,7 +306,7 @@ fastml <- function(data,
   processed_train_data <- bake(trained_recipe, new_data = NULL)
 
   result <- list(
-    best_model = models[[best_model_idx]],
+    best_model = models[best_model_name],
     best_model_name = best_model_name,
     performance = performance,
     predictions = predictions,
@@ -310,7 +315,8 @@ fastml <- function(data,
     label = label,
     task = task,
     models = models,
-    metric = metric
+    metric = metric,
+    positive_class = positive_class
   )
   class(result) <- "fastml_model"
   return(result)
