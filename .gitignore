@@ -3,3 +3,6 @@
 .RData
 .Ruserdata
 .Rprofile
+
+# Ignored files and folders to push GitHup repository.
+IgnoredFiles/

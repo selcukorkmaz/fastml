@@ -3,3 +3,7 @@
 ^.*\.Rproj$
 ^\.Rproj\.user$
 ^\.Rprofile
+
+# Ignored files and folders from Package Building
+docker/
+IgnoredFiles/

@@ -56,3 +56,4 @@ Suggests:
     rstanarm,
     mixOmics
 RoxygenNote: 7.3.2
+Config/testthat/edition: 3
