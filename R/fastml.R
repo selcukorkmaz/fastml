@@ -43,7 +43,7 @@
 #' @param seed An integer value specifying the random seed for reproducibility.
 #' @importFrom magrittr %>%
 #' @importFrom rsample initial_split training testing
-#' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake all_numeric_predictors all_predictors all_nominal_predictors all_outcomes
+#' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake all_numeric_predictors all_predictors all_nominal_predictors all_outcomes step_zv
 #' @importFrom dplyr filter pull rename_with mutate across where
 #' @importFrom stats as.formula
 #' @importFrom doFuture registerDoFuture
@@ -289,6 +289,9 @@ fastml <- function(data,
       stop("The provided recipe is already trained. Please supply an untrained recipe.")
     }
   }
+
+  recipe <- recipe %>%
+    step_zv(all_predictors())
 
   # Set up parallel processing using future
   if (n_cores > 1) {
