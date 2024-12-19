@@ -44,10 +44,12 @@
 #' @importFrom magrittr %>%
 #' @importFrom rsample initial_split training testing
 #' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake all_numeric_predictors all_predictors all_nominal_predictors all_outcomes
-#' @importFrom dplyr filter pull
+#' @importFrom dplyr filter pull rename_with mutate across where
 #' @importFrom stats as.formula
 #' @importFrom doFuture registerDoFuture
 #' @importFrom future plan multisession sequential
+#' @importFrom janitor make_clean_names
+#' @importFrom stringr str_detect
 #' @return An object of class \code{fastml_model} containing the best model, performance metrics, and other information.
 #' @examples
 #' # Example 1: Using the iris dataset for binary classification (excluding 'setosa')
@@ -110,6 +112,36 @@ fastml <- function(data,
   if (!(label %in% names(data))) {
     stop("The specified label does not exist in the data.")
   }
+
+  data <- data %>%
+    mutate(
+      across(where(is.character), as.factor),
+      across(where(is.integer), as.numeric)
+    )
+
+  # Define the function to detect special characters
+  has_special_chars <- function(name) {
+    # Detect any character that is not a letter, number, or underscore
+    str_detect(name, "[^a-zA-Z0-9_]")
+  }
+
+  # Identify columns with special characters
+  columns_with_special_chars <- names(data)[has_special_chars(names(data))]
+
+  # Replace multiple special characters
+  data <- data %>%
+    rename_with(
+      .fn = ~ make_clean_names(
+        .x,
+        replace = c(
+          "\u03bc" = "u",  # Replace mu with 'u'
+          ":" = "",         # Remove colons
+          "/" = "_",        # Replace slashes with underscores
+          " " = "_"         # Replace spaces with underscores
+        )
+      ),
+      .cols = columns_with_special_chars
+    )
 
   target_var <- data[[label]]
 
