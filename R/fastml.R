@@ -252,6 +252,10 @@ fastml <- function(data,
   if (is.null(recipe)) {
     recipe <- recipe(as.formula(paste(label, "~ .")), data = train_data)
 
+    # Remove zero-variance predictors
+    recipe <- recipe %>%
+      step_zv(all_predictors())
+
     if (impute_method == "medianImpute") {
       recipe <- recipe %>% step_impute_median(all_numeric_predictors())
     } else if (impute_method == "knnImpute") {
@@ -290,8 +294,7 @@ fastml <- function(data,
     }
   }
 
-  recipe <- recipe %>%
-    step_zv(all_predictors())
+
 
   # Set up parallel processing using future
   if (n_cores > 1) {
