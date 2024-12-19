@@ -37,7 +37,8 @@ Imports:
     viridisLite,
     DALEX,
     magrittr,
-    patchwork
+    patchwork,
+    pROC
 Suggests:
     testthat (>= 3.0.0),
     knitr,

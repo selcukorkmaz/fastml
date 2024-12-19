@@ -19,7 +19,7 @@
 #' @param event_class A single string. Either "first" or "second" to specify which level of truth to consider as the "event". Default is "first".
 #' @param recipe A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.
 #' @param tune_params A list specifying hyperparameter tuning ranges. Default is \code{NULL}.
-#' @param metric The performance metric to optimize during training. Default is "accuracy".
+#' @param metric The performance metric to optimize during training.
 #' @param n_cores An integer specifying the number of CPU cores to use for parallel processing. Default is \code{1}.
 #' @param stratify Logical indicating whether to use stratified sampling when splitting the data. Default is \code{TRUE} for classification and \code{FALSE} for regression.
 #' @param impute_method Method for handling missing values. Options include:
@@ -92,7 +92,7 @@ fastml <- function(data,
                    event_class = "first",
                    recipe = NULL,
                    tune_params = NULL,
-                   metric = "accuracy",
+                   metric = NULL,
                    n_cores = 1,
                    stratify = TRUE,
                    impute_method = "error",
@@ -127,6 +127,23 @@ fastml <- function(data,
 
   if (is.null(metric)) {
     metric <- if (task == "classification") "accuracy" else "rmse"
+  }
+
+  # Define allowed metrics for each task
+  allowed_metrics_classification <- c("accuracy", "kap", "sens", "spec", "precision", "f_meas", "roc_auc")
+  allowed_metrics_regression <- c("rmse", "rsq", "mae")
+
+  # Validate the metric based on the task
+  if (task == "classification") {
+    if (!(metric %in% allowed_metrics_classification)) {
+      stop(paste0("Invalid metric for classification task. Choose one of: ",
+                  paste(allowed_metrics_classification, collapse = ", "), "."))
+    }
+  } else {  # regression
+    if (!(metric %in% allowed_metrics_regression)) {
+      stop(paste0("Invalid metric for regression task. Choose one of: ",
+                  paste(allowed_metrics_regression, collapse = ", "), "."))
+    }
   }
 
   supported_algorithms_classification <- c(
@@ -297,7 +314,7 @@ fastml <- function(data,
     stop("None of the models returned the specified metric.")
   }
 
-  best_model_idx <- if (task == "regression") which.min(metric_values) else names(metric_values[metric_values == max(metric_values)])
+  best_model_idx <- if (task == "regression" && metric != "rsq") names(metric_values[metric_values == min(metric_values)]) else names(metric_values[metric_values == max(metric_values)])
   best_model_name <- names(models)[names(models) %in% best_model_idx]
 
   # Now store processed training data for explainability:
@@ -316,7 +333,8 @@ fastml <- function(data,
     task = task,
     models = models,
     metric = metric,
-    positive_class = positive_class
+    positive_class = positive_class,
+    event_class = event_class
   )
   class(result) <- "fastml_model"
   return(result)

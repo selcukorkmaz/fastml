@@ -1,4 +1,4 @@
-utils::globalVariables(c("truth", "residual", "sensitivity", "specificity"))
+utils::globalVariables(c("truth", "residual", "sensitivity", "specificity", "FalsePositiveRate", "TruePositiveRate"))
 
 #' Summary Function for fastml_model (Using yardstick for ROC Curves)
 #'
@@ -29,9 +29,10 @@ utils::globalVariables(c("truth", "residual", "sensitivity", "specificity"))
 #' @importFrom magrittr %>%
 #' @importFrom reshape2 melt dcast
 #' @importFrom tune extract_fit_parsnip
-#' @importFrom ggplot2 ggplot aes geom_bar geom_path facet_wrap theme_bw theme element_text labs geom_point geom_line geom_histogram geom_abline coord_equal scale_color_manual
+#' @importFrom ggplot2 ggplot aes geom_bar geom_path facet_wrap theme_bw theme element_text labs geom_point geom_line geom_histogram geom_abline coord_equal scale_color_manual theme_minimal element_blank
 #' @importFrom RColorBrewer brewer.pal
-#' @importFrom yardstick conf_mat roc_curve
+#' @importFrom yardstick conf_mat
+#' @importFrom pROC roc auc
 #' @importFrom probably cal_plot_breaks
 #' @importFrom rlang get_expr get_env sym
 #' @importFrom viridisLite viridis
@@ -89,7 +90,7 @@ summary.fastml_model <- function(object,
   performance_sub <- performance_df[performance_df$.metric %in% desired_metrics, ]
   performance_wide <- dcast(performance_sub, Model ~ .metric, value.var = ".estimate")
 
-  if (task == "regression") {
+  if (task == "regression" && main_metric != "rsq") {
     performance_wide <- performance_wide[order(performance_wide[[main_metric]], na.last = TRUE), ]
   } else {
     performance_wide <- performance_wide[order(-performance_wide[[main_metric]], na.last = TRUE), ]
@@ -311,54 +312,101 @@ summary.fastml_model <- function(object,
         unique_classes <- unique(df_example$truth)
         if (length(unique_classes) == 2) {
           # We'll create a combined data frame for ROC curves from all models
-          roc_dfs <- list()
+          dfs = list()
           for (model_name in model_names_pred) {
             df <- predictions_list[[model_name]]
             prob_cols <- grep("^\\.pred_", names(df), value = TRUE)
             if (length(prob_cols) == 2) {
               pred_col <- paste0(".pred_", positive_class)
               if (pred_col %in% prob_cols) {
-                roc_df <- roc_curve(df, truth, !!sym(pred_col))
-                roc_df$Model <- model_name
-                roc_dfs[[model_name]] <- roc_df
+                df$Model <- model_name
+                dfs[[model_name]] <- df
               }
             }
           }
 
-          if (length(roc_dfs) > 0) {
-            all_roc <- bind_rows(roc_dfs)
+          if (length(dfs) > 0) {
+            dfs_roc <- bind_rows(dfs)
 
-            num_curves <- length(roc_dfs)
-            if (num_curves > 1) {
-              # Generate a sequence of pretty colors with viridis
-              colors <- viridis(num_curves)
-            } else {
-              # If there's only one curve, just use black or any single color
-              colors <- "#000000"
+            # Convert 'truth' and 'Model' to factors if they aren't already
+            dfs_roc$truth <- factor(dfs_roc$truth)
+            dfs_roc$Model <- as.factor(dfs_roc$Model)
+
+            # Get the list of unique models
+            models <- levels(dfs_roc$Model)
+
+            # Initialize an empty list to store ROC objects
+            roc_list <- list()
+            pred_col <- paste0(".pred_", positive_class)
+
+
+            # Compute ROC curves for each model
+            for (model in models) {
+              # Subset data for the current model
+              data_model <- subset(dfs_roc, Model == model)
+
+              # Compute ROC using .pred_1 as the predictor
+              roc_obj <- roc(response = data_model$truth,
+                             predictor = data_model[[pred_col]],
+                             direction = "auto",
+                             quiet = TRUE)  # Suppress messages
+
+              # Store the ROC object in the list
+              roc_list[[model]] <- roc_obj
             }
-            if (combined_roc) {
-              p_roc <- ggplot(all_roc, aes(x = 1 - specificity, y = sensitivity, color = Model)) +
-                geom_path() +
-                geom_abline(lty = 3) +
-                coord_equal() +
-                theme_bw() +
-                labs(title = "Combined ROC Curves for All Models") +
-                scale_color_manual(values = colors)
-              print(p_roc)
-            } else {
-              # Separate plots for each model
-              # We'll just facet by Model
-              p_roc_sep <- ggplot(all_roc, aes(x = 1 - specificity, y = sensitivity, color = Model)) +
-                geom_path() +
-                geom_abline(lty = 3) +
-                coord_equal() +
-                facet_wrap(~ Model) +
-                theme_bw() +
-                labs(title = "ROC Curves by Model") +
-                scale_color_manual(values = colors) +
-                theme(legend.position = "none")
-              print(p_roc_sep)
+
+            # Plotting using base pROC
+            # Initialize the plot with the first model
+            # plot(roc_list[[1]], col = 1, lwd = 2, main = "ROC Curves for Models")
+
+            # Add ROC curves for the remaining models
+            # if (length(models) > 1) {
+            #   for (i in 2:length(models)) {
+            #     plot(roc_list[[i]], col = i, lwd = 2, add = TRUE)
+            #   }
+            # }
+
+            # Add a legend
+            # legend("bottomright",
+            #        legend = paste(models, " (AUC =",
+            #                       sapply(roc_list, function(x) sprintf("%.3f", auc(x))),
+            #                       ")"),
+            #        col = 1:length(models),
+            #        lwd = 2,
+            #        cex = 0.8)
+
+            # Alternatively, for a more polished plot, use ggplot2 with pROC's ggroc function
+            # Combine all ROC curves into a single data frame for ggplot2
+            roc_data <- data.frame()
+
+            for (model in models) {
+              roc_obj <- roc_list[[model]]
+              roc_df <- data.frame(
+                FalsePositiveRate = rev(roc_obj$specificities),
+                TruePositiveRate = rev(roc_obj$sensitivities),
+                Model = model
+              )
+              roc_data <- rbind(roc_data, roc_df)
             }
+
+            # Create the ggplot
+            roc_curve_plot <- ggplot(data = roc_data, aes(x = 1 - FalsePositiveRate, y = TruePositiveRate, color = Model)) +
+              geom_line(linewidth = 1) +
+              geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "grey") +
+              theme_minimal() +
+              labs(title = "ROC Curves for Models",
+                   x = "1 - Specificity",
+                   y = "Sensitivity") +
+              theme(plot.title = element_text(hjust = 0.5)) +
+              # Optionally add AUC to the legend
+              scale_color_manual(values = 1:length(models),
+                                 labels = paste0(models, " (AUC = ",
+                                                 sapply(roc_list, function(x) sprintf("%.3f", auc(x))), ")")) +
+              theme(legend.title = element_blank())
+
+            print(roc_curve_plot)
+
+
           } else {
             cat("\nNo suitable probability predictions for ROC curves.\n")
           }
@@ -427,8 +475,13 @@ summary.fastml_model <- function(object,
             if (pred_col %in% prob_cols) {
 
               if(length(object$best_model) == 1){
-              p_cal <- cal_plot_breaks(df_best, truth = truth, estimate = !!sym(pred_col)) +
-                labs(title = paste("Calibration Plot", best_model_name))
+                p_cal <- cal_plot_breaks(
+                  df_best,
+                  truth = truth,
+                  estimate = !!sym(pred_col),
+                  event_level = object$event_class
+                ) +
+                  labs(title = paste("Calibration Plot", best_model_name))
               print(p_cal)
               }else{
 
@@ -449,7 +502,8 @@ summary.fastml_model <- function(object,
                   p_cal <- cal_plot_breaks(
                     model_predictions,
                     truth = truth,
-                    estimate = !!sym(pred_col)
+                    estimate = !!sym(pred_col),
+                    event_level = object$event_class
                   ) +
                     labs(title = paste("Calibration Plot for", model_name))
 

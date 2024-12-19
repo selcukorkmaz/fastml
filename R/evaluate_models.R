@@ -103,7 +103,14 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
       num_classes <- length(unique(data_metrics$truth))
       if (num_classes == 2) {
         # Binary classification
-        positive_class <- levels(data_metrics$truth)[2]
+        if(event_class == "first"){
+         positive_class <- levels(data_metrics$truth)[1]
+        }
+
+        if(event_class == "second"){
+          positive_class <- levels(data_metrics$truth)[2]
+        }
+
 
         # Compute metrics
         metrics_class <- metric_set(
@@ -125,7 +132,7 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
           event_level = "second"
         )
 
-        if(roc_auc_value$.estimate == 0){
+        if(roc_auc_value$.estimate < 0.50){
 
           roc_auc_value <- roc_auc(
             data_metrics,

@@ -146,7 +146,7 @@ explain_model <- function(object,
       explainer <- explain(
         model = parsnip_fit,
         data = x,
-        y = if (is.numeric(y)) y else as.numeric(as.character(y)),
+        y = if (is.numeric(y)) y else as.numeric(y),
         label = object$best_model_name,
         predict_function = predict_function,
         model_info = model_info
@@ -158,7 +158,7 @@ explain_model <- function(object,
         explain(
           model = model,
           data = x,
-          y = if (is.numeric(y)) y else as.numeric(as.character(y)),
+          y = if (is.numeric(y)) y else as.numeric((y)),
           label = model_name,
           predict_function = predict_function,  # Adjust predict_function if needed
           model_info = model_info
