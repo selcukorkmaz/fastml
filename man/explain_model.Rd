@@ -43,28 +43,37 @@ Prints DALEX explanations: variable importance table & plot, model profiles (if 
 }
 \description{
 Provides model explainability using DALEX. This function:
-- Creates a DALEX explainer.
-- Computes permutation-based variable importance with boxplots showing variability, displays the table and plot.
-- Computes partial dependency-like model profiles if `features` are provided.
-- Computes Shapley values (SHAP) for a sample of the training observations, displays the SHAP table,
-  and plots a summary bar chart of mean(|SHAP value|) per feature. For classification, it shows separate bars for each class.
+\itemize{
+  \item Creates a DALEX explainer.
+  \item Computes permutation-based variable importance with boxplots showing variability, displays the table and plot.
+  \item Computes partial dependency-like model profiles if `features` are provided.
+  \item Computes Shapley values (SHAP) for a sample of the training observations, displays the SHAP table,
+  and plots a summary bar chart of \eqn{\text{mean}(\vert \text{SHAP value} \vert)} per feature. For classification, it shows separate bars for each class.
+}
 }
 \details{
-1. Custom number of permutations for VI (vi_iterations):
+\enumerate{
+   \item \bold{Custom number of permutations for VI (vi_iterations):}
+
    You can now specify how many permutations (B) to use for permutation-based variable importance.
    More permutations yield more stable estimates but take longer.
 
-2. Custom color palette (colormap):
+   \item \bold{Custom color palette (colormap):}
+
    A `colormap` parameter allows you to select a color palette (e.g., "viridis") for SHAP summary plots and variable importance plots.
    This improves aesthetics over default palettes.
 
-3. Top Features in SHAP Summary (top_features):
+   \item \bold{Top Features in SHAP Summary (top_features):}
+
    You can limit the SHAP summary plot to the top N features by mean absolute SHAP value. This helps focus on the most influential features.
 
-4. Support for calibration plot if probably is available (calibration):
+   \item \bold{Support for calibration plot if probably is available (calibration):}
+
    If `calibration = TRUE` and `probably` is installed, it attempts to produce a model-based calibration plot (e.g., `cal_plot_logistic`).
    This provides a smoothed, nonparametric view of model calibration.
 
-5. Better error messages and checks:
+   \item \bold{Better error messages and checks:}
+
    Improved checks and messages if certain packages or conditions are not met.
+ }
 }
