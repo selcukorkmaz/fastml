@@ -3,6 +3,9 @@
 .RData
 .Ruserdata
 .Rprofile
+^.Renviron
+^\.Renviron
+.Renviron
 
 # MAC OS System files
 .DS_Store
