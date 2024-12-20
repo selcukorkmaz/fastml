@@ -44,7 +44,7 @@
 #' @importFrom magrittr %>%
 #' @importFrom rsample initial_split training testing
 #' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake all_numeric_predictors all_predictors all_nominal_predictors all_outcomes step_zv
-#' @importFrom dplyr filter pull rename_with mutate across where
+#' @importFrom dplyr filter pull rename_with mutate across where select
 #' @importFrom stats as.formula
 #' @importFrom doFuture registerDoFuture
 #' @importFrom future plan multisession sequential
@@ -92,6 +92,7 @@ fastml <- function(data,
                    folds = ifelse(grepl("cv", resampling_method), 10, 25),
                    repeats = ifelse(resampling_method == "repeatedcv", 1, NA),
                    event_class = "first",
+                   exclude = NULL,
                    recipe = NULL,
                    tune_params = NULL,
                    metric = NULL,
@@ -111,6 +112,28 @@ fastml <- function(data,
   set.seed(seed)
   if (!(label %in% names(data))) {
     stop("The specified label does not exist in the data.")
+  }
+
+  if(!is.null(exclude)){
+
+    if(label %in% exclude){
+
+      stop("Label variable cannot be excluded from the data: ", paste(label))
+    }
+
+    missing_vars <- setdiff(exclude, colnames(data))
+
+    if (length(missing_vars) > 0) {
+      warning("The following variables are not in the dataset: ", paste(missing_vars, collapse = ", "))
+
+      exclude = exclude[!exclude %in% missing_vars]
+
+      if(length(exclude) == 0) {exclude = NULL}
+    }
+
+    data <- data %>%
+      select(-all_of(exclude))
+
   }
 
   data <- data %>%
