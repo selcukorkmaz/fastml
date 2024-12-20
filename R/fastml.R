@@ -140,7 +140,7 @@ fastml <- function(data,
           " " = "_"         # Replace spaces with underscores
         )
       ),
-      .cols = columns_with_special_chars
+      .cols = all_of(columns_with_special_chars)
     )
 
   target_var <- data[[label]]
@@ -233,7 +233,7 @@ fastml <- function(data,
   }
 
   if (stratify && task == "classification") {
-    split <- initial_split(data, prop = 1 - test_size, strata = label)
+    split <- initial_split(data, prop = 1 - test_size, strata = all_of(label))
   } else {
     split <- initial_split(data, prop = 1 - test_size)
   }
