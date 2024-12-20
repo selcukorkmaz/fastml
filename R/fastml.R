@@ -131,11 +131,28 @@ fastml <- function(data,
       select(-all_of(exclude))
   }
 
+
   data <- data %>%
     mutate(
       across(where(is.character), as.factor),
       across(where(is.integer), as.numeric)
     )
+
+  target_var <- data[[label]]
+  label_index <- which(colnames(data) == label)
+
+
+  if (is.numeric(target_var) && length(unique(target_var)) <= 5) {
+    # Convert target_var to factor
+    target_var <- as.factor(target_var)
+    data[[label]] = as.factor(data[[label]])
+
+    task <- "classification"
+
+    # Issue a warning to inform the user about the change
+    warning(sprintf("The target variable '%s' is numeric with %d unique values. It has been converted to a factor and the task has been set to 'classification'.",
+                    label, length(unique(target_var))))
+  }
 
   # Define the function to detect special characters
   has_special_chars <- function(name) {
@@ -161,19 +178,8 @@ fastml <- function(data,
       .cols = all_of(columns_with_special_chars)
     )
 
-  target_var <- data[[label]]
+  label <- colnames(data[label_index])
 
-  if (is.numeric(target_var) && length(unique(target_var)) <= 5) {
-    # Convert target_var to factor
-    target_var <- as.factor(target_var)
-    data[[label]] = as.factor(data[[label]])
-
-    task <- "classification"
-
-    # Issue a warning to inform the user about the change
-    warning(sprintf("The target variable '%s' is numeric with %d unique values. It has been converted to a factor and the task has been set to 'classification'.",
-                    label, length(unique(target_var))))
-  }
 
   if (is.factor(target_var) || is.character(target_var) || is.logical(target_var)) {
     task <- "classification"
