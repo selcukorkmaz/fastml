@@ -44,7 +44,7 @@
 #' @importFrom magrittr %>%
 #' @importFrom rsample initial_split training testing
 #' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake all_numeric_predictors all_predictors all_nominal_predictors all_outcomes step_zv
-#' @importFrom dplyr filter pull rename_with mutate across where
+#' @importFrom dplyr filter pull rename_with mutate across where select
 #' @importFrom stats as.formula
 #' @importFrom doFuture registerDoFuture
 #' @importFrom future plan multisession sequential
@@ -92,6 +92,7 @@ fastml <- function(data,
                    folds = ifelse(grepl("cv", resampling_method), 10, 25),
                    repeats = ifelse(resampling_method == "repeatedcv", 1, NA),
                    event_class = "first",
+                   exclude = NULL,
                    recipe = NULL,
                    tune_params = NULL,
                    metric = NULL,
@@ -111,6 +112,28 @@ fastml <- function(data,
   set.seed(seed)
   if (!(label %in% names(data))) {
     stop("The specified label does not exist in the data.")
+  }
+
+  if(!is.null(exclude)){
+
+    if(label %in% exclude){
+
+      stop("Label variable cannot be excluded from the data: ", paste(label))
+    }
+
+    missing_vars <- setdiff(exclude, colnames(data))
+
+    if (length(missing_vars) > 0) {
+      warning("The following variables are not in the dataset: ", paste(missing_vars, collapse = ", "))
+
+      exclude = exclude[!exclude %in% missing_vars]
+
+      if(length(exclude) == 0) {exclude = NULL}
+    }
+
+    data <- data %>%
+      select(-all_of(exclude))
+
   }
 
   data <- data %>%
@@ -144,6 +167,18 @@ fastml <- function(data,
     )
 
   target_var <- data[[label]]
+
+  if (is.numeric(target_var) && length(unique(target_var)) <= 5) {
+    # Convert target_var to factor
+    target_var <- as.factor(target_var)
+    data[[label]] = as.factor(data[[label]])
+
+    task <- "classification"
+
+    # Issue a warning to inform the user about the change
+    warning(sprintf("The target variable '%s' is numeric with %d unique values. It has been converted to a factor and the task has been set to 'classification'.",
+                    label, length(unique(target_var))))
+  }
 
   if (is.factor(target_var) || is.character(target_var) || is.logical(target_var)) {
     task <- "classification"
@@ -252,6 +287,10 @@ fastml <- function(data,
   if (is.null(recipe)) {
     recipe <- recipe(as.formula(paste(label, "~ .")), data = train_data)
 
+    # Remove zero-variance predictors
+    recipe <- recipe %>%
+      step_zv(all_predictors())
+
     if (impute_method == "medianImpute") {
       recipe <- recipe %>% step_impute_median(all_numeric_predictors())
     } else if (impute_method == "knnImpute") {
@@ -290,8 +329,7 @@ fastml <- function(data,
     }
   }
 
-  recipe <- recipe %>%
-    step_zv(all_predictors())
+
 
   # Set up parallel processing using future
   if (n_cores > 1) {

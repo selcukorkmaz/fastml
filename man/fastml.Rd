@@ -13,6 +13,7 @@ fastml(
   folds = ifelse(grepl("cv", resampling_method), 10, 25),
   repeats = ifelse(resampling_method == "repeatedcv", 1, NA),
   event_class = "first",
+  exclude = NULL,
   recipe = NULL,
   tune_params = NULL,
   metric = NULL,
