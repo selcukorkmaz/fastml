@@ -1,5 +1,5 @@
 availableMethods <- function(type = c("classification", "regression"), ...){
-  type <- match.arg(tye)
+  type <- match.arg(type)
 
   algorithms <- if (type == "classification"){
     c(
