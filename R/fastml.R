@@ -107,8 +107,7 @@ fastml <- function(data,
                    tuning_iterations = 10,
                    early_stopping = FALSE,
                    adaptive = FALSE,
-                   seed = 123
-                   ) {
+                   seed = 123) {
   set.seed(seed)
   if (!(label %in% names(data))) {
     stop("The specified label does not exist in the data.")
@@ -219,13 +218,14 @@ fastml <- function(data,
   if ("all" %in% algorithms) {
     algorithms <- supported_algorithms
   } else {
+    if (length(intersect(algorithms, supported_algorithms)) == 0) {
+      stop("No valid algorithms specified.")
+    }
+
     invalid_algos <- setdiff(algorithms, supported_algorithms)
     if (length(invalid_algos) > 0) {
       warning("Invalid algorithm(s) specified: ", paste(invalid_algos, collapse = ", "))
-    }
-    algorithms <- intersect(algorithms, supported_algorithms)
-    if (length(algorithms) == 0) {
-      stop("No valid algorithms specified.")
+      algorithms <- intersect(algorithms, supported_algorithms)
     }
   }
 
