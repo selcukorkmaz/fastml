@@ -114,10 +114,8 @@ fastml <- function(data,
     stop("The specified label does not exist in the data.")
   }
 
-  if(!is.null(exclude)){
-
-    if(label %in% exclude){
-
+  if (!is.null(exclude)){
+    if (label %in% exclude){
       stop("Label variable cannot be excluded from the data: ", paste(label))
     }
 
@@ -125,15 +123,12 @@ fastml <- function(data,
 
     if (length(missing_vars) > 0) {
       warning("The following variables are not in the dataset: ", paste(missing_vars, collapse = ", "))
-
       exclude = exclude[!exclude %in% missing_vars]
-
-      if(length(exclude) == 0) {exclude = NULL}
+      if (length(exclude) == 0) {exclude = NULL}
     }
 
     data <- data %>%
       select(-all_of(exclude))
-
   }
 
   data <- data %>%
@@ -213,46 +208,7 @@ fastml <- function(data,
     }
   }
 
-  supported_algorithms_classification <- c(
-    "logistic_regression",
-    "penalized_logistic_regression",
-    "decision_tree",
-    "c5.0",
-    "random_forest",
-    "ranger",
-    "xgboost",
-    "lightgbm",
-    "svm_linear",
-    "svm_radial",
-    "knn",
-    "naive_bayes",
-    "neural_network",
-    "lda",
-    "qda",
-    "bagging"
-  )
-  supported_algorithms_regression <- c(
-    "linear_regression",
-    "ridge_regression",
-    "lasso_regression",
-    "elastic_net",
-    "decision_tree",
-    "random_forest",
-    "xgboost",
-    "lightgbm",
-    "svm_linear",
-    "svm_radial",
-    "knn",
-    "neural_network",
-    "pls",
-    "bayes_glm"
-  )
-
-  if (task == "classification") {
-    supported_algorithms <- supported_algorithms_classification
-  } else {
-    supported_algorithms <- supported_algorithms_regression
-  }
+  supported_algorithms <- availableMethods(type = task)
 
   if ("all" %in% algorithms) {
     algorithms <- supported_algorithms
