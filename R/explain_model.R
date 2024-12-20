@@ -55,15 +55,15 @@
 #' @return Prints DALEX explanations: variable importance table & plot, model profiles (if any), SHAP table & summary plot, and optionally a calibration plot.
 #' @export
 explain_model <- function(object,
-                                 method = "dalex",
-                                 features = NULL,
-                                 grid_size = 20,
-                                 shap_sample = 5,
-                                 vi_iterations = 10,
-                                 colormap = "viridis",
-                                 top_features = NULL,
-                                 seed = 123,
-                             ...) {
+                          method = "dalex",
+                          features = NULL,
+                          grid_size = 20,
+                          shap_sample = 5,
+                          vi_iterations = 10,
+                          colormap = "viridis",
+                          top_features = NULL,
+                          seed = 123,
+                          ...) {
   if (!inherits(object, "fastml_model")) {
     stop("The input must be a 'fastml_model' object.")
   }
