@@ -4,5 +4,8 @@
 .Ruserdata
 .Rprofile
 
+# MAC OS System files
+.DS_Store
+
 # Ignored files and folders to push GitHup repository.
 IgnoredFiles/
