@@ -145,6 +145,18 @@ fastml <- function(data,
 
   target_var <- data[[label]]
 
+  if (is.numeric(target_var) && length(unique(target_var)) <= 5) {
+    # Convert target_var to factor
+    target_var <- as.factor(target_var)
+    data[[label]] = as.factor(data[[label]])
+
+    task <- "classification"
+
+    # Issue a warning to inform the user about the change
+    warning(sprintf("The target variable '%s' is numeric with %d unique values. It has been converted to a factor and the task has been set to 'classification'.",
+                    label, length(unique(target_var))))
+  }
+
   if (is.factor(target_var) || is.character(target_var) || is.logical(target_var)) {
     task <- "classification"
   } else if (is.numeric(target_var)) {
