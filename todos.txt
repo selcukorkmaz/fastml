@@ -1,0 +1,3 @@
+1. summary fonksiyonu istenilen modele ilişkin sonuçlar üretebilmeli
+2. explore isimli yeni bir fonksiyon yazılmalı ve verinin özelliklerini kullanıcıya göstermeli
+3. explan_models fonksiyonuna lime ve vip eklenecek

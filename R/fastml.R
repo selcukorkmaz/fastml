@@ -114,10 +114,8 @@ fastml <- function(data,
     stop("The specified label does not exist in the data.")
   }
 
-  if(!is.null(exclude)){
-
-    if(label %in% exclude){
-
+  if (!is.null(exclude)){
+    if (label %in% exclude){
       stop("Label variable cannot be excluded from the data: ", paste(label))
     }
 
@@ -125,22 +123,36 @@ fastml <- function(data,
 
     if (length(missing_vars) > 0) {
       warning("The following variables are not in the dataset: ", paste(missing_vars, collapse = ", "))
-
       exclude = exclude[!exclude %in% missing_vars]
-
-      if(length(exclude) == 0) {exclude = NULL}
+      if (length(exclude) == 0) {exclude = NULL}
     }
 
     data <- data %>%
       select(-all_of(exclude))
-
   }
+
 
   data <- data %>%
     mutate(
       across(where(is.character), as.factor),
       across(where(is.integer), as.numeric)
     )
+
+  target_var <- data[[label]]
+  label_index <- which(colnames(data) == label)
+
+
+  if (is.numeric(target_var) && length(unique(target_var)) <= 5) {
+    # Convert target_var to factor
+    target_var <- as.factor(target_var)
+    data[[label]] = as.factor(data[[label]])
+
+    task <- "classification"
+
+    # Issue a warning to inform the user about the change
+    warning(sprintf("The target variable '%s' is numeric with %d unique values. It has been converted to a factor and the task has been set to 'classification'.",
+                    label, length(unique(target_var))))
+  }
 
   # Define the function to detect special characters
   has_special_chars <- function(name) {
@@ -166,19 +178,8 @@ fastml <- function(data,
       .cols = all_of(columns_with_special_chars)
     )
 
-  target_var <- data[[label]]
+  label <- colnames(data[label_index])
 
-  if (is.numeric(target_var) && length(unique(target_var)) <= 5) {
-    # Convert target_var to factor
-    target_var <- as.factor(target_var)
-    data[[label]] = as.factor(data[[label]])
-
-    task <- "classification"
-
-    # Issue a warning to inform the user about the change
-    warning(sprintf("The target variable '%s' is numeric with %d unique values. It has been converted to a factor and the task has been set to 'classification'.",
-                    label, length(unique(target_var))))
-  }
 
   if (is.factor(target_var) || is.character(target_var) || is.logical(target_var)) {
     task <- "classification"
@@ -213,46 +214,7 @@ fastml <- function(data,
     }
   }
 
-  supported_algorithms_classification <- c(
-    "logistic_regression",
-    "penalized_logistic_regression",
-    "decision_tree",
-    "c5.0",
-    "random_forest",
-    "ranger",
-    "xgboost",
-    "lightgbm",
-    "svm_linear",
-    "svm_radial",
-    "knn",
-    "naive_bayes",
-    "neural_network",
-    "lda",
-    "qda",
-    "bagging"
-  )
-  supported_algorithms_regression <- c(
-    "linear_regression",
-    "ridge_regression",
-    "lasso_regression",
-    "elastic_net",
-    "decision_tree",
-    "random_forest",
-    "xgboost",
-    "lightgbm",
-    "svm_linear",
-    "svm_radial",
-    "knn",
-    "neural_network",
-    "pls",
-    "bayes_glm"
-  )
-
-  if (task == "classification") {
-    supported_algorithms <- supported_algorithms_classification
-  } else {
-    supported_algorithms <- supported_algorithms_regression
-  }
+  supported_algorithms <- availableMethods(type = task)
 
   if ("all" %in% algorithms) {
     algorithms <- supported_algorithms
