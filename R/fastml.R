@@ -123,7 +123,9 @@ fastml <- function(data,
     if (length(missing_vars) > 0) {
       warning("The following variables are not in the dataset: ", paste(missing_vars, collapse = ", "))
       exclude = exclude[!exclude %in% missing_vars]
-      if (length(exclude) == 0) {exclude = NULL}
+      if (length(exclude) == 0) {
+        exclude <- NULL
+      }
     }
 
     data <- data %>%
@@ -178,7 +180,6 @@ fastml <- function(data,
     )
 
   label <- colnames(data[label_index])
-
 
   if (is.factor(target_var) || is.character(target_var) || is.logical(target_var)) {
     task <- "classification"
@@ -291,8 +292,6 @@ fastml <- function(data,
     }
   }
 
-
-
   # Set up parallel processing using future
   if (n_cores > 1) {
     if (!requireNamespace("doFuture", quietly = TRUE)) {
@@ -349,7 +348,12 @@ fastml <- function(data,
     stop("None of the models returned the specified metric.")
   }
 
-  best_model_idx <- if (task == "regression" && metric != "rsq") names(metric_values[metric_values == min(metric_values)]) else names(metric_values[metric_values == max(metric_values)])
+  best_model_idx <- if (task == "regression" && metric != "rsq"){
+    names(metric_values[metric_values == min(metric_values)])
+  } else {
+    names(metric_values[metric_values == max(metric_values)])
+  }
+
   best_model_name <- names(models)[names(models) %in% best_model_idx]
 
   # Now store processed training data for explainability:

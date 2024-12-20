@@ -75,5 +75,143 @@ test_that("stop if requested metric is not allowed.", {
   })
 })
 
+test_that("check for supported algorithms", {
+  expect_warning({
+    # Train models with Bayesian optimization
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("random_forest", "unknown")
+    )
+  })
 
-# Last line checked: 180 (fastml.R), will continue from this point forward.
+  expect_error({
+    # Train models with Bayesian optimization
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("unknown")
+    )
+  })
+})
+
+test_that("variables successfuly excluded", {
+  expect_error({
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("random_forest"),
+      exclude = "Species"
+    )
+  })
+
+  expect_warning({
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("random_forest"),
+      exclude = c("Sepal.Length", "unknown")
+    )
+  })
+})
+
+test_that("checks for impute_method", {
+  expect_no_failure({
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("random_forest")
+    )
+
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("random_forest"),
+      impute_method = "medianImpute"
+    )
+
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("random_forest"),
+      impute_method = "knnImpute"
+    )
+
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("random_forest"),
+      impute_method = "bagImpute"
+    )
+
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("random_forest"),
+      impute_method = "remove"
+    )
+  })
+
+  expect_error({
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("random_forest"),
+      impute_method = "unkownn"
+    )
+  })
+})
+
+test_that("stop if recipe is not correctly specified.", {
+  expect_error({
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("random_forest"),
+      recipe = "unknown"
+    )
+  })
+})
+
+test_that("regression model successful.", {
+  expect_no_failure({
+    fastml(
+      data = iris[,-5],
+      label = "Sepal.Length",
+      algorithms = c("linear_regression")
+    )
+  })
+})
+
+test_that("multicore tasks successful.", {
+  expect_no_failure({
+    fastml(
+      data = iris[,-5],
+      label = "Sepal.Length",
+      algorithms = c("linear_regression"),
+      n_cores = 2
+    )
+  })
+})
+
+test_that("stop if unsupported metric is selected.", {
+  expect_error({
+    fastml(
+      data = iris[,-5],
+      label = "Sepal.Length",
+      algorithms = c("linear_regression"),
+      n_cores = 2,
+      metric = "unkown"
+    )
+  })
+
+  expect_no_failure({
+    fastml(
+      data = iris[,-5],
+      label = "Sepal.Length",
+      algorithms = c("linear_regression"),
+      n_cores = 2,
+      metric = "rmse"
+    )
+  })
+})
