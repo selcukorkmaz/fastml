@@ -323,7 +323,7 @@ summary.fastml_model <- function(object,
 
   p_bar <- ggplot(performance_melt, aes(x = Model, y = Value, fill = Model)) +
     geom_bar(stat = "identity", position = "dodge") +
-    facet_wrap(~ Metric, scales = "free_y") +
+    facet_wrap(~ Metric, scales = "free_y") + ylim(0,1) +
     theme_bw() +
     theme(
       axis.text.x = element_text(angle = 45, hjust = 1),
@@ -386,31 +386,16 @@ summary.fastml_model <- function(object,
               roc_list[[model]] <- roc_obj
             }
 
-            # Plotting using base pROC
-            # Initialize the plot with the first model
-            # plot(roc_list[[1]], col = 1, lwd = 2, main = "ROC Curves for Models")
 
-            # Add ROC curves for the remaining models
-            # if (length(models) > 1) {
-            #   for (i in 2:length(models)) {
-            #     plot(roc_list[[i]], col = i, lwd = 2, add = TRUE)
-            #   }
-            # }
+            # Compute AUC values for each model
+            auc_values <- sapply(roc_list, function(x) auc(x))
 
-            # Add a legend
-            # legend("bottomright",
-            #        legend = paste(models, " (AUC =",
-            #                       sapply(roc_list, function(x) sprintf("%.3f", auc(x))),
-            #                       ")"),
-            #        col = 1:length(models),
-            #        lwd = 2,
-            #        cex = 0.8)
+            # Sort models by AUC values in descending order
+            sorted_models <- names(sort(auc_values, decreasing = TRUE))
 
-            # Alternatively, for a more polished plot, use ggplot2 with pROC's ggroc function
-            # Combine all ROC curves into a single data frame for ggplot2
+            # Reorder roc_data and update the legend
             roc_data <- data.frame()
-
-            for (model in models) {
+            for (model in sorted_models) {
               roc_obj <- roc_list[[model]]
               roc_df <- data.frame(
                 FalsePositiveRate = rev(roc_obj$specificities),
@@ -429,13 +414,14 @@ summary.fastml_model <- function(object,
                    x = "1 - Specificity",
                    y = "Sensitivity") +
               theme(plot.title = element_text(hjust = 0.5)) +
-              # Optionally add AUC to the legend
-              scale_color_manual(values = 1:length(models),
-                                 labels = paste0(models, " (AUC = ",
-                                                 sapply(roc_list, function(x) sprintf("%.3f", auc(x))), ")")) +
+              # Optionally add AUC to the legend, sorted by AUC
+              scale_color_manual(values = 1:length(sorted_models),
+                                 labels = paste0(sorted_models, " (AUC = ",
+                                                 sprintf("%.3f", auc_values[sorted_models]), ")")) +
               theme(legend.title = element_blank())
 
             print(roc_curve_plot)
+
 
 
           } else {
