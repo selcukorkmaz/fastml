@@ -53,6 +53,8 @@ Suggests:
     ranger,
     crayon, 
     kernlab,
+    klaR,
+    kknn,
     keras,
     lightgbm,
     rstanarm,
