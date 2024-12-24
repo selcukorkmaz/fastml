@@ -155,29 +155,8 @@ fastml <- function(data,
                     label, length(unique(target_var))))
   }
 
-  # Define the function to detect special characters
-  has_special_chars <- function(name) {
-    # Detect any character that is not a letter, number, or underscore
-    str_detect(name, "[^a-zA-Z0-9_]")
-  }
+  data = clean_special_column_names(data)
 
-  # Identify columns with special characters
-  columns_with_special_chars <- names(data)[has_special_chars(names(data))]
-
-  # Replace multiple special characters
-  data <- data %>%
-    rename_with(
-      .fn = ~ make_clean_names(
-        .x,
-        replace = c(
-          "\u03bc" = "u",  # Replace mu with 'u'
-          ":" = "",         # Remove colons
-          "/" = "_",        # Replace slashes with underscores
-          " " = "_"         # Replace spaces with underscores
-        )
-      ),
-      .cols = all_of(columns_with_special_chars)
-    )
 
   label <- colnames(data[label_index])
 

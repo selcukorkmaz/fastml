@@ -323,7 +323,7 @@ summary.fastml_model <- function(object,
 
   p_bar <- ggplot(performance_melt, aes(x = Model, y = Value, fill = Model)) +
     geom_bar(stat = "identity", position = "dodge") +
-    facet_wrap(~ Metric, scales = "free_y") + ylim(0,1) +
+    facet_wrap(~ Metric, scales = "free_y") +
     theme_bw() +
     theme(
       axis.text.x = element_text(angle = 45, hjust = 1),
@@ -331,7 +331,13 @@ summary.fastml_model <- function(object,
     ) +
     labs(title = "Model Performance Comparison", x = "Model", y = "Metric Value")
 
+  # Adjust y-axis limits if it's a classification task
+  if (task == "classification") {
+    p_bar <- p_bar + ylim(0, 1)
+  }
+
   print(p_bar)
+
 
   # ROC curves for binary classification using yardstick
   if (task == "classification" && !is.null(predictions_list) && length(predictions_list) > 0) {
