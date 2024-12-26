@@ -30,7 +30,7 @@ utils::globalVariables(c("truth", "residual", "sensitivity", "specificity", "Fal
 #' @importFrom magrittr %>%
 #' @importFrom reshape2 melt dcast
 #' @importFrom tune extract_fit_parsnip
-#' @importFrom ggplot2 ggplot aes geom_bar geom_path facet_wrap theme_bw theme element_text labs geom_point geom_line geom_histogram geom_abline coord_equal scale_color_manual theme_minimal element_blank
+#' @importFrom ggplot2 ggplot aes geom_bar geom_path facet_wrap theme_bw theme element_text labs geom_point geom_line geom_histogram geom_abline coord_equal scale_color_manual theme_minimal element_blank ylim
 #' @importFrom RColorBrewer brewer.pal
 #' @importFrom yardstick conf_mat
 #' @importFrom pROC roc auc

@@ -1,41 +1,27 @@
 fastexplore <- function(
     data,
-    label                  = NULL,
-    visualize              = c("histogram", "boxplot", "heatmap"),
-    save_results           = TRUE,
-    output_dir             = getwd(),
-    sample_size            = NULL,
-    interactive            = FALSE,
-    corr_threshold         = 0.9,
-    # Existing parameters:
-    auto_convert_numeric   = TRUE,   # Auto-convert numeric-like columns from factor/char to numeric
-    visualize_missing      = FALSE,  # Visualize missingness patterns
+    label = NULL,
+    visualize = c("histogram", "boxplot", "heatmap"),
+    save_results = TRUE,
+    output_dir = getwd(),
+    sample_size = NULL,
+    interactive = FALSE,
+    corr_threshold = 0.9,
+    auto_convert_numeric = TRUE,   # Auto-convert numeric-like columns from factor/char to numeric
+    visualize_missing = TRUE,  # Visualize missingness patterns
     imputation_suggestions = FALSE,  # Provide simple imputation suggestions
-    report_duplicate_details = FALSE,# Show top duplicate rows and frequency
-    detect_near_duplicates = FALSE,  # Placeholder for near-duplicate (fuzzy) detection
-
-    # (NEW) Additional Data Diagnostics:
-    auto_convert_dates     = FALSE,  # If TRUE, tries to detect date strings (YYYY-MM-DD) and convert them to Date
-    # (NEW) Feature Engineering for date/time, ID columns:
-    feature_engineering    = FALSE,  # If TRUE, create derived columns (day, month, year) from date/time + ID col suggestions
-
-    # (NEW) Advanced Outlier Detection:
-    outlier_method         = c("iqr", "zscore", "dbscan", "lof", "none"),
-    # (NEW) Extended Descriptive Statistics:
-    run_distribution_checks= FALSE,  # If TRUE, run normality tests (Shapiro-Wilk, etc.)
-    normality_tests        = c("shapiro", "ks"), # Which normality tests to run if run_distribution_checks=TRUE
-
-    # (NEW) Pairwise Scatterplot Matrix:
-    pairwise_matrix        = FALSE,  # If TRUE, produce a scatterplot matrix for numeric columns
-    max_scatter_cols       = 5,      # Limit how many numeric columns to include in the pairwise matrix
-
-    # (NEW) Categorical vs. Numeric Plots:
-    grouped_plots          = FALSE,  # If TRUE, produce grouped histograms, violin plots, density plots by label (if factor)
-
-    # (NEW) Additional Missing Data Visualizations:
-    use_upset_missing      = FALSE   # If TRUE, try to produce an UpSet plot for missing data if UpSetR is available
+    report_duplicate_details = TRUE,# Show top duplicate rows and frequency
+    detect_near_duplicates = TRUE,  # Placeholder for near-duplicate (fuzzy) detection
+    auto_convert_dates = FALSE,  # If TRUE, tries to detect date strings (YYYY-MM-DD) and convert them to Date
+    feature_engineering = FALSE,  # If TRUE, create derived columns (day, month, year) from date/time + ID col suggestions
+    outlier_method = c("iqr", "zscore", "dbscan", "lof"),
+    run_distribution_checks = TRUE,  # If TRUE, run normality tests (Shapiro-Wilk, etc.)
+    normality_tests = c("shapiro", "ks"), # Which normality tests to run if run_distribution_checks=TRUE
+    pairwise_matrix = TRUE,  # If TRUE, produce a scatterplot matrix for numeric columns
+    max_scatter_cols = 5,      # Limit how many numeric columns to include in the pairwise matrix
+    grouped_plots = TRUE,  # If TRUE, produce grouped histograms, violin plots, density plots by label (if factor)
+    use_upset_missing = TRUE   # If TRUE, try to produce an UpSet plot for missing data if UpSetR is available
 ) {
-  # Match outlier_method to handle partial matches
   outlier_method <- match.arg(outlier_method)
 
   ## ------------------------------------------------------------------------
@@ -51,7 +37,8 @@ fastexplore <- function(
 
   # Identify numeric and categorical columns
   numeric_cols <- names(data)[vapply(data, is.numeric, logical(1))]
-  factor_cols  <- names(data)[vapply(data, function(x) is.factor(x) || is.character(x), logical(1))]
+  factor_cols  <- names(data)[vapply(data, function(x)
+    is.factor(x) || is.character(x), logical(1))]
 
   if (length(numeric_cols) == 0 & length(factor_cols) == 0) {
     stop("Error: The dataset has no numeric or categorical columns.")
@@ -59,7 +46,11 @@ fastexplore <- function(
 
   # Check label (formerly target)
   if (!is.null(label) && !(label %in% colnames(data))) {
-    stop(paste0("Error: The specified label column '", label, "' does not exist in the data."))
+    stop(paste0(
+      "Error: The specified label column '",
+      label,
+      "' does not exist in the data."
+    ))
   }
 
   # Optionally sample the data if sample_size is specified
@@ -78,7 +69,9 @@ fastexplore <- function(
   if (save_results) {
     timestamp       <- format(Sys.time(), "%Y%m%d_%H%M%S")
     results_folder  <- file.path(output_dir, paste0("EDA_Results_", timestamp))
-    dir.create(results_folder, showWarnings = FALSE, recursive = TRUE)
+    dir.create(results_folder,
+               showWarnings = FALSE,
+               recursive = TRUE)
   }
 
   ## Helper function to save plots if needed
@@ -93,7 +86,8 @@ fastexplore <- function(
           height   = 5
         )
       } else {
-        message("Object provided is not a ggplot. Skipping ggsave for ", filename)
+        message("Object provided is not a ggplot. Skipping ggsave for ",
+                filename)
       }
     }
   }
@@ -112,14 +106,19 @@ fastexplore <- function(
         new_na_count <- sum(is.na(new_x))
         if (new_na_count <= old_na_count) {
           data[[col]] <- new_x
-          message(paste("Column", col, "was auto-converted from factor/char to numeric."))
+          message(paste(
+            "Column",
+            col,
+            "was auto-converted from factor/char to numeric."
+          ))
         }
       }
     }
 
     # Re-identify numeric_cols and factor_cols after conversions
     numeric_cols <- names(data)[vapply(data, is.numeric, logical(1))]
-    factor_cols  <- names(data)[vapply(data, function(x) is.factor(x) || is.character(x), logical(1))]
+    factor_cols  <- names(data)[vapply(data, function(x)
+      is.factor(x) || is.character(x), logical(1))]
   }
 
   # (NEW) Auto-convert date-like character columns (e.g., YYYY-MM-DD)
@@ -131,14 +130,19 @@ fastexplore <- function(
         converted_date <- as.Date(x, format = "%Y-%m-%d")
         if (!all(is.na(converted_date))) {
           data[[col]] <- converted_date
-          message(paste("Column", col, "was auto-converted from character to Date."))
+          message(paste(
+            "Column",
+            col,
+            "was auto-converted from character to Date."
+          ))
         }
       }
     }
 
     # Re-identify numeric_cols and factor_cols after date conversions
     numeric_cols <- names(data)[vapply(data, is.numeric, logical(1))]
-    factor_cols  <- names(data)[vapply(data, function(x) is.factor(x) || is.character(x), logical(1))]
+    factor_cols  <- names(data)[vapply(data, function(x)
+      is.factor(x) || is.character(x), logical(1))]
   }
 
   # Detect factor columns that may be incorrectly coded (e.g., too many distinct levels)
@@ -146,8 +150,15 @@ fastexplore <- function(
     for (col in factor_cols) {
       n_levels <- length(unique(data[[col]]))
       if (n_levels > nrow(data) * 0.8) {
-        message(paste("Column", col, "has a large number of distinct levels (", n_levels,
-                      ") and may be incorrectly coded as factor."))
+        message(
+          paste(
+            "Column",
+            col,
+            "has a large number of distinct levels (",
+            n_levels,
+            ") and may be incorrectly coded as factor."
+          )
+        )
       }
     }
   }
@@ -187,7 +198,9 @@ fastexplore <- function(
     }
 
     # Detect date/time class
-    if (inherits(data[[col]], "Date") || inherits(data[[col]], "POSIXct") || inherits(data[[col]], "POSIXt")) {
+    if (inherits(data[[col]], "Date") ||
+        inherits(data[[col]], "POSIXct") ||
+        inherits(data[[col]], "POSIXt")) {
       date_time_cols <- c(date_time_cols, col)
     }
   }
@@ -211,7 +224,9 @@ fastexplore <- function(
   # (NEW) Feature Engineering Suggestions
   if (feature_engineering) {
     if (length(potential_id_cols) > 0) {
-      cat("Feature Engineering Note: Potential ID columns might be used for joining or removed from modeling.\n")
+      cat(
+        "Feature Engineering Note: Potential ID columns might be used for joining or removed from modeling.\n"
+      )
     }
     if (length(date_time_cols) > 0) {
       cat("Creating derived date/time features (day, month, year) from date/time columns.\n")
@@ -244,7 +259,8 @@ fastexplore <- function(
         SD     = sapply(data[numeric_cols], sd, na.rm = TRUE),
         Min    = sapply(data[numeric_cols], min, na.rm = TRUE),
         Max    = sapply(data[numeric_cols], max, na.rm = TRUE),
-        NAs    = sapply(data[numeric_cols], function(x) sum(is.na(x)))
+        NAs    = sapply(data[numeric_cols], function(x)
+          sum(is.na(x)))
       )
     } else {
       library(moments)
@@ -256,14 +272,16 @@ fastexplore <- function(
         Max       = sapply(data[numeric_cols], max, na.rm = TRUE),
         Skewness  = sapply(data[numeric_cols], skewness, na.rm = TRUE),
         Kurtosis  = sapply(data[numeric_cols], kurtosis, na.rm = TRUE),
-        NAs       = sapply(data[numeric_cols], function(x) sum(is.na(x)))
+        NAs       = sapply(data[numeric_cols], function(x)
+          sum(is.na(x)))
       )
     }
 
     # Check for zero or near-zero variance columns
     variances <- sapply(data[numeric_cols], var, na.rm = TRUE)
     epsilon   <- 1e-8
-    zero_variance_cols <- names(variances[variances <= epsilon | is.na(variances)])
+    zero_variance_cols <- names(variances[variances <= epsilon |
+                                            is.na(variances)])
 
     print(round(summary_numeric, 3))
     cat("\n")
@@ -307,15 +325,22 @@ fastexplore <- function(
       }
       if ("ks" %in% normality_tests) {
         # One-sample KS test against normal with same mean/sd
-        ks <- suppressWarnings(ks.test(
-          x = scale(col_data),
-          y = "pnorm"
-        ))
+        ks <- suppressWarnings(ks.test(x = scale(col_data), y = "pnorm"))
         pvals$ks_pvalue <- ks$p.value
       }
       distribution_tests_results[[col]] <- pvals
-      cat("Normality test p-values for", col, ":",
-          paste(names(pvals), unlist(pvals), sep = "=", collapse = ", "), "\n")
+      cat(
+        "Normality test p-values for",
+        col,
+        ":",
+        paste(
+          names(pvals),
+          unlist(pvals),
+          sep = "=",
+          collapse = ", "
+        ),
+        "\n"
+      )
 
     }
     cat("\n")
@@ -355,8 +380,10 @@ fastexplore <- function(
   cat("--------------------------------------------------\n")
   missing_data <- data.frame(
     Column       = names(data),
-    MissingCount = sapply(data, function(x) sum(is.na(x))),
-    MissingPct   = sapply(data, function(x) mean(is.na(x)) * 100)
+    MissingCount = sapply(data, function(x)
+      sum(is.na(x))),
+    MissingPct   = sapply(data, function(x)
+      mean(is.na(x)) * 100)
   )
   print(missing_data)
   cat("\n\n")
@@ -364,13 +391,15 @@ fastexplore <- function(
   # (NEW) Additional Missing Data Visualization (UpSetR)
   if (use_upset_missing) {
     if (!requireNamespace("UpSetR", quietly = TRUE)) {
-      message("Package 'UpSetR' is not installed. Skipping UpSet-based missingness visualization.")
+      message(
+        "Package 'UpSetR' is not installed. Skipping UpSet-based missingness visualization."
+      )
     } else {
       # Attempt to produce an upset plot of missingness
       # We'll construct a logical matrix of missingness
       missing_matrix <- sapply(data, is.na)
 
-      if(any(missing_matrix)){
+      if (any(missing_matrix)) {
         cat("Attempting an UpSet plot of missing data...\n")
 
         # Convert to data.frame
@@ -386,11 +415,13 @@ fastexplore <- function(
           message("Too many columns for a neat UpSetR plot. Consider subsetting.")
         } else {
           tryCatch({
-            upset(missing_df, sets = names(missing_df))
+            upsetPlot <- upset(missing_df, sets = names(missing_df))
           }, error = function(e) {
             message("Error generating UpSet plot: ", e$message)
           })
         }
+      }else{
+        missing_df = NULL
       }
     }
   }
@@ -408,9 +439,16 @@ fastexplore <- function(
     } else if (requireNamespace("VIM", quietly = TRUE)) {
       library(VIM)
       cat("Visualizing missing data with VIM::aggr...\n")
-      aggr_plot <- aggr(data, col=c('navyblue','red'), numbers=TRUE, sortVars=TRUE,
-                        labels=names(data), cex.axis=.7, gap=3,
-                        ylab=c("Histogram of missing data","Pattern"))
+      aggr_plot <- aggr(
+        data,
+        col = c('navyblue', 'red'),
+        numbers = TRUE,
+        sortVars = TRUE,
+        labels = names(data),
+        cex.axis = .7,
+        gap = 3,
+        ylab = c("Histogram of missing data", "Pattern")
+      )
     } else {
       message("Neither 'naniar' nor 'VIM' is installed. Skipping missingness visualization.")
     }
@@ -422,8 +460,12 @@ fastexplore <- function(
     cat("--------------------------------------------------\n")
     cat("Simple strategies:\n")
     cat("1) Numeric columns: Impute missing values with the mean or median.\n")
-    cat("2) Categorical columns: Impute missing values with the most frequent category (mode).\n")
-    cat("Advanced approaches may include 'mice', 'missForest', or other predictive methods.\n\n")
+    cat(
+      "2) Categorical columns: Impute missing values with the most frequent category (mode).\n"
+    )
+    cat(
+      "Advanced approaches may include 'mice', 'missForest', or other predictive methods.\n\n"
+    )
   }
 
   ## ------------------------------------------------------------------------
@@ -437,8 +479,10 @@ fastexplore <- function(
 
   if (report_duplicate_details && dup_count > 0) {
     cat("Reporting top duplicated rows (by frequency):\n")
-    duplicates_all <- data[duplicated(data) | duplicated(data, fromLast = TRUE), ]
-    duplicates_all$dup_key <- apply(duplicates_all, 1, function(row) paste(row, collapse = "_SEP_"))
+    duplicates_all <- data[duplicated(data) |
+                             duplicated(data, fromLast = TRUE), ]
+    duplicates_all$dup_key <- apply(duplicates_all, 1, function(row)
+      paste(row, collapse = "_SEP_"))
     freq_table <- table(duplicates_all$dup_key)
     freq_table <- sort(freq_table, decreasing = TRUE)
     print(head(freq_table, 10))
@@ -507,16 +551,18 @@ fastexplore <- function(
           y = rownames(correlation_matrix),
           z = correlation_matrix,
           type = "heatmap",
-          colors = colorRamp(c("blue","white","red"))
+          colors = colorRamp(c("blue", "white", "red"))
         )
         print(heatmap_plot)
         if (save_results) {
-          htmlwidgets::saveWidget(heatmap_plot, file = file.path(results_folder, "correlation_heatmap.html"))
+          htmlwidgets::saveWidget(heatmap_plot,
+                                  file = file.path(results_folder, "correlation_heatmap.html"))
         }
       }
     }
 
-    if (!interactive || !requireNamespace("plotly", quietly = TRUE)) {
+    if (!interactive ||
+        !requireNamespace("plotly", quietly = TRUE)) {
       if (!requireNamespace("reshape2", quietly = TRUE)) {
         stop("Package 'reshape2' must be installed to create static heatmap.")
       }
@@ -525,7 +571,12 @@ fastexplore <- function(
       corr_melt <- melt(correlation_matrix)
       heatmap_plot <- ggplot(corr_melt, aes(x = Var1, y = Var2, fill = value)) +
         geom_tile(color = "white") +
-        scale_fill_gradient2(low = "blue", mid = "white", high = "red", midpoint = 0) +
+        scale_fill_gradient2(
+          low = "blue",
+          mid = "white",
+          high = "red",
+          midpoint = 0
+        ) +
         theme_minimal() +
         coord_fixed() +
         labs(title = "Correlation Heatmap", x = "", y = "")
@@ -548,11 +599,11 @@ fastexplore <- function(
   outlier_proportions <- NULL
   outlier_summary <- list()
 
-  if (outlier_method != "none" && length(numeric_cols) > 0) {
+  if (length(numeric_cols) > 0) {
     cat("--------------------------------------------------\n")
     cat("8. OUTLIER DETECTION\n")
     cat("--------------------------------------------------\n")
-    if (outlier_method == "iqr") {
+    if ("iqr" %in% outlier_method) {
       outlier_proportions <- sapply(numeric_cols, function(col) {
         x <- data[[col]]
         x <- x[!is.na(x)]
@@ -568,7 +619,7 @@ fastexplore <- function(
       print(round(outlier_proportions, 3))
       cat("\n")
       outlier_summary$iqr <- outlier_proportions
-    } else if (outlier_method == "zscore") {
+    } else if ("zscore" %in% outlier_method) {
       # robust Z-score or standard Z-score
       outlier_proportions <- sapply(numeric_cols, function(col) {
         x <- data[[col]]
@@ -582,36 +633,44 @@ fastexplore <- function(
       print(round(outlier_proportions, 3))
       cat("\n")
       outlier_summary$zscore <- outlier_proportions
-    } else if (outlier_method == "dbscan") {
+    } else if ("dbscan" %in% outlier_method) {
       if (!requireNamespace("dbscan", quietly = TRUE)) {
         message("Package 'dbscan' not installed. Skipping DBSCAN-based outlier detection.")
       } else {
         # Attempt DBSCAN on numeric columns (multi-dimensional).
         # This is a simplistic approach with fixed eps, minPts
-        numeric_data <- data[ , numeric_cols, drop=FALSE]
+        numeric_data <- data[, numeric_cols, drop = FALSE]
         numeric_data <- na.omit(numeric_data) # remove NAs
         # You'd normally choose eps, minPts with domain knowledge:
         db_res <- dbscan::dbscan(numeric_data, eps = 0.5, minPts = 5)
         # label outliers as cluster=0
         outlier_idx <- which(db_res$cluster == 0)
         outlier_prop <- length(outlier_idx) / nrow(numeric_data)
-        cat("DBSCAN-based outliers proportion (multidimensional):", round(outlier_prop, 3), "\n")
+        cat(
+          "DBSCAN-based outliers proportion (multidimensional):",
+          round(outlier_prop, 3),
+          "\n"
+        )
         outlier_proportions <- rep(NA, length(numeric_cols))
         names(outlier_proportions) <- numeric_cols
         outlier_proportions[1] <- outlier_prop
         outlier_summary$dbscan <- outlier_prop
       }
-    } else if (outlier_method == "lof") {
+    } else if ("lof" %in% outlier_method) {
       if (!requireNamespace("dbscan", quietly = TRUE)) {
         message("Package 'dbscan' not installed. Skipping LOF-based outlier detection.")
       } else {
-        numeric_data <- data[ , numeric_cols, drop=FALSE]
+        numeric_data <- data[, numeric_cols, drop = FALSE]
         numeric_data <- na.omit(numeric_data)
         lof_vals <- dbscan::lof(numeric_data, minPts = 5)
         # Typically, LOF > 1.5 or 2 could be considered outliers. We'll pick 1.5:
         outlier_idx <- which(lof_vals > 1.5)
         outlier_prop <- length(outlier_idx) / nrow(numeric_data)
-        cat("LOF-based outliers proportion (multidimensional):", round(outlier_prop, 3), "\n")
+        cat(
+          "LOF-based outliers proportion (multidimensional):",
+          round(outlier_prop, 3),
+          "\n"
+        )
         outlier_proportions <- rep(NA, length(numeric_cols))
         names(outlier_proportions) <- numeric_cols
         outlier_proportions[1] <- outlier_prop
@@ -641,12 +700,19 @@ fastexplore <- function(
           next
         }
         p <- ggplot(data_vis, aes_string(x = col)) +
-          geom_histogram(bins = 30, fill = "steelblue", color = "white") +
-          labs(title = paste("Histogram of", col), x = col, y = "Count") +
+          geom_histogram(
+            bins = 30,
+            fill = "steelblue",
+            color = "white"
+          ) +
+          labs(title = paste("Histogram of", col),
+               x = col,
+               y = "Count") +
           theme_minimal()
 
         # If label is provided and factor, we can facet wrap
-        if (!is.null(label) && label %in% factor_cols && grouped_plots) {
+        if (!is.null(label) &&
+            label %in% factor_cols && grouped_plots) {
           p <- p + facet_wrap(as.formula(paste("~", label)))
         }
 
@@ -666,13 +732,24 @@ fastexplore <- function(
         }
         p <- ggplot(data_vis, aes_string(x = "1", y = col)) +
           geom_boxplot(fill = "tomato") +
-          labs(title = paste("Boxplot of", col), x = "", y = col) +
+          labs(title = paste("Boxplot of", col),
+               x = "",
+               y = col) +
           theme_minimal()
 
-        if (!is.null(label) && label %in% factor_cols && grouped_plots) {
-          p <- ggplot(data_vis, aes_string(x = label, y = col, fill = label)) +
+        if (!is.null(label) &&
+            label %in% factor_cols && grouped_plots) {
+          p <- ggplot(data_vis, aes_string(
+            x = label,
+            y = col,
+            fill = label
+          )) +
             geom_boxplot() +
-            labs(title = paste("Boxplot of", col, "by", label), x = label, y = col) +
+            labs(
+              title = paste("Boxplot of", col, "by", label),
+              x = label,
+              y = col
+            ) +
             theme_minimal()
         }
 
@@ -692,7 +769,9 @@ fastexplore <- function(
         }
         p <- ggplot(data_vis, aes_string(x = col)) +
           geom_bar(fill = "forestgreen") +
-          labs(title = paste("Bar Plot of", col), x = col, y = "Count") +
+          labs(title = paste("Bar Plot of", col),
+               x = col,
+               y = "Count") +
           theme_minimal()
 
         print(p)
@@ -707,11 +786,12 @@ fastexplore <- function(
       cat("--------------------------------------------------\n")
       if (!is.null(correlation_matrix)) {
         upper_tri <- correlation_matrix
-        upper_tri[lower.tri(upper_tri, diag=TRUE)] <- NA
+        upper_tri[lower.tri(upper_tri, diag = TRUE)] <- NA
         corr_vals <- as.data.frame(as.table(upper_tri))
         colnames(corr_vals) <- c("Var1", "Var2", "Correlation")
         corr_vals <- corr_vals[!is.na(corr_vals$Correlation), ]
-        top_pairs <- head(corr_vals[order(abs(corr_vals$Correlation), decreasing=TRUE), ], 3)
+        top_pairs <- head(corr_vals[order(abs(corr_vals$Correlation), decreasing =
+                                            TRUE), ], 3)
 
         for (i in seq_len(nrow(top_pairs))) {
           varx <- as.character(top_pairs$Var1[i])
@@ -721,15 +801,24 @@ fastexplore <- function(
           }
           p <- ggplot(data_vis, aes_string(x = varx, y = vary)) +
             geom_point(color = "darkblue") +
-            labs(title = paste("Scatterplot of", varx, "vs", vary),
-                 subtitle = paste("Correlation =", round(top_pairs$Correlation[i], 3))) +
+            labs(
+              title = paste("Scatterplot of", varx, "vs", vary),
+              subtitle = paste("Correlation =", round(top_pairs$Correlation[i], 3))
+            ) +
             theme_minimal()
 
-          if (!is.null(label) && label %in% factor_cols && grouped_plots) {
-            p <- ggplot(data_vis, aes_string(x = varx, y = vary, color = label)) +
+          if (!is.null(label) &&
+              label %in% factor_cols && grouped_plots) {
+            p <- ggplot(data_vis, aes_string(
+              x = varx,
+              y = vary,
+              color = label
+            )) +
               geom_point() +
-              labs(title = paste("Scatterplot of", varx, "vs", vary, "by", label),
-                   subtitle = paste("Correlation =", round(top_pairs$Correlation[i], 3))) +
+              labs(
+                title = paste("Scatterplot of", varx, "vs", vary, "by", label),
+                subtitle = paste("Correlation =", round(top_pairs$Correlation[i], 3))
+              ) +
               theme_minimal()
           }
 
@@ -751,24 +840,27 @@ fastexplore <- function(
       if (requireNamespace("GGally", quietly = TRUE)) {
         library(GGally)
         cat("Using GGally::ggpairs for pairwise scatterplot matrix...\n")
-        spm <- ggpairs(data_vis[, numeric_subset, drop=FALSE])
+        spm <- ggpairs(data_vis[, numeric_subset, drop = FALSE])
         print(spm)
         maybe_save_plot(spm, "pairwise_scatterplot_matrix.png")
       } else {
         cat("Package 'GGally' not installed. Falling back to base R 'pairs()'.\n")
-        pairs(data_vis[, numeric_subset, drop=FALSE])
+        pairs(data_vis[, numeric_subset, drop = FALSE])
         # Base R pairs cannot easily be saved via ggsave
       }
     }
 
     # (NEW) 11f. Categorical vs. Numeric Plots (grouped histograms, violin, density) if grouped_plots=TRUE
-    if (grouped_plots && !is.null(label) && label %in% factor_cols && length(numeric_cols) > 0) {
+    if (grouped_plots &&
+        !is.null(label) &&
+        label %in% factor_cols && length(numeric_cols) > 0) {
       cat("--------------------------------------------------\n")
       cat("CATEGORICAL vs. NUMERIC PLOTS\n")
       cat("--------------------------------------------------\n")
       # Example: grouped violin or density plots for each numeric col by label
       for (col in numeric_cols) {
-        if (col == label) next
+        if (col == label)
+          next
         # Grouped Violin
         p_violin <- ggplot(data_vis, aes_string(x = label, y = col, fill = label)) +
           geom_violin(trim = FALSE) +
@@ -810,7 +902,6 @@ fastexplore <- function(
 
   # Create a final R Markdown report file if save_results=TRUE
   if (save_results) {
-
     # Create the Rmd content on-the-fly
     report_rmd_content <- c(
       "---",
@@ -836,6 +927,7 @@ fastexplore <- function(
       "results_list$data_overview",
       "```",
       "",
+
       "## Summary Statistics",
       "",
       "```{r summary-stats}",
@@ -846,29 +938,143 @@ fastexplore <- function(
       "}",
       "```",
       "",
-      "## Missing Data",
+
+      "## Distribution Checks (Normality Tests)",
       "",
-      "```{r missing-data}",
-      "results_list$missing_data",
+      "```{r distribution-checks}",
+      "if (!is.null(results_list$distribution_tests)) {",
+      "  results_list$distribution_tests",
+      "} else {",
+      "  \"No distribution tests available.\"",
+      "}",
       "```",
       "",
+
+      "## Frequency Tables",
+      "",
+      "```{r freqeuncy-tables}",
+      "if (!is.null(results_list$freq_tables)) {",
+      "  results_list$freq_tables",
+      "} else {",
+      "  \"No frequency tables available.\"",
+      "}",
+      "```",
+      "",
+
+      "## Missing Data Analysis",
+      "",
+      "```{r missing-data-analysis}",
+      "if (!is.null(results_list$missing_data)) {",
+      "  results_list$missing_data",
+      "} else {",
+      "  \"No missing data info available.\"",
+      "}",
+      "```",
+      "",
+
+      "## Missingness Patterns",
+      "",
+      "```{r missingness-patterns}",
+      "if (visualize_missing && sum(missing_df) > 0) {",
+      "  upsetPlot",
+      "} else {",
+      "  \"No missingness patterns available.\"",
+      "}",
+      "```",
+      "",
+
       "## Duplicated Rows",
       "",
       "```{r duplicated-rows}",
-      "paste(\"Number of duplicated rows:\", results_list$duplicated_rows)",
+      "if (!is.null(results_list$duplicated_rows)) {",
+      "  results_list$duplicated_rows",
+      "} else {",
+      "  \"No duplicated rows available.\"",
+      "}",
       "```",
       "",
+
+      "## Class Imbalance (if label is provided)",
+      "",
+      "```{r class-imbalance}",
+      "if (!is.null(results_list$class_imbalance)) {",
+      "  results_list$class_imbalance",
+      "} else {",
+      "  \"No class imbalance info available.\"",
+      "}",
+      "```",
+      "",
+
       "## Correlation Matrix",
       "",
       "```{r correlation-matrix}",
       "if (!is.null(results_list$correlation_matrix)) {",
       "  results_list$correlation_matrix",
       "} else {",
-      "  \"Correlation matrix not available.\"",
+      "  \"No correlation matrix available.\"",
+      "}",
+      "```",
+      "",
+
+      "## Zero/Near-Zero Variance",
+      "",
+      "```{r zero-variance}",
+      "if (!is.null(results_list$zero_variance_cols)) {",
+      "  results_list$zero_variance_cols",
+      "} else {",
+      "  \"No zero variance variables available.\"",
+      "}",
+      "```",
+      "",
+
+      "## Potential ID Columns",
+      "",
+      "```{r id-columns}",
+      "if (!is.null(results_list$potential_id_cols)) {",
+      "  results_list$potential_id_cols",
+      "} else {",
+      "  \"No ID columns available.\"",
+      "}",
+      "```",
+      "",
+
+      "## Potential Date Time Columns",
+      "",
+      "```{r date-columns}",
+      "if (!is.null(results_list$date_time_cols)) {",
+      "  results_list$date_time_cols",
+      "} else {",
+      "  \"No date time columns available.\"",
+      "}",
+      "```",
+      "",
+
+      "## High-Correlation Pairs",
+      "",
+      "```{r high-corr-pairs}",
+      "if (!is.null(results_list$high_corr_pairs)) {",
+      "  results_list$high_corr_pairs",
+      "} else {",
+      "  \"No high correlation pairs available.\"",
+      "}",
+      "```",
+      "",
+
+
+      "## Outlier Summary",
+      "",
+      "```{r outlier-summary}",
+      "if (!is.null(results_list$outlier_summary)) {",
+      "  results_list$outlier_summary",
+      "} else {",
+      "  \"No outlier summary available.\"",
       "}",
       "```",
       ""
+
+
     )
+
 
     # Write the Rmd file to the results folder
     rmd_file_path <- file.path(results_folder, "fastexplore_report.Rmd")
@@ -877,12 +1083,9 @@ fastexplore <- function(
     # Render into HTML or PDF (quietly, no console output)
     rmarkdown::render(
       input         = rmd_file_path,
-      output_format = if (output_format == "html") "html_document" else "pdf_document",
-      output_file   = file.path(
-        results_folder,
-        if (output_format == "html") "fastexplore_report.html" else "fastexplore_report.pdf"
-      ),
-      quiet         = TRUE
+      output_format = "html_document",
+      output_file   = file.path(results_folder, "fastexplore_report.html"),
+      quiet = TRUE
     )
   }
 
