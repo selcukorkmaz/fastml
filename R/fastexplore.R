@@ -1,7 +1,31 @@
+library(dplyr)
+library(tidyverse)
+library(skimr)
+library(DT)
+# Load libraries
+library(dplyr)
+library(tidyverse)
+library(DT)
+library(ggplot2)
+library(broom)
+library(knitr)
+library(kableExtra)
+library(rmarkdown)
+library(dplyr)
+library(tidyverse)
+library(DT)
+library(ggplot2)
+library(broom)
+library(knitr)
+library(kableExtra)
+library(rmarkdown)
+library(gridExtra)
+library(ggpubr)
+
 fastexplore <- function(
     data,
     label = NULL,
-    visualize = c("histogram", "boxplot", "heatmap"),
+    visualize = c("histogram", "boxplot", "barplot", "heatmap", "scatterplot"),
     save_results = TRUE,
     output_dir = getwd(),
     sample_size = NULL,
@@ -16,7 +40,7 @@ fastexplore <- function(
     feature_engineering = FALSE,  # If TRUE, create derived columns (day, month, year) from date/time + ID col suggestions
     outlier_method = c("iqr", "zscore", "dbscan", "lof"),
     run_distribution_checks = TRUE,  # If TRUE, run normality tests (Shapiro-Wilk, etc.)
-    normality_tests = c("shapiro", "ks"), # Which normality tests to run if run_distribution_checks=TRUE
+    normality_tests = c("shapiro"), # Which normality tests to run if run_distribution_checks=TRUE
     pairwise_matrix = TRUE,  # If TRUE, produce a scatterplot matrix for numeric columns
     max_scatter_cols = 5,      # Limit how many numeric columns to include in the pairwise matrix
     grouped_plots = TRUE,  # If TRUE, produce grouped histograms, violin plots, density plots by label (if factor)
@@ -34,6 +58,29 @@ fastexplore <- function(
   if (nrow(data) == 0) {
     stop("Error: The data frame is empty. No rows to analyze.")
   }
+
+
+  data <- data %>%
+    mutate(
+      across(where(is.character), as.factor),
+      across(where(is.integer), as.numeric)
+    )
+
+  target_var <- data[[label]]
+
+
+  if (is.numeric(target_var) && length(unique(target_var)) <= 5) {
+    # Convert target_var to factor
+    target_var <- as.factor(target_var)
+    data[[label]] = as.factor(data[[label]])
+
+    # Issue a warning to inform the user about the change
+    warning(sprintf("The target variable '%s' is numeric with %d unique values. It has been converted to a factor.",
+                    label, length(unique(target_var))))
+  }
+
+  data = clean_special_column_names(data)
+
 
   # Identify numeric and categorical columns
   numeric_cols <- names(data)[vapply(data, is.numeric, logical(1))]
@@ -72,24 +119,26 @@ fastexplore <- function(
     dir.create(results_folder,
                showWarnings = FALSE,
                recursive = TRUE)
-  }
 
-  ## Helper function to save plots if needed
-  maybe_save_plot <- function(plot_obj, filename) {
-    if (save_results) {
-      # Attempt ggsave if it's a ggplot. If it's a plotly or base, might need different approach.
-      if (inherits(plot_obj, "ggplot")) {
-        ggsave(
-          filename = file.path(results_folder, filename),
-          plot     = plot_obj,
-          width    = 7,
-          height   = 5
-        )
-      } else {
-        message("Object provided is not a ggplot. Skipping ggsave for ",
-                filename)
-      }
-    }
+    dir.create(paste0(results_folder, "/Boxplot"),
+               showWarnings = FALSE,
+               recursive = TRUE)
+
+    dir.create(paste0(results_folder, "/Histogram"),
+               showWarnings = FALSE,
+               recursive = TRUE)
+
+    dir.create(paste0(results_folder, "/Barplot"),
+               showWarnings = FALSE,
+               recursive = TRUE)
+
+    dir.create(paste0(results_folder, "/ScatterPlot"),
+               showWarnings = FALSE,
+               recursive = TRUE)
+
+    dir.create(paste0(results_folder, "/Heatmap"),
+               showWarnings = FALSE,
+               recursive = TRUE)
   }
 
   ## ------------------------------------------------------------------------
@@ -169,21 +218,44 @@ fastexplore <- function(
   cat("--------------------------------------------------\n")
   cat("1. DATA OVERVIEW\n")
   cat("--------------------------------------------------\n")
-  cat("Dimensions: ", paste(dim(data), collapse = " x "), "\n")
-  cat("Column Names:\n")
-  print(names(data))
-  cat("Data Types:\n")
-  print(sapply(data, class))
-  cat("Preview of the first 6 rows:\n")
-  print(head(data, 6))
-  cat("\n\n")
+  # Enhanced Data Overview
 
+  # 1. Basic Dimensions and Structure
+  data_dimensions <- data %>%
+    summarise(
+      Rows = n(),
+      Columns = ncol(.)
+    )
+
+  data_column_names <- names(data)
+
+  data_types <- data %>%
+    summarise_all(class) %>%
+    pivot_longer(cols = everything(), names_to = "Column", values_to = "Data_Type")
+
+  # 2. Missing Values
+  missing_values <- data %>%
+    summarise_all(~ sum(is.na(.))) %>%
+    pivot_longer(cols = everything(), names_to = "Column", values_to = "Missing_Values")
+
+  # 3. Unique Values per Column
+  unique_values <- data %>%
+    summarise_all(~ n_distinct(.)) %>%
+    pivot_longer(cols = everything(), names_to = "Column", values_to = "Unique_Values")
+
+  # 4. Summary Statistics using skimr
+  data_summary <- skim(data)
+
+  # 5. Head of Data
+  data_head <- head(data, 6)
+
+  # Combine all components into a list
   data_overview <- list(
-    dimensions   = dim(data),
-    column_names = names(data),
-    data_types   = sapply(data, class),
-    head_of_data = head(data, 6)
+    Head = data_head,
+    Unique_Values = unique_values,
+    Summary = data_summary
   )
+
 
   ## ------------------------------------------------------------------------
   ## 3. Detection of Potential ID Columns and Date/Time Columns
@@ -301,49 +373,42 @@ fastexplore <- function(
   }
 
   ## (NEW) Extended Descriptive Statistics: Distribution Checks
-  distribution_tests_results <- NULL
   if (run_distribution_checks && length(numeric_cols) > 0) {
-    distribution_tests_results <- list()
-    # Perform normality tests (Shapiro-Wilk, Kolmogorov-Smirnov) on numeric columns
-    # Typically, these tests are sensitive to large sample sizes, but let's demonstrate
-    cat("--------------------------------------------------\n")
-    cat("DISTRIBUTION CHECKS (Normality Tests)\n")
-    cat("--------------------------------------------------\n")
-    for (col in numeric_cols) {
-      col_data <- data[[col]]
-      col_data <- col_data[!is.na(col_data)]
-      # We'll store p-values
-      pvals <- list()
-      if ("shapiro" %in% normality_tests) {
-        # Shapiro-Wilk test usually limited to n < 5000 in R
-        if (length(col_data) >= 3 && length(col_data) <= 5000) {
-          sw <- shapiro.test(col_data)
-          pvals$shapiro_pvalue <- sw$p.value
-        } else {
-          pvals$shapiro_pvalue <- NA
-        }
-      }
-      if ("ks" %in% normality_tests) {
-        # One-sample KS test against normal with same mean/sd
-        ks <- suppressWarnings(ks.test(x = scale(col_data), y = "pnorm"))
-        pvals$ks_pvalue <- ks$p.value
-      }
-      distribution_tests_results[[col]] <- pvals
-      cat(
-        "Normality test p-values for",
-        col,
-        ":",
-        paste(
-          names(pvals),
-          unlist(pvals),
-          sep = "=",
-          collapse = ", "
+
+
+    # Perform normality tests
+    distribution_tests_results_df <- perform_normality_tests(
+      data = data,
+      numeric_cols = numeric_cols,
+      normality_tests = normality_tests
+    )
+
+    if (!is.null(distribution_tests_results_df)) {
+
+      # Create an interactive datatable
+      normality_table <- datatable(
+        distribution_tests_results_df,
+        extensions = 'Buttons',
+        options = list(
+          pageLength = 10,
+          dom = 'Bfrtip',
+          buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+          order = list(list(0, 'asc'), list(1, 'asc'))
         ),
-        "\n"
-      )
+        caption = 'Normality Test Results for Numeric Columns'
+      ) %>%
+        formatRound(c('P_Value', 'Adjusted_P_Value'), digits = 4) %>%
+        formatStyle(
+          'Normal',
+          target = 'row',
+          backgroundColor = styleEqual(c("Yes", "No"), c('lightgreen', 'salmon'))
+        )
 
     }
-    cat("\n")
+
+    normality_plots <- generate_normality_plots(data, numeric_cols)
+
+
   }
 
   ## ------------------------------------------------------------------------
@@ -389,69 +454,63 @@ fastexplore <- function(
   cat("\n\n")
 
   # (NEW) Additional Missing Data Visualization (UpSetR)
-  if (use_upset_missing) {
-    if (!requireNamespace("UpSetR", quietly = TRUE)) {
-      message(
-        "Package 'UpSetR' is not installed. Skipping UpSet-based missingness visualization."
-      )
-    } else {
+  # if (use_upset_missing) {
+  #   if (!requireNamespace("UpSetR", quietly = TRUE)) {
+  #     message(
+  #       "Package 'UpSetR' is not installed. Skipping UpSet-based missingness visualization."
+  #     )
+  #   } else {
       # Attempt to produce an upset plot of missingness
       # We'll construct a logical matrix of missingness
-      missing_matrix <- sapply(data, is.na)
 
-      if (any(missing_matrix)) {
-        cat("Attempting an UpSet plot of missing data...\n")
+  #   }
+  # }
 
-        # Convert to data.frame
-        missing_df <- as.data.frame(missing_matrix)
-        # Because UpSetR uses sets, we convert each column to factor(0/1)
-        library(UpSetR)
-        for (cname in names(missing_df)) {
-          missing_df[[cname]] <- ifelse(missing_df[[cname]] == TRUE, 1, 0)
-        }
-        # The typical usage is upset(missing_df, sets=names(missing_df)), but for large sets this might be big
-        # We'll do a minimal version:
-        if (ncol(missing_df) > 15) {
-          message("Too many columns for a neat UpSetR plot. Consider subsetting.")
-        } else {
-          tryCatch({
-            upsetPlot <- upset(missing_df, sets = names(missing_df))
-          }, error = function(e) {
-            message("Error generating UpSet plot: ", e$message)
-          })
-        }
-      }else{
-        missing_df = NULL
+  if (visualize_missing) {
+
+    ## Upset Plot
+    missing_matrix <- sapply(data, is.na)
+
+    if (any(missing_matrix)) {
+
+      # Convert to data.frame
+      missing_df <- as.data.frame(missing_matrix)
+      # Because UpSetR uses sets, we convert each column to factor(0/1)
+      library(UpSetR)
+      for (cname in names(missing_df)) {
+        missing_df[[cname]] <- ifelse(missing_df[[cname]] == TRUE, 1, 0)
       }
-    }
-  }
-
-  if (visualize_missing && sum(missing_df) > 0) {
-    # Attempt to visualize missingness patterns
-    if (requireNamespace("naniar", quietly = TRUE)) {
-      library(naniar)
-      cat("Visualizing missing data with naniar::vis_miss...\n")
-      miss_plot <- vis_miss(data)
-      print(miss_plot)
-      if (save_results) {
-        maybe_save_plot(miss_plot, "missingness_pattern.png")
+      # The typical usage is upset(missing_df, sets=names(missing_df)), but for large sets this might be big
+      # We'll do a minimal version:
+      if (ncol(missing_df) > 15) {
+        message("Too many columns for a neat UpSetR plot. Consider subsetting.")
+      } else {
+        tryCatch({
+          upsetPlot <- upset(missing_df, sets = names(missing_df))
+        }, error = function(e) {
+          message("Error generating UpSet plot: ", e$message)
+        })
       }
-    } else if (requireNamespace("VIM", quietly = TRUE)) {
-      library(VIM)
-      cat("Visualizing missing data with VIM::aggr...\n")
-      aggr_plot <- aggr(
-        data,
-        col = c('navyblue', 'red'),
-        numbers = TRUE,
-        sortVars = TRUE,
-        labels = names(data),
-        cex.axis = .7,
-        gap = 3,
-        ylab = c("Histogram of missing data", "Pattern")
-      )
-    } else {
-      message("Neither 'naniar' nor 'VIM' is installed. Skipping missingness visualization.")
+    }else{
+      missing_df = NULL
     }
+
+    library(naniar)
+    miss_plot <- vis_miss(data)
+
+    library(VIM)
+    aggr_plot <- aggr(
+      data,
+      col = c('navyblue', 'red'),
+      numbers = TRUE,
+      sortVars = TRUE,
+      labels = names(data),
+      cex.axis = .7,
+      gap = 3,
+      ylab = c("Histogram of missing data", "Pattern")
+    )
+
+
   }
 
   if (imputation_suggestions) {
@@ -582,7 +641,7 @@ fastexplore <- function(
         labs(title = "Correlation Heatmap", x = "", y = "")
 
       print(heatmap_plot)
-      maybe_save_plot(heatmap_plot, "correlation_heatmap.png")
+      save_plot(heatmap_plot, "Heatmap", "correlation_heatmap.png")
     }
   }
 
@@ -600,83 +659,10 @@ fastexplore <- function(
   outlier_summary <- list()
 
   if (length(numeric_cols) > 0) {
-    cat("--------------------------------------------------\n")
-    cat("8. OUTLIER DETECTION\n")
-    cat("--------------------------------------------------\n")
-    if ("iqr" %in% outlier_method) {
-      outlier_proportions <- sapply(numeric_cols, function(col) {
-        x <- data[[col]]
-        x <- x[!is.na(x)]
-        q1 <- quantile(x, 0.25)
-        q3 <- quantile(x, 0.75)
-        iqr_val <- q3 - q1
-        lower_bound <- q1 - 1.5 * iqr_val
-        upper_bound <- q3 + 1.5 * iqr_val
-        outliers <- sum(x < lower_bound | x > upper_bound)
-        outliers / length(x)
-      })
-      print("Outlier proportions (IQR method):")
-      print(round(outlier_proportions, 3))
-      cat("\n")
-      outlier_summary$iqr <- outlier_proportions
-    } else if ("zscore" %in% outlier_method) {
-      # robust Z-score or standard Z-score
-      outlier_proportions <- sapply(numeric_cols, function(col) {
-        x <- data[[col]]
-        x <- x[!is.na(x)]
-        z <- scale(x)
-        # threshold at abs(z) > 3
-        outliers <- sum(abs(z) > 3)
-        outliers / length(x)
-      })
-      print("Outlier proportions (Z-score method):")
-      print(round(outlier_proportions, 3))
-      cat("\n")
-      outlier_summary$zscore <- outlier_proportions
-    } else if ("dbscan" %in% outlier_method) {
-      if (!requireNamespace("dbscan", quietly = TRUE)) {
-        message("Package 'dbscan' not installed. Skipping DBSCAN-based outlier detection.")
-      } else {
-        # Attempt DBSCAN on numeric columns (multi-dimensional).
-        # This is a simplistic approach with fixed eps, minPts
-        numeric_data <- data[, numeric_cols, drop = FALSE]
-        numeric_data <- na.omit(numeric_data) # remove NAs
-        # You'd normally choose eps, minPts with domain knowledge:
-        db_res <- dbscan::dbscan(numeric_data, eps = 0.5, minPts = 5)
-        # label outliers as cluster=0
-        outlier_idx <- which(db_res$cluster == 0)
-        outlier_prop <- length(outlier_idx) / nrow(numeric_data)
-        cat(
-          "DBSCAN-based outliers proportion (multidimensional):",
-          round(outlier_prop, 3),
-          "\n"
-        )
-        outlier_proportions <- rep(NA, length(numeric_cols))
-        names(outlier_proportions) <- numeric_cols
-        outlier_proportions[1] <- outlier_prop
-        outlier_summary$dbscan <- outlier_prop
-      }
-    } else if ("lof" %in% outlier_method) {
-      if (!requireNamespace("dbscan", quietly = TRUE)) {
-        message("Package 'dbscan' not installed. Skipping LOF-based outlier detection.")
-      } else {
-        numeric_data <- data[, numeric_cols, drop = FALSE]
-        numeric_data <- na.omit(numeric_data)
-        lof_vals <- dbscan::lof(numeric_data, minPts = 5)
-        # Typically, LOF > 1.5 or 2 could be considered outliers. We'll pick 1.5:
-        outlier_idx <- which(lof_vals > 1.5)
-        outlier_prop <- length(outlier_idx) / nrow(numeric_data)
-        cat(
-          "LOF-based outliers proportion (multidimensional):",
-          round(outlier_prop, 3),
-          "\n"
-        )
-        outlier_proportions <- rep(NA, length(numeric_cols))
-        names(outlier_proportions) <- numeric_cols
-        outlier_proportions[1] <- outlier_prop
-        outlier_summary$lof <- outlier_prop
-      }
-    }
+
+    outlier_summary <- perform_outlier_detection(data = data,
+                                                 numeric_cols = numeric_cols,
+                                                 outlier_methods = outlier_methods)
   } else if (outlier_method == "none") {
     cat("Skipping outlier detection (method='none').\n")
   }
@@ -717,7 +703,7 @@ fastexplore <- function(
         }
 
         print(p)
-        maybe_save_plot(p, paste0("histogram_", col, ".png"))
+        save_plot(p, "Histogram", paste0("histogram_", col, ".png"))
       }
     }
 
@@ -754,7 +740,7 @@ fastexplore <- function(
         }
 
         print(p)
-        maybe_save_plot(p, paste0("boxplot_", col, ".png"))
+        save_plot(p, "Boxplot", paste0("boxplot_", col, ".png"))
       }
     }
 
@@ -775,7 +761,7 @@ fastexplore <- function(
           theme_minimal()
 
         print(p)
-        maybe_save_plot(p, paste0("barplot_", col, ".png"))
+        save_plot(p, "Barplot",paste0("barplot_", col, ".png"))
       }
     }
 
@@ -823,7 +809,7 @@ fastexplore <- function(
           }
 
           print(p)
-          maybe_save_plot(p, paste0("scatterplot_", varx, "_vs_", vary, ".png"))
+          save_plot(p, "ScatterPlot", paste0("scatterplot_", varx, "_vs_", vary, ".png"))
         }
       } else {
         cat("Correlation matrix not computed or insufficient numeric columns.\n")
@@ -837,17 +823,12 @@ fastexplore <- function(
       cat("--------------------------------------------------\n")
       cat("PAIRWISE SCATTERPLOT MATRIX\n")
       cat("--------------------------------------------------\n")
-      if (requireNamespace("GGally", quietly = TRUE)) {
         library(GGally)
         cat("Using GGally::ggpairs for pairwise scatterplot matrix...\n")
         spm <- ggpairs(data_vis[, numeric_subset, drop = FALSE])
         print(spm)
-        maybe_save_plot(spm, "pairwise_scatterplot_matrix.png")
-      } else {
-        cat("Package 'GGally' not installed. Falling back to base R 'pairs()'.\n")
-        pairs(data_vis[, numeric_subset, drop = FALSE])
-        # Base R pairs cannot easily be saved via ggsave
-      }
+        save_plot(spm, "ScatterPlot", "pairwise_scatterplot_matrix.png")
+
     }
 
     # (NEW) 11f. Categorical vs. Numeric Plots (grouped histograms, violin, density) if grouped_plots=TRUE
@@ -867,7 +848,7 @@ fastexplore <- function(
           theme_minimal() +
           labs(title = paste("Violin Plot of", col, "by", label))
         print(p_violin)
-        maybe_save_plot(p_violin, paste0("violin_", col, ".png"))
+        save_plot(p_violin, "Boxplot", paste0("violin_", col, ".png"))
 
         # Grouped Density
         p_density <- ggplot(data_vis, aes_string(x = col, fill = label)) +
@@ -875,7 +856,7 @@ fastexplore <- function(
           theme_minimal() +
           labs(title = paste("Density Plot of", col, "by", label))
         print(p_density)
-        maybe_save_plot(p_density, paste0("density_", col, ".png"))
+        save_plot(p_density, "Histogram", paste0("density_", col, ".png"))
       }
     }
   }
@@ -928,53 +909,42 @@ fastexplore <- function(
       "```",
       "",
 
-      "## Summary Statistics",
+      "## Distribution Checks",
       "",
-      "```{r summary-stats}",
-      "if (!is.null(results_list$summary_stats)) {",
-      "  results_list$summary_stats",
-      "} else {",
-      "  \"No numeric columns or summary statistics available.\"",
-      "}",
-      "```",
-      "",
-
-      "## Distribution Checks (Normality Tests)",
-      "",
-      "```{r distribution-checks}",
-      "if (!is.null(results_list$distribution_tests)) {",
-      "  results_list$distribution_tests",
+      "```{r normality-tests}",
+      "if (run_distribution_checks && length(numeric_cols) > 0) {",
+      "  normality_table",
       "} else {",
       "  \"No distribution tests available.\"",
       "}",
       "```",
       "",
 
-      "## Frequency Tables",
       "",
-      "```{r freqeuncy-tables}",
-      "if (!is.null(results_list$freq_tables)) {",
-      "  results_list$freq_tables",
+      "```{r distribution-plots}",
+      "if (run_distribution_checks && length(numeric_cols) > 0) {",
+      "  normality_plots",
       "} else {",
-      "  \"No frequency tables available.\"",
+      "  \"No distribution plots available.\"",
       "}",
       "```",
       "",
+
+      # "## Frequency Tables",
+      # "",
+      # "```{r freqeuncy-tables}",
+      # "if (!is.null(results_list$freq_tables)) {",
+      # "  results_list$freq_tables",
+      # "} else {",
+      # "  \"No frequency tables available.\"",
+      # "}",
+      # "```",
+      # "",
 
       "## Missing Data Analysis",
       "",
-      "```{r missing-data-analysis}",
-      "if (!is.null(results_list$missing_data)) {",
-      "  results_list$missing_data",
-      "} else {",
-      "  \"No missing data info available.\"",
-      "}",
-      "```",
-      "",
-
-      "## Missingness Patterns",
-      "",
-      "```{r missingness-patterns}",
+      "**UpSet Plot**",
+      "```{r missingness-patterns_upsetPlot}",
       "if (visualize_missing && sum(missing_df) > 0) {",
       "  upsetPlot",
       "} else {",
@@ -982,28 +952,46 @@ fastexplore <- function(
       "}",
       "```",
       "",
-
-      "## Duplicated Rows",
-      "",
-      "```{r duplicated-rows}",
-      "if (!is.null(results_list$duplicated_rows)) {",
-      "  results_list$duplicated_rows",
+      "**Aggregations Plot**",
+      "```{r missingness-patterns_aggr}",
+      "if (visualize_missing && sum(missing_df) > 0) {",
+      " aggr_plot <- aggr(
+        data,
+        col = c('navyblue', 'red'),
+        numbers = TRUE,
+        sortVars = TRUE,
+        labels = names(data),
+        cex.axis = .7,
+        gap = 3,
+        ylab = c('Histogram of missing data', 'Pattern')
+      )",
       "} else {",
-      "  \"No duplicated rows available.\"",
+      "  \"No missingness patterns available.\"",
       "}",
       "```",
       "",
 
-      "## Class Imbalance (if label is provided)",
-      "",
-      "```{r class-imbalance}",
-      "if (!is.null(results_list$class_imbalance)) {",
-      "  results_list$class_imbalance",
-      "} else {",
-      "  \"No class imbalance info available.\"",
-      "}",
-      "```",
-      "",
+      # "## Duplicated Rows",
+      # "",
+      # "```{r duplicated-rows}",
+      # "if (!is.null(results_list$duplicated_rows)) {",
+      # "  results_list$duplicated_rows",
+      # "} else {",
+      # "  \"No duplicated rows available.\"",
+      # "}",
+      # "```",
+      # "",
+
+      # "## Class Imbalance (if label is provided)",
+      # "",
+      # "```{r class-imbalance}",
+      # "if (!is.null(results_list$class_imbalance)) {",
+      # "  results_list$class_imbalance",
+      # "} else {",
+      # "  \"No class imbalance info available.\"",
+      # "}",
+      # "```",
+      # "",
 
       "## Correlation Matrix",
       "",
@@ -1016,35 +1004,11 @@ fastexplore <- function(
       "```",
       "",
 
-      "## Zero/Near-Zero Variance",
-      "",
-      "```{r zero-variance}",
-      "if (!is.null(results_list$zero_variance_cols)) {",
-      "  results_list$zero_variance_cols",
+      "```{r heatmap}",
+      "if (!is.null(results_list$correlation_matrix)) {",
+      "  heatmap_plot",
       "} else {",
-      "  \"No zero variance variables available.\"",
-      "}",
-      "```",
-      "",
-
-      "## Potential ID Columns",
-      "",
-      "```{r id-columns}",
-      "if (!is.null(results_list$potential_id_cols)) {",
-      "  results_list$potential_id_cols",
-      "} else {",
-      "  \"No ID columns available.\"",
-      "}",
-      "```",
-      "",
-
-      "## Potential Date Time Columns",
-      "",
-      "```{r date-columns}",
-      "if (!is.null(results_list$date_time_cols)) {",
-      "  results_list$date_time_cols",
-      "} else {",
-      "  \"No date time columns available.\"",
+      "  \"No heatmap available.\"",
       "}",
       "```",
       "",
@@ -1060,21 +1024,254 @@ fastexplore <- function(
       "```",
       "",
 
+      # "## Zero/Near-Zero Variance",
+      # "",
+      # "```{r zero-variance}",
+      # "if (!is.null(results_list$zero_variance_cols)) {",
+      # "  results_list$zero_variance_cols",
+      # "} else {",
+      # "  \"No zero variance variables available.\"",
+      # "}",
+      # "```",
+      # "",
+
+      # "## Potential ID Columns",
+      # "",
+      # "```{r id-columns}",
+      # "if (!is.null(results_list$potential_id_cols)) {",
+      # "  results_list$potential_id_cols",
+      # "} else {",
+      # "  \"No ID columns available.\"",
+      # "}",
+      # "```",
+      # "",
+
+      # "## Potential Date Time Columns",
+      # "",
+      # "```{r date-columns}",
+      # "if (!is.null(results_list$date_time_cols)) {",
+      # "  results_list$date_time_cols",
+      # "} else {",
+      # "  \"No date time columns available.\"",
+      # "}",
+      # "```",
+      # "",
+
 
       "## Outlier Summary",
       "",
       "```{r outlier-summary}",
-      "if (!is.null(results_list$outlier_summary)) {",
-      "  results_list$outlier_summary",
+      "if (!is.null(outlier_summary)) {",
+      "  outlier_summary",
       "} else {",
       "  \"No outlier summary available.\"",
       "}",
       "```",
+      "",
+
+      "## Histograms",
+      "",
+      "```{r histogram}",
+      "if ('histogram' %in% visualize && length(numeric_cols) > 0) {",
+        "if (grouped_plots && !is.null(label) && label %in% factor_cols && length(numeric_cols) > 0) {",
+        "  for (col in numeric_cols) {",
+        "    p <- ggplot(data_vis, aes_string(x = col)) +",
+        "      geom_histogram(",
+        "        bins = 30,",
+        "        fill = 'steelblue',",
+        "        color = 'white'",
+        "      ) +",
+        "      labs(title = paste('Histogram of', col),",
+        "           x = col,",
+        "           y = 'Count') +",
+        "      theme_minimal()",
+        "",
+        "    # If label is provided and factor, we can facet wrap",
+        "    if (!is.null(label) && label %in% factor_cols && grouped_plots) {",
+        "      p <- p + facet_wrap(as.formula(paste('~', label)))",
+        "    }",
+        "",
+        "    print(p)",
+        "  }",
+        "}",
+      "}  else {",
+      "  cat('No histogram plots available\\n')",
+      "}",
+      "```",
+      "",
+
+      "## Density Plots",
+            "```{r density-plots}",
+      "if (grouped_plots &&",
+      "    !is.null(label) &&",
+      "    label %in% factor_cols && length(numeric_cols) > 0) {",
+      "",
+      "  for (col in numeric_cols) {",
+      "    if (col == label)",
+      "      next",
+      "",
+      "    p_density <- ggplot(data_vis, aes_string(x = col, fill = label)) +",
+      "      geom_density(alpha = 0.4) +",
+      "      theme_minimal() +",
+      "      labs(title = paste('Density Plot of', col, 'by', label))",
+      "    print(p_density)",
+      "",
+      "  }",
+      "}  else {",
+      "  cat('No density plots available\\n')",
+      "}",
+      "```",
+      "",
+
+      "## Boxplots",
+      "```{r boxplot-visualization}",
+      "if ('boxplot' %in% visualize && length(numeric_cols) > 0) {",
+      "  for (col in numeric_cols) {",
+      "    if (!is.null(label) && col == label) {",
+      "      next",
+      "    }",
+      "    p <- ggplot(data_vis, aes_string(x = '1', y = col)) +",
+      "      geom_boxplot(fill = 'tomato') +",
+      "      labs(title = paste('Boxplot of', col),",
+      "           x = '',",
+      "           y = col) +",
+      "      theme_minimal()",
+      "",
+      "    if (!is.null(label) &&",
+      "        label %in% factor_cols && grouped_plots) {",
+      "      p <- ggplot(data_vis, aes_string(",
+      "        x = label,",
+      "        y = col,",
+      "        fill = label",
+      "      )) +",
+      "        geom_boxplot() +",
+      "        labs(",
+      "          title = paste('Boxplot of', col, 'by', label),",
+      "          x = label,",
+      "          y = col",
+      "        ) +",
+      "        theme_minimal()",
+      "    }",
+      "",
+      "    print(p)",
+      "  }",
+      "}  else {",
+      "  cat('No box plots available\\n')",
+      "}",
+      "```",
+      "",
+
+      "## Violin Plots",
+
+      "```{r violin-plots}",
+      "if (grouped_plots &&",
+      "    !is.null(label) &&",
+      "    label %in% factor_cols && length(numeric_cols) > 0) {",
+      "",
+      "  for (col in numeric_cols) {",
+      "    if (col == label)",
+      "      next",
+      "",
+      "    # Grouped Violin",
+      "    p_violin <- ggplot(data_vis, aes_string(x = label, y = col, fill = label)) +",
+      "      geom_violin(trim = FALSE) +",
+      "      theme_minimal() +",
+      "      labs(title = paste('Violin Plot of', col, 'by', label))",
+      "    print(p_violin)",
+      "",
+      "  }",
+      "}  else {",
+      "  cat('No violin plots available\\n')",
+      "}",
+      "```",
+      "",
+
+
+      "## Bar Plots",
+      "```{r barplot-visualization}",
+      "if ('barplot' %in% visualize && length(factor_cols) > 0) {",
+      "  for (col in factor_cols) {",
+      "    if (!is.null(label) && col == label) {",
+      "      next",
+      "    }",
+      "    p <- ggplot(data_vis, aes_string(x = col)) +",
+      "      geom_bar(fill = 'forestgreen') +",
+      "      labs(title = paste('Bar Plot of', col),",
+      "           x = col,",
+      "           y = 'Count') +",
+      "      theme_minimal()",
+      "",
+      "    print(p)",
+      "  }",
+      "}  else {",
+      "  cat('No bar plots available\\n')",
+      "}",
+      "```",
+      "",
+
+      "## Scatter Plots",
+      "```{r scatterplot-visualization}",
+      "if ('scatterplot' %in% visualize && length(numeric_cols) > 1) {",
+      "  if (!is.null(correlation_matrix)) {",
+      "    upper_tri <- correlation_matrix",
+      "    upper_tri[lower.tri(upper_tri, diag = TRUE)] <- NA",
+      "    corr_vals <- as.data.frame(as.table(upper_tri))",
+      "    colnames(corr_vals) <- c('Var1', 'Var2', 'Correlation')",
+      "    corr_vals <- corr_vals[!is.na(corr_vals$Correlation), ]",
+      "    top_pairs <- head(corr_vals[order(abs(corr_vals$Correlation), decreasing = TRUE), ], 3)",
+      "",
+      "    for (i in seq_len(nrow(top_pairs))) {",
+      "      varx <- as.character(top_pairs$Var1[i])",
+      "      vary <- as.character(top_pairs$Var2[i])",
+      "      if (!is.null(label) && (varx == label || vary == label)) {",
+      "        next",
+      "      }",
+      "      p <- ggplot(data_vis, aes_string(x = varx, y = vary)) +",
+      "        geom_point(color = 'darkblue') +",
+      "        labs(",
+      "          title = paste('Scatterplot of', varx, 'vs', vary),",
+      "          subtitle = paste('Correlation =', round(top_pairs$Correlation[i], 3))",
+      "        ) +",
+      "        theme_minimal()",
+      "",
+      "      if (!is.null(label) &&",
+      "          label %in% factor_cols && grouped_plots) {",
+      "        p <- ggplot(data_vis, aes_string(",
+      "          x = varx,",
+      "          y = vary,",
+      "          color = label",
+      "        )) +",
+      "          geom_point() +",
+      "          labs(",
+      "            title = paste('Scatterplot of', varx, 'vs', vary, 'by', label),",
+      "            subtitle = paste('Correlation =', round(top_pairs$Correlation[i], 3))",
+      "          ) +",
+      "          theme_minimal()",
+      "      }",
+      "",
+      "      print(p)",
+      "    }",
+      "  } else {",
+      "    cat('Correlation matrix not computed or insufficient numeric columns.\\n')",
+      "  }",
+      "}",
+      "```",
+      "",
+
+      "## Pairwise Scatter Plots",
+      "```{r pairwise-scatterplot-matrix}",
+      "if (pairwise_matrix && length(numeric_cols) > 1) {",
+      "  numeric_subset <- numeric_cols[1:min(length(numeric_cols), max_scatter_cols)]",
+      "",
+      "  spm <- ggpairs(data_vis[, numeric_subset, drop = FALSE])",
+      "  print(spm)",
+      "}  else {",
+      "  cat('No pairwise scatter plots available\\n')",
+      "}",
+      "```",
       ""
 
-
     )
-
 
     # Write the Rmd file to the results folder
     rmd_file_path <- file.path(results_folder, "fastexplore_report.Rmd")
@@ -1092,3 +1289,375 @@ fastexplore <- function(
   # Return the results list invisibly (no console output)
   invisible(results_list)
 }
+
+
+
+## Helper functions
+save_plot <- function(plot_obj, plotname, filename) {
+  if (save_results) {
+    # Attempt ggsave if it's a ggplot. If it's a plotly or base, might need different approach.
+    if (inherits(plot_obj, "ggplot") || inherits(plot_obj, "gg")) {
+      ggsave(
+        filename = file.path(paste0(results_folder, "/" ,plotname), filename),
+        plot     = plot_obj,
+        width    = 7,
+        height   = 5
+      )
+    } else {
+      message("Object provided is not a ggplot. Skipping ggsave for ",
+              filename)
+    }
+  }
+}
+
+
+perform_normality_tests <- function(data, numeric_cols, normality_tests) {
+  if (!exists("run_distribution_checks") || !run_distribution_checks) {
+    message("Distribution checks are not enabled.")
+    return(NULL)
+  }
+
+  if (length(numeric_cols) == 0) {
+    message("No numeric columns available for distribution checks.")
+    return(NULL)
+  }
+
+  # Initialize an empty list to store results
+  distribution_tests_results <- list()
+
+  # Initialize a data frame to collect results
+  results_df <- data.frame(
+    Column = character(),
+    Test = character(),
+    P_Value = numeric(),
+    Adjusted_P_Value = numeric(),
+    Normal = character(),
+    stringsAsFactors = FALSE
+  )
+
+  for (col in numeric_cols) {
+    col_data <- data[[col]] %>% na.omit()
+    pvals <- list()
+
+    # Shapiro-Wilk Test
+    if ("shapiro" %in% normality_tests) {
+      if (length(col_data) >= 3 && length(col_data) <= 5000) {
+        sw <- shapiro.test(col_data)
+        pvals$Shapiro_Wilk <- sw$p.value
+      } else {
+        pvals$Shapiro_Wilk <- NA
+      }
+    }
+
+    # Kolmogorov-Smirnov Test
+    if ("ks" %in% normality_tests) {
+      # Ensure data is standardized
+      if (length(col_data) > 0) {
+        ks <- suppressWarnings(ks.test(x = scale(col_data), y = "pnorm"))
+        pvals$Kolmogorov_Smirnov <- ks$p.value
+      } else {
+        pvals$Kolmogorov_Smirnov <- NA
+      }
+    }
+
+    distribution_tests_results[[col]] <- pvals
+
+    # Append results to the data frame
+    for (test_name in names(pvals)) {
+      results_df <- results_df %>%
+        add_row(
+          Column = col,
+          Test = test_name,
+          P_Value = pvals[[test_name]],
+          Adjusted_P_Value = NA,  # To be filled after multiple testing correction
+          Normal = NA  # To be determined
+        )
+    }
+  }
+
+  # Multiple Testing Correction (e.g., Benjamini-Hochberg)
+  results_df <- results_df %>%
+    group_by(Test) %>%
+    mutate(Adjusted_P_Value = p.adjust(P_Value, method = "BH")) %>%
+    ungroup() %>%
+    mutate(Normal = case_when(
+      Adjusted_P_Value < 0.05 ~ "No",
+      Adjusted_P_Value >= 0.05 ~ "Yes",
+      TRUE ~ NA_character_
+    ))
+
+  return(results_df)
+}
+
+
+generate_normality_plots <- function(data, numeric_cols) {
+  plot_list <- list()
+
+  for (col in numeric_cols) {
+    col_data <- data[[col]] %>% na.omit()
+
+    if(length(col_data) == 0){
+      next  # Skip columns with no data
+    }
+
+    # Histogram with Normal Distribution Overlay
+    hist_plot <- ggplot(data, aes_string(x = col)) +
+      geom_histogram(aes(y = ..density..), bins = 30, fill = "skyblue", color = "black", alpha = 0.7) +
+      stat_function(fun = dnorm, args = list(mean = mean(col_data), sd = sd(col_data)),
+                    color = "red", size = 1) +
+      theme_minimal() +
+      labs(title = paste("Histogram of", col),
+           x = col,
+           y = "Density")
+
+    # Q-Q Plot
+    qq_plot <- ggplot(data, aes_string(sample = col)) +
+      stat_qq(color = "darkgreen") +
+      stat_qq_line(color = "red") +
+      theme_minimal() +
+      labs(title = paste("Q-Q Plot of", col),
+           x = "Theoretical Quantiles",
+           y = "Sample Quantiles")
+
+    # Density Plot with Normal Curve
+    # density_plot <- ggplot(data, aes_string(x = col)) +
+    #   geom_density(fill = "lightblue", alpha = 0.5) +
+    #   stat_function(fun = dnorm, args = list(mean = mean(col_data), sd = sd(col_data)),
+    #                 color = "darkred", size = 1) +
+    #   theme_minimal() +
+    #   labs(title = paste("Density Plot of", col),
+    #        x = col,
+    #        y = "Density")
+
+    # Combine the three plots into one using ggpubr
+    combined_plot <- ggarrange(hist_plot, qq_plot, ncol = 2, nrow = 1,
+                               common.legend = FALSE,
+                               labels = c("A", "B"))
+
+    plot_list[[col]] <- combined_plot
+  }
+
+  return(plot_list)
+}
+
+# Function for IQR-based Outlier Detection
+detect_outliers_iqr <- function(x) {
+  q1 <- quantile(x, 0.25, na.rm = TRUE)
+  q3 <- quantile(x, 0.75, na.rm = TRUE)
+  iqr_val <- q3 - q1
+  lower_bound <- q1 - 1.5 * iqr_val
+  upper_bound <- q3 + 1.5 * iqr_val
+  outliers <- sum(x < lower_bound | x > upper_bound)
+  proportion <- outliers / length(x)
+  return(proportion)
+}
+
+# Function for Z-score-based Outlier Detection
+detect_outliers_zscore <- function(x, threshold = 3) {
+  z <- scale(x)
+  outliers <- sum(abs(z) > threshold, na.rm = TRUE)
+  proportion <- outliers / length(x)
+  return(proportion)
+}
+
+# Function for DBSCAN-based Outlier Detection
+detect_outliers_dbscan <- function(data, eps = 0.5, minPts = 5) {
+  db_res <- dbscan::dbscan(data, eps = eps, minPts = minPts)
+  outlier_idx <- which(db_res$cluster == 0)
+  outlier_prop <- length(outlier_idx) / nrow(data)
+  return(outlier_prop)
+}
+
+# Function for LOF-based Outlier Detection
+detect_outliers_lof <- function(data, minPts = 5, threshold = 1.5) {
+  lof_vals <- dbscan::lof(data, minPts = minPts)
+  outlier_idx <- which(lof_vals > threshold)
+  outlier_prop <- length(outlier_idx) / nrow(data)
+  return(outlier_prop)
+}
+
+perform_outlier_detection <- function(data, numeric_cols, outlier_methods = c("iqr", "zscore", "dbscan", "lof")) {
+  outlier_summary <- list()
+
+  for (method in outlier_methods) {
+    if (method == "iqr") {
+      outlier_proportions <- sapply(numeric_cols, function(col) {
+        x <- data[[col]]
+        x <- x[!is.na(x)]
+        detect_outliers_iqr(x)
+      })
+      outlier_summary$iqr <- outlier_proportions
+      cat("--------------------------------------------------\n")
+      cat("OUTLIER DETECTION (IQR Method)\n")
+      cat("--------------------------------------------------\n")
+      cat("Outlier proportions (IQR method):\n")
+      print(round(outlier_proportions, 3))
+      cat("\n")
+
+    } else if (method == "zscore") {
+      outlier_proportions <- sapply(numeric_cols, function(col) {
+        x <- data[[col]]
+        x <- x[!is.na(x)]
+        detect_outliers_zscore(x)
+      })
+      outlier_summary$zscore <- outlier_proportions
+      cat("--------------------------------------------------\n")
+      cat("OUTLIER DETECTION (Z-Score Method)\n")
+      cat("--------------------------------------------------\n")
+      cat("Outlier proportions (Z-score method):\n")
+      print(round(outlier_proportions, 3))
+      cat("\n")
+
+    } else if (method == "dbscan") {
+      if (!requireNamespace("dbscan", quietly = TRUE)) {
+        message("Package 'dbscan' not installed. Skipping DBSCAN-based outlier detection.")
+      } else {
+        # Select only numeric columns and remove rows with NA
+        numeric_data <- data[, numeric_cols, drop = FALSE]
+        numeric_data <- na.omit(numeric_data)
+        outlier_prop <- detect_outliers_dbscan(numeric_data)
+        outlier_summary$dbscan <- outlier_prop
+        cat("--------------------------------------------------\n")
+        cat("OUTLIER DETECTION (DBSCAN Method)\n")
+        cat("--------------------------------------------------\n")
+        cat("DBSCAN-based outliers proportion (multidimensional): ", round(outlier_prop, 3), "\n\n", sep = "")
+      }
+
+    } else if (method == "lof") {
+      if (!requireNamespace("dbscan", quietly = TRUE)) {
+        message("Package 'dbscan' not installed. Skipping LOF-based outlier detection.")
+      } else {
+        # Select only numeric columns and remove rows with NA
+        numeric_data <- data[, numeric_cols, drop = FALSE]
+        numeric_data <- na.omit(numeric_data)
+        outlier_prop <- detect_outliers_lof(numeric_data)
+        outlier_summary$lof <- outlier_prop
+        cat("--------------------------------------------------\n")
+        cat("OUTLIER DETECTION (LOF Method)\n")
+        cat("--------------------------------------------------\n")
+        cat("LOF-based outliers proportion (multidimensional): ", round(outlier_prop, 3), "\n\n", sep = "")
+      }
+    }
+  }
+
+  return(outlier_summary)
+}
+
+
+# # Function to create interactive tables for outlier proportions
+# create_outlier_table <- function(outlier_summary, method_name) {
+#   if (!method_name %in% names(outlier_summary)) {
+#     return(NULL)
+#   }
+#
+#   if (method_name %in% c("iqr", "zscore")) {
+#     df <- data.frame(
+#       Column = names(outlier_summary[[method_name]]),
+#       Outlier_Proportion = round(outlier_summary[[method_name]], 3)
+#     )
+#     datatable(
+#       df,
+#       extensions = 'Buttons',
+#       options = list(
+#         pageLength = 10,
+#         dom = 'Bfrtip',
+#         buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+#         order = list(list(1, 'desc'))
+#       ),
+#       caption = paste("Outlier Proportions (", toupper(method_name), " Method)", sep = "")
+#     ) %>%
+#       formatPercentage('Outlier_Proportion', 1) %>%
+#       formatStyle(
+#         'Outlier_Proportion',
+#         backgroundColor = styleColorBar(range(df$Outlier_Proportion, na.rm = TRUE), 'lightcoral'),
+#         backgroundSize = '98% 88%',
+#         backgroundRepeat = 'no-repeat',
+#         backgroundPosition = 'center'
+#       )
+#   } else if (method_name %in% c("dbscan", "lof")) {
+#     df <- data.frame(
+#       Method = toupper(method_name),
+#       Outlier_Proportion = round(outlier_summary[[method_name]], 3)
+#     )
+#     datatable(
+#       df,
+#       extensions = 'Buttons',
+#       options = list(
+#         dom = 'Bfrtip',
+#         buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
+#         paging = FALSE,
+#         searching = FALSE
+#       ),
+#       caption = paste("Outlier Proportion (", toupper(method_name), " Method)", sep = "")
+#     ) %>%
+#       formatPercentage('Outlier_Proportion', 1) %>%
+#       formatStyle(
+#         'Outlier_Proportion',
+#         backgroundColor = styleColorBar(range(df$Outlier_Proportion, na.rm = TRUE), 'lightcoral'),
+#         backgroundSize = '98% 88%',
+#         backgroundRepeat = 'no-repeat',
+#         backgroundPosition = 'center'
+#       )
+#   }
+# }
+
+
+# Function to create bar plots for outlier proportions
+# plot_outlier_proportions <- function(outlier_summary) {
+#   plot_list <- list()
+#
+#   # IQR and Z-score methods
+#   for (method in c("iqr", "zscore")) {
+#     if (method %in% names(outlier_summary)) {
+#       df <- data.frame(
+#         Column = names(outlier_summary[[method]]),
+#         Outlier_Proportion = outlier_summary[[method]]
+#       )
+#
+#       p <- ggplot(df, aes(x = reorder(Column, Outlier_Proportion), y = Outlier_Proportion)) +
+#         geom_bar(stat = "identity", fill = "steelblue") +
+#         coord_flip() +
+#         theme_minimal() +
+#         labs(
+#           title = paste("Outlier Proportion by Column (", toupper(method), " Method)", sep = ""),
+#           x = "Column",
+#           y = "Outlier Proportion"
+#         ) +
+#         scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+#         geom_text(aes(label = scales::percent(Outlier_Proportion, accuracy = 1)),
+#                   hjust = -0.1, size = 3) +
+#         ylim(0, max(df$Outlier_Proportion, na.rm = TRUE) + 0.05)
+#
+#       plot_list[[method]] <- p
+#     }
+#   }
+#
+#   # DBSCAN and LOF methods
+#   for (method in c("dbscan", "lof")) {
+#     if (method %in% names(outlier_summary)) {
+#       df <- data.frame(
+#         Method = toupper(method),
+#         Outlier_Proportion = outlier_summary[[method]]
+#       )
+#
+#       p <- ggplot(df, aes(x = Method, y = Outlier_Proportion, fill = Method)) +
+#         geom_bar(stat = "identity", width = 0.5) +
+#         theme_minimal() +
+#         labs(
+#           title = paste("Outlier Proportion (", toupper(method), " Method)", sep = ""),
+#           x = "",
+#           y = "Outlier Proportion"
+#         ) +
+#         scale_y_continuous(labels = scales::percent_format(accuracy = 1)) +
+#         geom_text(aes(label = scales::percent(Outlier_Proportion, accuracy = 1)),
+#                   vjust = -0.5, size = 3) +
+#         ylim(0, max(df$Outlier_Proportion, na.rm = TRUE) + 0.05) +
+#         scale_fill_manual(values = c("DBSCAN" = "tomato", "LOF" = "orange"))
+#
+#       plot_list[[method]] <- p
+#     }
+#   }
+#
+#   return(plot_list)
+# }
+
