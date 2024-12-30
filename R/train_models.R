@@ -113,6 +113,8 @@ train_models <- function(train_data,
     return(params_model)
   }
 
+  n_class <- length(levels(train_data[[label]]))
+
   for (algo in algorithms) {
     set.seed(seed)
     model <- NULL
@@ -125,14 +127,23 @@ train_models <- function(train_data,
 
     perform_tuning <- !is.null(algo_tune_params) && !is.null(resamples)
 
+    if(n_class >2){
+      logistic_regression = define_multinomial_regression_spec(task, tune = perform_tuning)
+      penalized_logistic_regression = define_penalized_multinomial_regression_spec(task, tune = perform_tuning)
+      } else {
+        logistic_regression =  define_logistic_regression_spec(task, tune = perform_tuning)
+        penalized_logistic_regression =  define_penalized_logistic_regression_spec(task, tune = perform_tuning)
+
+      }
+
     model_info <- switch(algo,
                          "random_forest" = define_random_forest_spec(task, train_data, label, tune = perform_tuning),
                          "ranger" = define_ranger_spec(task, train_data, label, tune = perform_tuning),
                          "c5.0" = define_c5_0_spec(task, tune = perform_tuning),
                          "xgboost" = define_xgboost_spec(task, train_data, label, tune = perform_tuning),
                          "lightgbm" = define_lightgbm_spec(task, train_data, label, tune = perform_tuning),
-                         "logistic_regression" = define_logistic_regression_spec(task, tune = perform_tuning),
-                         "penalized_logistic_regression" = define_penalized_logistic_regression_spec(task, tune = perform_tuning),
+                         "logistic_regression" = logistic_regression,
+                         "penalized_logistic_regression" = penalized_logistic_regression,
                          "decision_tree" = define_decision_tree_spec(task, tune = perform_tuning),
                          "svm_linear" = define_svm_linear_spec(task, tune = perform_tuning),
                          "svm_radial" = define_svm_radial_spec(task, tune = perform_tuning),

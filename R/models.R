@@ -524,6 +524,59 @@ define_decision_tree_spec <- function(task, tune = FALSE) {
 }
 
 
+#' Define Logistic Regression Model Specification
+#'
+#' @param task Character string specifying the task type ("classification").
+#' @param tune Logical indicating whether to use tuning parameters.
+#' @return List containing the model specification (`model_spec`).
+#' @importFrom parsnip logistic_reg set_mode set_engine
+#' @noRd
+define_logistic_regression_spec <- function(task, tune = FALSE) {
+  if (task != "classification") {
+    stop("Logistic regression is only applicable for classification tasks.")
+  }
+  if (tune) {
+    model_spec <- logistic_reg(
+      penalty = tune()
+    ) %>%
+      set_mode("classification") %>%
+      set_engine("glmnet")
+  } else {
+    model_spec <- logistic_reg() %>%
+      set_mode("classification") %>%
+      set_engine("glm")
+  }
+  list(model_spec = model_spec)
+}
+
+#' Define Multinomial Logistic Regression Specification
+#'
+#' This function defines a multinomial logistic regression model specification.
+#' It supports both a basic model and one with hyperparameter tuning for the penalty parameter.
+#'
+#' @param task Character. The type of task. Must be "classification".
+#' @param tune Logical. If `TRUE`, includes hyperparameter tuning for the penalty parameter. Default is `FALSE`.
+#' @return A list containing the model specification (`model_spec`).
+#' @importFrom parsnip multinom_reg set_mode set_engine
+#' @noRd
+define_multinomial_regression_spec <- function(task, tune = FALSE) {
+  if (task != "classification") {
+    stop("Multinomial logistic regression is only applicable for classification tasks.")
+  }
+  if (tune) {
+    model_spec <- multinom_reg(
+      penalty = tune()
+    ) %>%
+      set_mode("classification") %>%
+      set_engine("glmnet")
+  } else {
+    model_spec <- multinom_reg() %>%
+      set_mode("classification") %>%
+      set_engine("nnet")
+  }
+  list(model_spec = model_spec)
+}
+
 #' Define Penalized Logistic Regression Model Specification
 #'
 #' @inheritParams define_logistic_regression_spec
@@ -555,29 +608,43 @@ define_penalized_logistic_regression_spec <- function(task, tune = FALSE) {
   list(model_spec = model_spec)
 }
 
-
-#' Define Logistic Regression Model Specification
+#' Define Penalized Multinomial Logistic Regression Model Specification
 #'
-#' @param task Character string specifying the task type ("classification").
-#' @param tune Logical indicating whether to use tuning parameters.
-#' @return List containing the model specification (`model_spec`).
-#' @importFrom parsnip logistic_reg set_mode set_engine
+#' This function defines a multinomial logistic regression model specification
+#' with optional penalty and mixture hyperparameter tuning.
+#'
+#' @inheritParams define_penalized_logistic_regression_spec
+#' @return A list containing the model specification (`model_spec`).
+#' @importFrom parsnip multinom_reg set_engine
+#' @importFrom tune finalize_model
+#' @importFrom tibble tibble
 #' @noRd
-define_logistic_regression_spec <- function(task, tune = FALSE) {
+define_penalized_multinomial_regression_spec <- function(task, tune = FALSE) {
   if (task != "classification") {
-    stop("Logistic regression is only applicable for classification tasks.")
+    stop("Penalized multinomial logistic regression is only applicable for classification tasks.")
   }
+
+  # Retrieve default parameters for penalized multinomial regression
+  defaults <- get_default_params("penalized_logistic_regression")
+
   if (tune) {
-    model_spec <- logistic_reg(
-      penalty = tune()
+    # Model specification with tuning
+    model_spec <- multinom_reg(
+      penalty = tune(),
+      mixture = tune()
     ) %>%
-      set_mode("classification") %>%
       set_engine("glmnet")
   } else {
-    model_spec <- logistic_reg() %>%
-      set_mode("classification") %>%
-      set_engine("glm")
+    # Model specification with defaults
+    model_spec <- multinom_reg(
+      penalty = defaults$penalty,
+      mixture = defaults$mixture
+    ) %>%
+      set_engine("glmnet")
+    # Finalize model with default parameters
+    model_spec <- finalize_model(model_spec, parameters = tibble())
   }
+
   list(model_spec = model_spec)
 }
 
