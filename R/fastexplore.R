@@ -641,7 +641,7 @@ fastexplore <- function(
         labs(title = "Correlation Heatmap", x = "", y = "")
 
       print(heatmap_plot)
-      save_plot(heatmap_plot, "Heatmap", "correlation_heatmap.png")
+      save_plot(heatmap_plot, results_folder, "Heatmap", "correlation_heatmap.png")
     }
   }
 
@@ -662,7 +662,7 @@ fastexplore <- function(
 
     outlier_summary <- perform_outlier_detection(data = data,
                                                  numeric_cols = numeric_cols,
-                                                 outlier_methods = outlier_methods)
+                                                 outlier_methods = outlier_method)
   } else if (outlier_method == "none") {
     cat("Skipping outlier detection (method='none').\n")
   }
@@ -703,7 +703,7 @@ fastexplore <- function(
         }
 
         print(p)
-        save_plot(p, "Histogram", paste0("histogram_", col, ".png"))
+        save_plot(p, results_folder, "Histogram", paste0("histogram_", col, ".png"))
       }
     }
 
@@ -740,7 +740,7 @@ fastexplore <- function(
         }
 
         print(p)
-        save_plot(p, "Boxplot", paste0("boxplot_", col, ".png"))
+        save_plot(p, results_folder, "Boxplot", paste0("boxplot_", col, ".png"))
       }
     }
 
@@ -761,7 +761,7 @@ fastexplore <- function(
           theme_minimal()
 
         print(p)
-        save_plot(p, "Barplot",paste0("barplot_", col, ".png"))
+        save_plot(p, results_folder, "Barplot",paste0("barplot_", col, ".png"))
       }
     }
 
@@ -809,7 +809,7 @@ fastexplore <- function(
           }
 
           print(p)
-          save_plot(p, "ScatterPlot", paste0("scatterplot_", varx, "_vs_", vary, ".png"))
+          save_plot(p, results_folder, "ScatterPlot", paste0("scatterplot_", varx, "_vs_", vary, ".png"))
         }
       } else {
         cat("Correlation matrix not computed or insufficient numeric columns.\n")
@@ -827,7 +827,7 @@ fastexplore <- function(
         cat("Using GGally::ggpairs for pairwise scatterplot matrix...\n")
         spm <- ggpairs(data_vis[, numeric_subset, drop = FALSE])
         print(spm)
-        save_plot(spm, "ScatterPlot", "pairwise_scatterplot_matrix.png")
+        save_plot(spm, results_folder, "ScatterPlot", "pairwise_scatterplot_matrix.png")
 
     }
 
@@ -848,7 +848,7 @@ fastexplore <- function(
           theme_minimal() +
           labs(title = paste("Violin Plot of", col, "by", label))
         print(p_violin)
-        save_plot(p_violin, "Boxplot", paste0("violin_", col, ".png"))
+        save_plot(p_violin, results_folder, "Boxplot", paste0("violin_", col, ".png"))
 
         # Grouped Density
         p_density <- ggplot(data_vis, aes_string(x = col, fill = label)) +
@@ -856,7 +856,7 @@ fastexplore <- function(
           theme_minimal() +
           labs(title = paste("Density Plot of", col, "by", label))
         print(p_density)
-        save_plot(p_density, "Histogram", paste0("density_", col, ".png"))
+        save_plot(p_density, results_folder, "Histogram", paste0("density_", col, ".png"))
       }
     }
   }
@@ -867,7 +867,6 @@ fastexplore <- function(
   results_list <- list(
     data_overview             = data_overview,
     summary_stats             = summary_stats,
-    distribution_tests        = distribution_tests_results,
     freq_tables               = freq_tables,
     missing_data              = missing_data,
     duplicated_rows           = dup_count,
@@ -910,15 +909,15 @@ fastexplore <- function(
       "",
 
       "## Distribution Checks",
-      "",
-      "```{r normality-tests}",
-      "if (run_distribution_checks && length(numeric_cols) > 0) {",
-      "  normality_table",
-      "} else {",
-      "  \"No distribution tests available.\"",
-      "}",
-      "```",
-      "",
+      # "",
+      # "```{r normality-tests}",
+      # "if (run_distribution_checks && length(numeric_cols) > 0) {",
+      # "  normality_table",
+      # "} else {",
+      # "  \"No distribution tests available.\"",
+      # "}",
+      # "```",
+      # "",
 
       "",
       "```{r distribution-plots}",
@@ -1293,7 +1292,7 @@ fastexplore <- function(
 
 
 ## Helper functions
-save_plot <- function(plot_obj, plotname, filename) {
+save_plot <- function(plot_obj, results_folder, plotname, filename) {
   if (save_results) {
     # Attempt ggsave if it's a ggplot. If it's a plotly or base, might need different approach.
     if (inherits(plot_obj, "ggplot") || inherits(plot_obj, "gg")) {
