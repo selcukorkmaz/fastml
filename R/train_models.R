@@ -127,14 +127,25 @@ train_models <- function(train_data,
 
     perform_tuning <- !is.null(algo_tune_params) && !is.null(resamples)
 
-    if(n_class >2){
-      logistic_regression = define_multinomial_regression_spec(task, tune = perform_tuning)
-      penalized_logistic_regression = define_penalized_multinomial_regression_spec(task, tune = perform_tuning)
-      } else {
-        logistic_regression =  define_logistic_regression_spec(task, tune = perform_tuning)
-        penalized_logistic_regression =  define_penalized_logistic_regression_spec(task, tune = perform_tuning)
+
+    if (n_class > 2) {
+      if ("logistic_regression" %in% algorithms) {
+        logistic_regression = define_multinomial_regression_spec(task, tune = perform_tuning)
+      }
+
+      if ("penalized_logistic_regression" %in% algorithms) {
+        penalized_logistic_regression = define_penalized_multinomial_regression_spec(task, tune = perform_tuning)
 
       }
+    } else {
+      if ("logistic_regression" %in% algorithms) {
+        logistic_regression =  define_logistic_regression_spec(task, tune = perform_tuning)
+      }
+
+      if ("penalized_logistic_regression" %in% algorithms) {
+        penalized_logistic_regression =  define_penalized_logistic_regression_spec(task, tune = perform_tuning)
+      }
+    }
 
     model_info <- switch(algo,
                          "random_forest" = define_random_forest_spec(task, train_data, label, tune = perform_tuning),
