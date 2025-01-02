@@ -55,15 +55,36 @@ train_models <- function(train_data,
   set.seed(seed)
 
   if (task == "classification") {
-    metrics <- metric_set(
-      accuracy,
-      kap,
-      sens,
-      spec,
-      precision,
-      f_meas,
-      roc_auc
-    )
+
+    if(is.null(summaryFunction)){
+      metrics <- metric_set(
+        accuracy,
+        kap,
+        sens,
+        spec,
+        precision,
+        f_meas,
+        roc_auc
+      )
+    }else{
+
+      newClassMetric <- new_class_metric(summaryFunction, "maximize")
+
+      assign(metric, newClassMetric)
+
+      metrics <- metric_set(
+        accuracy,
+        kap,
+        sens,
+        spec,
+        precision,
+        f_meas,
+        roc_auc,
+        !!sym(metric)
+      )
+
+
+    }
   } else {
     metrics <- metric_set(rmse, rsq, mae)
   }

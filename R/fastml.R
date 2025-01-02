@@ -182,12 +182,12 @@ fastml <- function(data,
 
   # Validate the metric based on the task
   if (task == "classification") {
-    if (!(metric %in% allowed_metrics_classification)) {
+    if (!(metric %in% allowed_metrics_classification) && is.null(summaryFunction)) {
       stop(paste0("Invalid metric for classification task. Choose one of: ",
                   paste(allowed_metrics_classification, collapse = ", "), "."))
     }
   } else {  # regression
-    if (!(metric %in% allowed_metrics_regression)) {
+    if (!(metric %in% allowed_metrics_regression) && is.null(summaryFunction)) {
       stop(paste0("Invalid metric for regression task. Choose one of: ",
                   paste(allowed_metrics_regression, collapse = ", "), "."))
     }
