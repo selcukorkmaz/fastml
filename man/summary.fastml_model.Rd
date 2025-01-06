@@ -6,6 +6,7 @@
 \usage{
 \method{summary}{fastml_model}(
   object,
+  algorithm = "best",
   sort_metric = NULL,
   plot = TRUE,
   combined_roc = TRUE,
@@ -15,6 +16,8 @@
 }
 \arguments{
 \item{object}{An object of class \code{fastml_model}.}
+
+\item{algorithm}{A vector of algorithm names to display summary. Default is \code{"best"}.}
 
 \item{sort_metric}{The metric to sort by. Default uses optimized metric.}
 

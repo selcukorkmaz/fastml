@@ -13,6 +13,7 @@ fastml(
   folds = ifelse(grepl("cv", resampling_method), 10, 25),
   repeats = ifelse(resampling_method == "repeatedcv", 1, NA),
   event_class = "first",
+  exclude = NULL,
   recipe = NULL,
   tune_params = NULL,
   metric = NULL,
@@ -47,6 +48,8 @@ Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.}
 \item{repeats}{Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").}
 
 \item{event_class}{A single string. Either "first" or "second" to specify which level of truth to consider as the "event". Default is "first".}
+
+\item{exclude}{A character vector specifying the names of the columns to be excluded from the training process.}
 
 \item{recipe}{A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.}
 
@@ -115,9 +118,6 @@ model <- fastml(
 
 # View model summary
 summary(model)
-
-# Explain model
-explain_model(model)
 
   # Example 2: Using the mtcars dataset for regression
   data(mtcars)

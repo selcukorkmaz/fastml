@@ -3,3 +3,12 @@
 .RData
 .Ruserdata
 .Rprofile
+^.Renviron
+^\.Renviron
+.Renviron
+
+# MAC OS System files
+.DS_Store
+
+# Ignored files and folders to push GitHup repository.
+IgnoredFiles/

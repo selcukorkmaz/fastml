@@ -1,59 +1,65 @@
-#' Explain the fastml_model (DALEX + SHAP + Permutation-based VI)
+#' FastExplain the fastml_model (DALEX + SHAP + Permutation-based VI)
 #'
 #' Provides model explainability using DALEX. This function:
-#' - Creates a DALEX explainer.
-#' - Computes permutation-based variable importance with boxplots showing variability, displays the table and plot.
-#' - Computes partial dependency-like model profiles if `features` are provided.
-#' - Computes Shapley values (SHAP) for a sample of the training observations, displays the SHAP table,
-#'   and plots a summary bar chart of mean(|SHAP value|) per feature. For classification, it shows separate bars for each class.
+#' \itemize{
+#'   \item Creates a DALEX explainer.
+#'   \item Computes permutation-based variable importance with boxplots showing variability, displays the table and plot.
+#'   \item Computes partial dependence-like model profiles if `features` are provided.
+#'   \item Computes Shapley values (SHAP) for a sample of the training observations, displays the SHAP table,
+#'   and plots a summary bar chart of \eqn{\text{mean}(\vert \text{SHAP value} \vert)} per feature. For classification, it shows separate bars for each class.
+#' }
 #'
-#' 1. Custom number of permutations for VI (vi_iterations):
+#' @details
+#'  \enumerate{
+#'    \item \bold{Custom number of permutations for VI (vi_iterations):}
+#'
 #'    You can now specify how many permutations (B) to use for permutation-based variable importance.
 #'    More permutations yield more stable estimates but take longer.
 #'
-#' 2. Custom color palette (colormap):
-#'    A `colormap` parameter allows you to select a color palette (e.g., "viridis") for SHAP summary plots and variable importance plots.
-#'    This improves aesthetics over default palettes.
+#'    \item \bold{Better error messages and checks:}
 #'
-#' 3. Top Features in SHAP Summary (top_features):
-#'    You can limit the SHAP summary plot to the top N features by mean absolute SHAP value. This helps focus on the most influential features.
-#'
-#' 4. Support for calibration plot if probably is available (calibration):
-#'    If `calibration = TRUE` and `probably` is installed, it attempts to produce a model-based calibration plot (e.g., `cal_plot_logistic`).
-#'    This provides a smoothed, nonparametric view of model calibration.
-#'
-#' 5. Better error messages and checks:
 #'    Improved checks and messages if certain packages or conditions are not met.
+#'
+#'    \item \bold{Loss Function:}
+#'
+#'    A \code{loss_function} argument has been added to let you pick a different performance measure (e.g., \code{loss_cross_entropy} for classification, \code{loss_root_mean_square} for regression).
+#'
+#'    \item \bold{Parallelization Suggestion:}
+#'
+#'  }
 #'
 #' @param object A \code{fastml_model} object.
 #' @param method Currently only \code{"dalex"} is supported.
 #' @param features Character vector of feature names for partial dependence (model profiles). Default NULL.
 #' @param grid_size Number of grid points for partial dependence. Default 20.
 #' @param shap_sample Integer number of observations from processed training data to compute SHAP values for. Default 5.
-#' @param vi_iterations Integer. Number of permutations for variable importance. Default 10.
-#' @param colormap Character. Name of a color palette to use (e.g., "viridis"). Default "viridis".
-#' @param top_features Integer. Limit the SHAP summary plot to top N features by mean abs SHAP. Default NULL (no limit).
+#' @param vi_iterations Integer. Number of permutations for variable importance (B). Default 10.
 #' @param seed Integer. A value specifying the random seed.
+#' @param loss_function Function. The loss function for \code{model_parts}.
+#'   \itemize{
+#'     \item If \code{NULL} and task = 'classification', defaults to \code{DALEX::loss_cross_entropy}.
+#'     \item If \code{NULL} and task = 'regression', defaults to \code{DALEX::loss_root_mean_square}.
+#'   }
 #' @param ... Additional arguments (not currently used).
 #'
 #' @importFrom dplyr select
 #' @importFrom tune extract_fit_parsnip
-#' @importFrom DALEX explain model_parts loss_root_mean_square model_profile predict_parts
+#' @importFrom DALEX explain model_parts loss_root_mean_square loss_cross_entropy model_profile predict_parts
 #' @importFrom ggplot2 labs
 #' @importFrom patchwork wrap_plots
 #'
-#' @return Prints DALEX explanations: variable importance table & plot, model profiles (if any), SHAP table & summary plot, and optionally a calibration plot.
+#' @return Prints DALEX explanations: variable importance table & plot, model profiles (if any), and SHAP table & summary plot.
 #' @export
-explain_model <- function(object,
-                                 method = "dalex",
-                                 features = NULL,
-                                 grid_size = 20,
-                                 shap_sample = 5,
-                                 vi_iterations = 10,
-                                 colormap = "viridis",
-                                 top_features = NULL,
-                                 seed = 123,
-                             ...) {
+fastexplain <- function(object,
+                          method = "dalex",
+                          features = NULL,
+                          grid_size = 20,
+                          shap_sample = 5,
+                          vi_iterations = 10,
+                          seed = 123,
+                          loss_function = NULL,
+                          ...) {
+
   if (!inherits(object, "fastml_model")) {
     stop("The input must be a 'fastml_model' object.")
   }
@@ -65,6 +71,10 @@ explain_model <- function(object,
   best_model <- object$best_model
   task <- object$task
   label <- object$label
+
+  if(!is.null(features)){
+    features = sanitize(features)
+  }
 
   if (is.null(object$processed_train_data) || !(label %in% names(object$processed_train_data))) {
     cat("\nCannot create DALEX explainer without processed training data and a target variable.\n")
@@ -80,44 +90,51 @@ explain_model <- function(object,
   if (task == "classification") {
     if (is.factor(y) && length(levels(y)) == 2) {
       positive_class <- object$positive_class
-
     }
   }
 
   # Prediction function for DALEX
   pred_fun_for_pdp <- function(m, newdata) {
     if (task == "classification") {
+      # 1) Get the probabilities for *all classes*.
       p <- predict(m, new_data = newdata, type = "prob")
-      all_prob_cols <- grep("^\\.pred_", names(p), value = TRUE)
-      if (!is.null(positive_class)) {
-        pred_col_name <- paste0(".pred_", positive_class)
-      } else {
-        pred_col_name <- all_prob_cols[1]
-      }
-      if (!pred_col_name %in% names(p)) {
-        stop("Prediction column ", pred_col_name, " not found. Check class names.")
-      }
-      as.numeric(p[[pred_col_name]])
+
+      # p typically has columns like: .pred_versicolor, .pred_virginica, etc.
+      # We want to return the whole data frame, not just one column.
+
+      # 2) Optionally rename columns (remove the ".pred_" prefix, for clarity).
+      #    This step helps if DALEX uses factor levels as column names internally.
+      colnames(p) <- sub("^\\.pred_", "", colnames(p))
+
+      # Return the full data frame of probabilities.
+      return(as.data.frame(p))
+
     } else {
       # regression
       p <- predict(m, new_data = newdata, type = "numeric")
-      as.numeric(p$.pred)
+      return(as.numeric(p$.pred))
     }
   }
 
+
   model_info <- if (task == "classification") list(type = "classification") else list(type = "regression")
 
-
+  # Extract parsnip fit
   if(length(object$best_model) == 1){
-    parsnip_fit <- tryCatch(extract_fit_parsnip(object$best_model[[1]]), error = function(e) NULL)
+    parsnip_fit <- tryCatch(
+      extract_fit_parsnip(object$best_model[[1]]),
+      error = function(e) NULL
+    )
   } else {
-    parsnip_fit <- tryCatch(lapply(object$best_model, extract_fit_parsnip), error = function(e) NULL)
+    parsnip_fit <- tryCatch(
+      lapply(object$best_model, extract_fit_parsnip),
+      error = function(e) NULL
+    )
   }
 
   if (is.null(parsnip_fit) && inherits(best_model, "model_fit")) {
     parsnip_fit <- best_model
   }
-
 
   if (is.null(parsnip_fit)) {
     cat("Could not extract a parsnip model from the workflow.\nDALEX explainer may fail.\n")
@@ -131,17 +148,25 @@ explain_model <- function(object,
     stop("The 'ggplot2' package is required for plotting.")
   }
 
-  if (colormap == "viridis" && !requireNamespace("viridisLite", quietly = TRUE)) {
-    cat("viridisLite not installed, defaulting to a basic palette.\n")
-    colormap <- NULL
-  }
-
+  # Define predict function for DALEX
   predict_function <- function(m, newdata) {
     pred_fun_for_pdp(m, newdata)
   }
 
+  # If no loss_function provided, set defaults:
+  if (is.null(loss_function)) {
+    if (task == "classification") {
+      # Use cross-entropy for classification by default
+      loss_function <- loss_cross_entropy
+    } else {
+      # Use RMSE for regression by default
+      loss_function <- loss_root_mean_square
+    }
+  }
+
   exp_try <- try({
 
+    # Create explainer(s)
     if(length(object$best_model) == 1){
       explainer <- explain(
         model = parsnip_fit,
@@ -151,115 +176,107 @@ explain_model <- function(object,
         predict_function = predict_function,
         model_info = model_info
       )
-    }else{
-
+    } else {
       explainer_list <- lapply(names(parsnip_fit), function(model_name) {
         model <- parsnip_fit[[model_name]]
         explain(
           model = model,
           data = x,
-          y = if (is.numeric(y)) y else as.numeric((y)),
+          y = if (is.numeric(y)) y else as.numeric(y),
           label = model_name,
-          predict_function = predict_function,  # Adjust predict_function if needed
+          predict_function = predict_function,
           model_info = model_info
         )
       })
-
     }
 
     cat("\n=== DALEX Variable Importance (with Boxplots) ===\n")
     set.seed(seed)
 
+    # For Permutation-Based VI
+    # Note that we pass B = vi_iterations and the loss_function
     if(length(object$best_model) == 1){
       vi <- model_parts(
         explainer,
         B = vi_iterations,
         type = "raw",
-        loss_function = loss_root_mean_square
+        loss_function = loss_function
       )
-    }else{
+    } else {
       vi <- lapply(explainer_list, function(explainer) {
         model_parts(
           explainer = explainer,
           B = vi_iterations,
           type = "raw",
-          loss_function = loss_root_mean_square
+          loss_function = loss_function
         )
       })
+      # Name each result by the model name for clarity
+      names(vi) <- names(best_model)
     }
 
-
-    cat("\nVariable Importance Table:\n")
-    print(vi)
-
-    # Plot VI with chosen colormap if available
+    # Plot VI with boxplots
+    # For multiple models, plot automatically faceted
     vi_plot <- plot(vi, show_boxplots = TRUE)
-
     print(vi_plot)
 
+    # Partial Dependence (model profiles)
+    mp <- NULL
     if (!is.null(features)) {
       cat("\n=== DALEX Model Profiles (Partial Dependence) ===\n")
       if(length(object$best_model) == 1){
-         mp <- model_profile(explainer, variables = features, N = grid_size)
-      }else{
+        mp <- model_profile(explainer, variables = features, N = grid_size)
+      } else {
         mp <- lapply(explainer_list, function(explainer) {
           model_profile(explainer, variables = features, N = grid_size)
         })
-
+        names(mp) <- names(best_model)
       }
-      print(mp)
     }
 
     # Compute SHAP for shap_sample observations
-    # Actually use shap_sample
     shap_data <- train_data[1:min(shap_sample, nrow(train_data)), , drop = FALSE]
 
     cat("\n=== DALEX Shapley Values (SHAP) ===\n")
     set.seed(seed)
     if(length(object$best_model) == 1){
       shap <- predict_parts(explainer, new_observation = shap_data, type = "shap")
-    }else{
+    } else {
       shap <- lapply(explainer_list, function(explainer) {
         predict_parts(explainer, new_observation = shap_data, type = "shap")
       })
+      names(shap) <- names(best_model)
     }
-    print(shap)
 
-
-    # SHAP aggregation
+    # Store absolute SHAP contributions
     if(length(object$best_model) == 1){
       shap$abs_contribution <- abs(shap$contribution)
-    }else{
-      # Create a new list to store absolute SHAP contributions
+    } else {
       shap <- lapply(shap, function(model_shap) {
         model_shap$abs_contribution <- abs(model_shap$contribution)
         return(model_shap)
       })
     }
-    # Determine grouping variables
+
+    # Determine grouping variables for classification/regression
     if (task == "classification") {
       group_vars <- object$processed_train_data[[object$label]] %>% levels()
     } else {
       group_vars <- c("feature")
     }
 
+    # Plot SHAP
     if(length(object$best_model) == 1){
       print(plot(shap) + labs(title = paste("SHAP Values")))
-    }else{
-    # Initialize an empty list to store plots
-    plot_list <- list()
-    names(shap) = object$best_model_name
-    # Generate plots and store them in the list
-    for(model_name in object$best_model_name) {
-      shap_df <- shap[[model_name]]
-      plot_list[[model_name]] <- plot(shap_df)  + labs(title = paste("SHAP Values"))
-    }
-
-    # Combine all plots into one grid (e.g., 1 row, 3 columns)
-    combined_plot <- wrap_plots(plot_list, nrow = 1)
-
-    # Display the combined plot
-    print(combined_plot)
+    } else {
+      # Initialize a list to store plots
+      plot_list <- list()
+      for(model_name in names(shap)) {
+        shap_df <- shap[[model_name]]
+        plot_list[[model_name]] <- plot(shap_df) + labs(title = paste("SHAP Values:", model_name))
+      }
+      combined_plot <- wrap_plots(plot_list, nrow = 1)
+      print(combined_plot)
     }
 
   }, silent = TRUE)
@@ -268,5 +285,15 @@ explain_model <- function(object,
     cat("DALEX explanations not available for this model.\n")
   }
 
-  invisible(NULL)
+  # Prepare return list
+  if(!is.null(mp)){
+    result <- list(variable_importance = vi,
+                   model_profiles = mp,
+                   shap_values = shap)
+  } else {
+    result <- list(variable_importance = vi,
+                   shap_values = shap)
+  }
+
+  return(invisible(result))
 }

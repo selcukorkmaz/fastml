@@ -17,6 +17,7 @@
 #' @param folds An integer specifying the number of folds for cross-validation. Default is \code{10} for methods containing "cv" and \code{25} otherwise.
 #' @param repeats Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").
 #' @param event_class A single string. Either "first" or "second" to specify which level of truth to consider as the "event". Default is "first".
+#' @param exclude A character vector specifying the names of the columns to be excluded from the training process.
 #' @param recipe A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.
 #' @param tune_params A list specifying hyperparameter tuning ranges. Default is \code{NULL}.
 #' @param metric The performance metric to optimize during training.
@@ -43,8 +44,8 @@
 #' @param seed An integer value specifying the random seed for reproducibility.
 #' @importFrom magrittr %>%
 #' @importFrom rsample initial_split training testing
-#' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake all_numeric_predictors all_predictors all_nominal_predictors all_outcomes
-#' @importFrom dplyr filter pull rename_with mutate across where
+#' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake all_numeric_predictors all_predictors all_nominal_predictors all_outcomes step_zv
+#' @importFrom dplyr filter pull rename_with mutate across where select
 #' @importFrom stats as.formula
 #' @importFrom doFuture registerDoFuture
 #' @importFrom future plan multisession sequential
@@ -66,9 +67,6 @@
 #'
 #' # View model summary
 #' summary(model)
-#'
-#' # Explain model
-#' explain_model(model)
 #'
 #'   # Example 2: Using the mtcars dataset for regression
 #'   data(mtcars)
@@ -92,6 +90,7 @@ fastml <- function(data,
                    folds = ifelse(grepl("cv", resampling_method), 10, 25),
                    repeats = ifelse(resampling_method == "repeatedcv", 1, NA),
                    event_class = "first",
+                   exclude = NULL,
                    recipe = NULL,
                    tune_params = NULL,
                    metric = NULL,
@@ -106,12 +105,31 @@ fastml <- function(data,
                    tuning_iterations = 10,
                    early_stopping = FALSE,
                    adaptive = FALSE,
-                   seed = 123
-                   ) {
+                   seed = 123) {
   set.seed(seed)
   if (!(label %in% names(data))) {
     stop("The specified label does not exist in the data.")
   }
+
+  if (!is.null(exclude)){
+    if (label %in% exclude){
+      stop("Label variable cannot be excluded from the data: ", paste(label))
+    }
+
+    missing_vars <- setdiff(exclude, colnames(data))
+
+    if (length(missing_vars) > 0) {
+      warning("The following variables are not in the dataset: ", paste(missing_vars, collapse = ", "))
+      exclude = exclude[!exclude %in% missing_vars]
+      if (length(exclude) == 0) {
+        exclude <- NULL
+      }
+    }
+
+    data <- data %>%
+      select(-all_of(exclude))
+  }
+
 
   data <- data %>%
     mutate(
@@ -119,31 +137,26 @@ fastml <- function(data,
       across(where(is.integer), as.numeric)
     )
 
-  # Define the function to detect special characters
-  has_special_chars <- function(name) {
-    # Detect any character that is not a letter, number, or underscore
-    str_detect(name, "[^a-zA-Z0-9_]")
+  target_var <- data[[label]]
+  label_index <- which(colnames(data) == label)
+
+
+  if (is.numeric(target_var) && length(unique(target_var)) <= 5) {
+    # Convert target_var to factor
+    target_var <- as.factor(target_var)
+    data[[label]] = as.factor(data[[label]])
+
+    task <- "classification"
+
+    # Issue a warning to inform the user about the change
+    warning(sprintf("The target variable '%s' is numeric with %d unique values. It has been converted to a factor and the task has been set to 'classification'.",
+                    label, length(unique(target_var))))
   }
 
-  # Identify columns with special characters
-  columns_with_special_chars <- names(data)[has_special_chars(names(data))]
+  data = sanitize(data)
 
-  # Replace multiple special characters
-  data <- data %>%
-    rename_with(
-      .fn = ~ make_clean_names(
-        .x,
-        replace = c(
-          "\u03bc" = "u",  # Replace mu with 'u'
-          ":" = "",         # Remove colons
-          "/" = "_",        # Replace slashes with underscores
-          " " = "_"         # Replace spaces with underscores
-        )
-      ),
-      .cols = columns_with_special_chars
-    )
 
-  target_var <- data[[label]]
+  label <- colnames(data[label_index])
 
   if (is.factor(target_var) || is.character(target_var) || is.logical(target_var)) {
     task <- "classification"
@@ -167,73 +180,35 @@ fastml <- function(data,
 
   # Validate the metric based on the task
   if (task == "classification") {
-    if (!(metric %in% allowed_metrics_classification)) {
+    if (!(metric %in% allowed_metrics_classification) && is.null(summaryFunction)) {
       stop(paste0("Invalid metric for classification task. Choose one of: ",
                   paste(allowed_metrics_classification, collapse = ", "), "."))
     }
   } else {  # regression
-    if (!(metric %in% allowed_metrics_regression)) {
+    if (!(metric %in% allowed_metrics_regression) && is.null(summaryFunction)) {
       stop(paste0("Invalid metric for regression task. Choose one of: ",
                   paste(allowed_metrics_regression, collapse = ", "), "."))
     }
   }
 
-  supported_algorithms_classification <- c(
-    "logistic_regression",
-    "penalized_logistic_regression",
-    "decision_tree",
-    "c5.0",
-    "random_forest",
-    "ranger",
-    "xgboost",
-    "lightgbm",
-    "svm_linear",
-    "svm_radial",
-    "knn",
-    "naive_bayes",
-    "neural_network",
-    "lda",
-    "qda",
-    "bagging"
-  )
-  supported_algorithms_regression <- c(
-    "linear_regression",
-    "ridge_regression",
-    "lasso_regression",
-    "elastic_net",
-    "decision_tree",
-    "random_forest",
-    "xgboost",
-    "lightgbm",
-    "svm_linear",
-    "svm_radial",
-    "knn",
-    "neural_network",
-    "pls",
-    "bayes_glm"
-  )
-
-  if (task == "classification") {
-    supported_algorithms <- supported_algorithms_classification
-  } else {
-    supported_algorithms <- supported_algorithms_regression
-  }
+  supported_algorithms <- availableMethods(type = task)
 
   if ("all" %in% algorithms) {
     algorithms <- supported_algorithms
   } else {
+    if (length(intersect(algorithms, supported_algorithms)) == 0) {
+      stop("No valid algorithms specified.")
+    }
+
     invalid_algos <- setdiff(algorithms, supported_algorithms)
     if (length(invalid_algos) > 0) {
       warning("Invalid algorithm(s) specified: ", paste(invalid_algos, collapse = ", "))
-    }
-    algorithms <- intersect(algorithms, supported_algorithms)
-    if (length(algorithms) == 0) {
-      stop("No valid algorithms specified.")
+      algorithms <- intersect(algorithms, supported_algorithms)
     }
   }
 
   if (stratify && task == "classification") {
-    split <- initial_split(data, prop = 1 - test_size, strata = label)
+    split <- initial_split(data, prop = 1 - test_size, strata = all_of(label))
   } else {
     split <- initial_split(data, prop = 1 - test_size)
   }
@@ -251,6 +226,10 @@ fastml <- function(data,
 
   if (is.null(recipe)) {
     recipe <- recipe(as.formula(paste(label, "~ .")), data = train_data)
+
+    # Remove zero-variance predictors
+    recipe <- recipe %>%
+      step_zv(all_predictors())
 
     if (impute_method == "medianImpute") {
       recipe <- recipe %>% step_impute_median(all_numeric_predictors())
@@ -346,7 +325,12 @@ fastml <- function(data,
     stop("None of the models returned the specified metric.")
   }
 
-  best_model_idx <- if (task == "regression" && metric != "rsq") names(metric_values[metric_values == min(metric_values)]) else names(metric_values[metric_values == max(metric_values)])
+  best_model_idx <- if (task == "regression" && metric != "rsq"){
+    names(metric_values[metric_values == min(metric_values)])
+  } else {
+    names(metric_values[metric_values == max(metric_values)])
+  }
+
   best_model_name <- names(models)[names(models) %in% best_model_idx]
 
   # Now store processed training data for explainability:

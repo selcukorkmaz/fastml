@@ -1,11 +1,13 @@
 Package: fastml
 Type: Package
 Title: Fast Machine Learning Model Training and Evaluation
-Version: 0.3.1
+Version: 0.4.0
 Authors@R: c(person("Selcuk", "Korkmaz", email="selcukorkmaz@gmail.com", role=c("aut", "cre"),
                     comment = c(ORCID = "0000-0003-4632-6850")), 
              person("Dincer", "Goksuluk", email="dincer.goksuluk@gmail.com", role="aut",
-                    comment = c(ORCID = "0000-0002-2752-7668")))
+                    comment = c(ORCID = "0000-0002-2752-7668")), 
+             person("Eda", "Karaismailoglu", email="eda.karaismailoglu@sbu.edu.tr", role="aut",
+                    comment = c(ORCID = "0000-0003-3085-7809")))
 Description: Streamlines the training, evaluation, and comparison of multiple machine learning models with minimal code by providing 
             comprehensive data preprocessing and support for a wide range of algorithms with hyperparameter tuning. 
             It offers performance metrics and visualization tools to facilitate efficient and effective machine learning workflows.
@@ -40,19 +42,38 @@ Imports:
     patchwork,
     pROC,
     janitor,
-    stringr
-Suggests:
-    testthat (>= 3.0.0),
+    stringr,
+    DT, 
+    GGally, 
+    UpSetR, 
+    VIM, 
+    broom, 
+    dbscan, 
+    ggpubr,
+    gridExtra, 
+    htmlwidgets, 
+    kableExtra, 
+    moments,
+    naniar, 
+    plotly, 
+    scales, 
+    skimr, 
+    tidyr,
     knitr,
     rmarkdown,
+Suggests:
+    testthat (>= 3.0.0),
     C50,
     glmnet,
     xgboost,
     ranger,
     crayon, 
     kernlab,
+    klaR,
+    kknn,
     keras,
     lightgbm,
     rstanarm,
-    mixOmics
+    mixOmics,
 RoxygenNote: 7.3.2
+Config/testthat/edition: 3
