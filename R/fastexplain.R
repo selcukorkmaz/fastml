@@ -73,7 +73,7 @@ fastexplain <- function(object,
   label <- object$label
 
   if(!is.null(features)){
-    features = clean_special_column_names(features)
+    features = sanitize(features)
   }
 
   if (is.null(object$processed_train_data) || !(label %in% names(object$processed_train_data))) {

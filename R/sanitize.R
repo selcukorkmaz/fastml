@@ -22,7 +22,7 @@
 #' @importFrom janitor make_clean_names
 #' @importFrom stringr str_detect
 #' @export
-clean_special_column_names <- function(x) {
+sanitize <- function(x) {
 
   # Helper function to detect special characters in a name
   has_special_chars <- function(name) {

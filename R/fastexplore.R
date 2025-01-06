@@ -182,7 +182,7 @@ fastexplore <- function(
                     label, length(unique(target_var))))
   }
 
-  data = clean_special_column_names(data)
+  data = sanitize(data)
 
 
   # Identify numeric and categorical columns
