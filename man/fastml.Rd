@@ -49,6 +49,8 @@ Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.}
 
 \item{event_class}{A single string. Either "first" or "second" to specify which level of truth to consider as the "event". Default is "first".}
 
+\item{exclude}{A character vector specifying the names of the columns to be excluded from the training process.}
+
 \item{recipe}{A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.}
 
 \item{tune_params}{A list specifying hyperparameter tuning ranges. Default is \code{NULL}.}
@@ -116,9 +118,6 @@ model <- fastml(
 
 # View model summary
 summary(model)
-
-# Explain model
-explain_model(model)
 
   # Example 2: Using the mtcars dataset for regression
   data(mtcars)

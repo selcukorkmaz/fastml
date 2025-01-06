@@ -3,8 +3,8 @@
 #' This function can operate on either a data frame or a character vector:
 #' \itemize{
 #'   \item \strong{Data frame}: Detects columns whose names contain any character
-#'         that is not a letter, number, or underscore, and replaces Greek mu (\u03bc)
-#'         with 'u', removes colons, replaces slashes with underscores, and spaces
+#'         that is not a letter, number, or underscore,
+#'         removes colons, replaces slashes with underscores, and spaces
 #'         with underscores.
 #'   \item \strong{Character vector}: Applies the same cleaning rules to every
 #'         element of the vector.
@@ -21,22 +21,21 @@
 #' @importFrom dplyr rename_with all_of
 #' @importFrom janitor make_clean_names
 #' @importFrom stringr str_detect
-#' @noRd
+#' @export
 clean_special_column_names <- function(x) {
 
   # Helper function to detect special characters in a name
   has_special_chars <- function(name) {
-    stringr::str_detect(name, "[^a-zA-Z0-9_]")
+    str_detect(name, "[^a-zA-Z0-9_]")
   }
 
   # Helper function that cleans a vector of names
   clean_names_vector <- function(name_vec) {
     # Use make_clean_names() with a custom 'replace' to handle mu, colons, slashes, and spaces
     sapply(name_vec, function(n) {
-      janitor::make_clean_names(
+      make_clean_names(
         n,
         replace = c(
-          "\u03bc" = "u",  # Replace mu (μ) with 'u'
           ":"     = "",    # Remove colons
           "/"     = "_",   # Replace slashes with underscores
           " "     = "_"    # Replace spaces with underscores
@@ -51,10 +50,10 @@ clean_special_column_names <- function(x) {
     columns_with_special_chars <- names(x)[has_special_chars(names(x))]
 
     if(length(columns_with_special_chars) > 0){
-      x <- dplyr::rename_with(
+      x <- rename_with(
         x,
         ~ clean_names_vector(.),
-        .cols = dplyr::all_of(columns_with_special_chars)
+        .cols = all_of(columns_with_special_chars)
       )
     }
     return(x)

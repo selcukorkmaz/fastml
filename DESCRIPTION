@@ -42,11 +42,27 @@ Imports:
     patchwork,
     pROC,
     janitor,
-    stringr
-Suggests:
-    testthat (>= 3.0.0),
+    stringr,
+    DT, 
+    GGally, 
+    UpSetR, 
+    VIM, 
+    broom, 
+    dbscan, 
+    ggpubr,
+    gridExtra, 
+    htmlwidgets, 
+    kableExtra, 
+    moments,
+    naniar, 
+    plotly, 
+    scales, 
+    skimr, 
+    tidyr,
     knitr,
     rmarkdown,
+Suggests:
+    testthat (>= 3.0.0),
     C50,
     glmnet,
     xgboost,
@@ -58,6 +74,6 @@ Suggests:
     keras,
     lightgbm,
     rstanarm,
-    mixOmics
+    mixOmics,
 RoxygenNote: 7.3.2
 Config/testthat/edition: 3

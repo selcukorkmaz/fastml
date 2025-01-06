@@ -17,6 +17,7 @@
 #' @param folds An integer specifying the number of folds for cross-validation. Default is \code{10} for methods containing "cv" and \code{25} otherwise.
 #' @param repeats Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").
 #' @param event_class A single string. Either "first" or "second" to specify which level of truth to consider as the "event". Default is "first".
+#' @param exclude A character vector specifying the names of the columns to be excluded from the training process.
 #' @param recipe A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.
 #' @param tune_params A list specifying hyperparameter tuning ranges. Default is \code{NULL}.
 #' @param metric The performance metric to optimize during training.
@@ -66,9 +67,6 @@
 #'
 #' # View model summary
 #' summary(model)
-#'
-#' # Explain model
-#' explain_model(model)
 #'
 #'   # Example 2: Using the mtcars dataset for regression
 #'   data(mtcars)

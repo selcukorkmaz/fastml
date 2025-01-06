@@ -1,4 +1,5 @@
 library(dplyr)
+library(testthat)
 
 data(iris)
 iris <- iris[iris$Species != "setosa", ]  # Binary classification
@@ -116,7 +117,7 @@ test_that("variables successfuly excluded", {
 })
 
 test_that("checks for impute_method", {
-  expect_no_failure({
+  expect_no_error({
     fastml(
       data = iris,
       label = "Species",
@@ -174,7 +175,7 @@ test_that("stop if recipe is not correctly specified.", {
 })
 
 test_that("regression model successful.", {
-  expect_no_failure({
+  expect_no_error({
     fastml(
       data = iris[,-5],
       label = "Sepal.Length",
@@ -184,7 +185,7 @@ test_that("regression model successful.", {
 })
 
 test_that("multicore tasks successful.", {
-  expect_no_failure({
+  expect_no_error({
     fastml(
       data = iris[,-5],
       label = "Sepal.Length",
@@ -205,7 +206,7 @@ test_that("stop if unsupported metric is selected.", {
     )
   })
 
-  expect_no_failure({
+  expect_no_error({
     fastml(
       data = iris[,-5],
       label = "Sepal.Length",
@@ -215,3 +216,4 @@ test_that("stop if unsupported metric is selected.", {
     )
   })
 })
+

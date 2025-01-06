@@ -28,7 +28,7 @@
 #' @importFrom parsnip fit extract_parameter_set_dials
 #' @importFrom workflows workflow add_model add_recipe
 #' @importFrom tune tune_grid control_grid select_best finalize_workflow finalize_model tune_bayes control_grid control_bayes
-#' @importFrom yardstick metric_set accuracy kap roc_auc sens spec precision f_meas rmse rsq mae
+#' @importFrom yardstick metric_set accuracy kap roc_auc sens spec precision f_meas rmse rsq mae new_class_metric
 #' @importFrom rsample vfold_cv bootstraps validation_split
 #' @importFrom recipes all_nominal_predictors all_numeric_predictors all_outcomes all_predictors
 #' @importFrom finetune control_race tune_race_anova
