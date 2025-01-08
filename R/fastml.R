@@ -53,12 +53,13 @@
 #' @importFrom stringr str_detect
 #' @return An object of class \code{fastml_model} containing the best model, performance metrics, and other information.
 #' @examples
+#' \donttest{
 #' # Example 1: Using the iris dataset for binary classification (excluding 'setosa')
 #' data(iris)
 #' iris <- iris[iris$Species != "setosa", ]  # Binary classification
 #' iris$Species <- factor(iris$Species)
 #'
-#' # Train models with Bayesian optimization
+#' # Train models
 #' model <- fastml(
 #'   data = iris,
 #'   label = "Species",
@@ -80,6 +81,8 @@
 #'
 #'   # View model summary
 #'   summary(model)
+#'
+#'   }
 #'
 #' @export
 fastml <- function(data,

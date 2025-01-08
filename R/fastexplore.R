@@ -108,21 +108,6 @@ utils::globalVariables(c(".", "Corr", "P_Value", "Test", "Var1", "Var2", "value"
 #' @importFrom stats cor density dnorm ks.test median na.omit p.adjust quantile sd shapiro.test var
 #' @importFrom utils head
 #'
-#' @examples
-#' \dontrun{
-#' # Basic usage:
-#' result <- fastexplore(iris, label = "Species", visualize = c("histogram", "boxplot"))
-#'
-#' # Save results to a custom directory:
-#' result <- fastexplore(
-#'   data = iris,
-#'   label = "Species",
-#'   visualize = c("histogram", "boxplot", "scatterplot"),
-#'   save_results = TRUE,
-#'   output_dir = tempdir()
-#' )
-#' }
-#'
 #' @export
 
 fastexplore <- function(

@@ -133,19 +133,3 @@ This function automates many steps of EDA:
   \item Saves all results and an R Markdown report if \code{save_results = TRUE}.
 }
 }
-\examples{
-\dontrun{
-# Basic usage:
-result <- fastexplore(iris, label = "Species", visualize = c("histogram", "boxplot"))
-
-# Save results to a custom directory:
-result <- fastexplore(
-  data = iris,
-  label = "Species",
-  visualize = c("histogram", "boxplot", "scatterplot"),
-  save_results = TRUE,
-  output_dir = tempdir()
-)
-}
-
-}

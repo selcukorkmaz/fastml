@@ -104,12 +104,13 @@ detects the task based on the target variable type and can perform advanced hype
 using various tuning strategies.
 }
 \examples{
+\donttest{
 # Example 1: Using the iris dataset for binary classification (excluding 'setosa')
 data(iris)
 iris <- iris[iris$Species != "setosa", ]  # Binary classification
 iris$Species <- factor(iris$Species)
 
-# Train models with Bayesian optimization
+# Train models
 model <- fastml(
   data = iris,
   label = "Species",
@@ -131,5 +132,7 @@ summary(model)
 
   # View model summary
   summary(model)
+
+  }
 
 }
