@@ -94,6 +94,16 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
     if (task == "classification") {
       pred_class <- predict(final_model, new_data = test_data, type = "class")$.pred_class
       pred_prob <- predict(final_model, new_data = test_data, type = "prob")
+
+      if(nrow(test_data) != length(pred_class)){
+
+        stop('The dataset has missing values. To handle this, set impute_method = "remove" to delete rows with missing values,
+             or use an imputation method such as "medianImpute" to fill missing values with the column median, "knnImpute" to
+             estimate missing values using k-Nearest Neighbors, "bagImpute" to apply bagging for imputation, "mice" to use
+             Multiple Imputation by Chained Equations, or "missForest" to use random forests for imputation.')
+
+      }
+
       data_metrics <- test_data %>%
         select(truth = !!sym(label)) %>%
         mutate(estimate = pred_class) %>%
@@ -187,6 +197,7 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
       metrics_set <- metric_set(rmse, rsq, mae)
       perf <- metrics_set(data_metrics, truth = truth, estimate = estimate)
     }
+
     metrics_list <- perf
 
     # Add metrics to performance list

@@ -20,6 +20,7 @@ fastml(
   n_cores = 1,
   stratify = TRUE,
   impute_method = "error",
+  impute_custom_function = NULL,
   encode_categoricals = TRUE,
   scaling_methods = c("center", "scale"),
   summaryFunction = NULL,
@@ -63,14 +64,19 @@ Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.}
 
 \item{impute_method}{Method for handling missing values. Options include:
 \describe{
-  \item{\code{"medianImpute"}}{Impute missing values using median imputation.}
-  \item{\code{"knnImpute"}}{Impute missing values using k-nearest neighbors.}
-  \item{\code{"bagImpute"}}{Impute missing values using bagging.}
-  \item{\code{"remove"}}{Remove rows with missing values from the data.}
-  \item{\code{"error"}}{Do not perform imputation; if missing values are detected after preprocessing, stop execution with an error.}
+  \item{\code{"medianImpute"}}{Impute missing values using median imputation (recipe-based).}
+  \item{\code{"knnImpute"}}{Impute missing values using k-nearest neighbors (recipe-based).}
+  \item{\code{"bagImpute"}}{Impute missing values using bagging (recipe-based).}
+  \item{\code{"remove"}}{Remove rows with missing values from the data (recipe-based).}
+  \item{\code{"mice"}}{Impute missing values using MICE (Multiple Imputation by Chained Equations).}
+  \item{\code{"missForest"}}{Impute missing values using the missForest algorithm.}
+  \item{\code{"custom"}}{Use a user-provided imputation function (see `impute_custom_function`).}
+  \item{\code{"error"}}{Do not perform imputation; if missing values are detected, stop execution with an error.}
   \item{\code{NULL}}{Equivalent to \code{"error"}. No imputation is performed, and the function will stop if missing values are present.}
 }
 Default is \code{"error"}.}
+
+\item{impute_custom_function}{A function that takes a data.frame as input and returns an imputed data.frame. Used only if \code{impute_method = "custom"}.}
 
 \item{encode_categoricals}{Logical indicating whether to encode categorical variables. Default is \code{TRUE}.}
 

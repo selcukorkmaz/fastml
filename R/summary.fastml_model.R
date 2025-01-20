@@ -563,3 +563,4 @@ summary.fastml_model <- function(object,
 
   invisible(object)
 }
+
