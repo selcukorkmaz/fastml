@@ -141,6 +141,26 @@ fastml <- function(data,
       select(-all_of(exclude))
   }
 
+  if(!is.null(impute_method) && impute_method == "error" && anyNA(data)){
+
+    stop("The dataset contains missing values, and 'impute_method = \"error\"' was specified.
+        Missing values must be handled before proceeding. Consider removing rows with missing values
+        or using an imputation method such as 'medianImpute', 'knnImpute', 'bagImpute', 'mice', or 'missForest'.")
+
+
+  }
+
+  if(is.null(impute_method) && anyNA(data) && any(c("penalized_logistic_regression", "svm_linear", "svm_radial", "knn", "naive_bayes") %in% algorithms)){
+
+    stop(sprintf("The dataset contains missing values, and no imputation method was specified (`impute_method = NULL`).
+        Missing values must be addressed as they are not supported by the following algorithms: %s.
+        Please specify an imputation method (e.g., 'medianImpute', 'knnImpute', 'bagImpute', 'mice',
+        or 'missForest') or remove rows with missing values before proceeding.",
+                 paste(algorithms[algorithms %in% c("penalized_logistic_regression", "svm_linear", "svm_radial", "knn", "naive_bayes")], collapse = ", ")))
+
+
+  }
+
 
   data <- data %>%
     mutate(
@@ -228,19 +248,26 @@ fastml <- function(data,
   train_data <- training(split)
   test_data <- testing(split)
 
-  if(impute_method == "remove"){
+  if(!is.null(impute_method) && impute_method == "remove") {
+    if (anyNA(train_data)) {
+      train_data <- train_data %>%
+        filter(complete.cases(.))
 
-    train_data <- train_data %>%
-      filter(complete.cases(.))
+      warning("Rows with missing values have been removed from the training set.")
 
-    test_data <- test_data %>%
-      filter(complete.cases(.))
+    }
 
-    warning("Rows with missing values have been removed from both the training and test datasets.
-           This may result in inconsistent row counts across cross-validation folds if missing values
-           are unevenly distributed. Consider using an imputation method (e.g., 'medianImpute', 'knnImpute')
-           to handle missing values instead.")
+    if (anyNA(test_data)) {
+      test_data <- test_data %>%
+        filter(complete.cases(.))
+
+      warning("Rows with missing values have been removed from the test set.")
+
+    }
+
   }
+
+
 
   if (task == "classification") {
     train_data[[label]] <- as.factor(train_data[[label]])
@@ -259,7 +286,7 @@ fastml <- function(data,
   # If user has provided a custom recipe, skip internal imputation logic
   if (is.null(recipe)) {
 
-    if (impute_method %in% c("mice", "missForest", "custom")) {
+    if (!is.null(impute_method) && impute_method %in% c("mice", "missForest", "custom")) {
 
       # If 'custom', user must provide a function
       if (impute_method == "custom") {
@@ -364,13 +391,13 @@ fastml <- function(data,
 
     # Apply recipe-based imputation steps only if skip_recipe_imputation = FALSE
     if (!skip_recipe_imputation) {
-      if (impute_method == "medianImpute") {
+      if (!is.null(impute_method) && impute_method == "medianImpute") {
         recipe <- recipe %>% step_impute_median(all_numeric_predictors())
-      } else if (impute_method == "knnImpute") {
+      } else if (!is.null(impute_method) && impute_method == "knnImpute") {
         recipe <- recipe %>% step_impute_knn(all_predictors())
-      } else if (impute_method == "bagImpute") {
+      } else if (!is.null(impute_method) && impute_method == "bagImpute") {
         recipe <- recipe %>% step_impute_bag(all_predictors())
-      } else if (impute_method == "remove") {
+      } else if (!is.null(impute_method) && impute_method == "remove") {
         recipe <- recipe %>% step_naomit(all_predictors(), skip = TRUE)
       } else if (impute_method == "error" || is.null(impute_method)) {
         # We'll detect if there's still NA after prep/bake, then stop
