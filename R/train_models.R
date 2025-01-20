@@ -330,124 +330,124 @@ utils::globalVariables(c(
 ))
 
 # Central repository for default parameters
-get_default_params <- function(algo, num_predictors = NULL) {
-  switch(algo,
-         # 1. Random Forest
-         "random_forest" = list(
-           mtry = if (!is.null(num_predictors)) max(1, floor(sqrt(num_predictors))) else 2,
-           trees = 100,
-           min_n = 5
-         ),
-         # 2. Ranger (same as Random Forest)
-         "ranger" = list(
-           mtry = if (!is.null(num_predictors)) max(1, floor(sqrt(num_predictors))) else 2,
-           trees = 100,
-           min_n = 5
-         ),
-         # 4. C5.0
-         "c5.0" = list(
-           trees = 50,
-           min_n = 5,
-           sample_size = 0.5
-         ),
-         # 5. XGBoost
-         "xgboost" = list(
-           trees = 100,
-           tree_depth = 3,
-           learn_rate = 0.1,
-           loss_reduction = 0,
-           min_n = 5,
-           sample_size = 0.5,
-           mtry = if (!is.null(num_predictors)) max(1, floor(sqrt(num_predictors))) else 2
-         ),
-         # 6. LightGBM
-         "lightgbm" = list(
-           trees = 100,
-           tree_depth = 3,
-           learn_rate = 0.1,
-           loss_reduction = 0,
-           min_n = 5,
-           sample_size = 0.5,
-           mtry = if (!is.null(num_predictors)) max(1, floor(sqrt(num_predictors))) else 2
-         ),
-         # 7. Logistic Regression
-         "logistic_regression" = list(),
-         # 8. Penalized Logistic Regression
-         "penalized_logistic_regression" = list(
-           penalty = 0.01,
-           mixture = 0.5
-         ),
-         # 9. Decision Tree
-         "decision_tree" = list(
-           cost_complexity = 0.01,
-           tree_depth = 5,
-           min_n = 5
-         ),
-         # 10. SVM Linear
-         "svm_linear" = list(
-           cost = 1
-         ),
-         # 11. SVM Radial
-         "svm_radial" = list(
-           cost = 1,
-           rbf_sigma = 0.1
-         ),
-         # 12. KNN
-         "knn" = list(
-           neighbors = 5,
-           weight_func = "rectangular",
-           dist_power = 2
-         ),
-         # 13. Naive Bayes
-         "naive_bayes" = list(
-           smoothness = 1,
-           Laplace = 0
-         ),
-         # 14. Neural Network (nnet)
-         "neural_network" = list(
-           hidden_units = 5,
-           penalty = 0.01,
-           epochs = 100
-         ),
-         # 15. Deep Learning (keras)
-         "deep_learning" = list(
-           hidden_units = 10,
-           penalty = 0.001,
-           epochs = 50
-         ),
-         # 16. LDA
-         "lda" = list(),
-         # 17. QDA
-         "qda" = list(),
-         # 18. Bagging
-         "bagging" = list(
-           min_n = 5
-         ),
-         # 19. Elastic Net
-         "elastic_net" = list(
-           penalty = 0.01,
-           mixture = 0.5
-         ),
-         # 20. Bayesian GLM
-         "bayes_glm" = list(),
-         # 21. PLS
-         "pls" = list(
-           num_comp = 2
-         ),
-         # 22. Linear Regression
-         "linear_regression" = list(),
-         # 23. Ridge Regression
-         "ridge_regression" = list(
-           penalty = 0.01,
-           mixture = 0
-         ),
-         # 24. Lasso Regression
-         "lasso_regression" = list(
-           penalty = 0.01,
-           mixture = 1
-         ),
-         NULL)
-}
+# get_default_params <- function(algo, num_predictors = NULL) {
+#   switch(algo,
+#          # 1. Random Forest
+#          "random_forest" = list(
+#            mtry = if (!is.null(num_predictors)) max(1, floor(sqrt(num_predictors))) else 2,
+#            trees = 100,
+#            min_n = 5
+#          ),
+#          # 2. Ranger (same as Random Forest)
+#          "ranger" = list(
+#            mtry = if (!is.null(num_predictors)) max(1, floor(sqrt(num_predictors))) else 2,
+#            trees = 100,
+#            min_n = 5
+#          ),
+#          # 4. C5.0
+#          "c5.0" = list(
+#            trees = 50,
+#            min_n = 5,
+#            sample_size = 0.5
+#          ),
+#          # 5. XGBoost
+#          "xgboost" = list(
+#            trees = 100,
+#            tree_depth = 3,
+#            learn_rate = 0.1,
+#            loss_reduction = 0,
+#            min_n = 5,
+#            sample_size = 0.5,
+#            mtry = if (!is.null(num_predictors)) max(1, floor(sqrt(num_predictors))) else 2
+#          ),
+#          # 6. LightGBM
+#          "lightgbm" = list(
+#            trees = 100,
+#            tree_depth = 3,
+#            learn_rate = 0.1,
+#            loss_reduction = 0,
+#            min_n = 5,
+#            sample_size = 0.5,
+#            mtry = if (!is.null(num_predictors)) max(1, floor(sqrt(num_predictors))) else 2
+#          ),
+#          # 7. Logistic Regression
+#          "logistic_regression" = list(),
+#          # 8. Penalized Logistic Regression
+#          "penalized_logistic_regression" = list(
+#            penalty = 0.01,
+#            mixture = 0.5
+#          ),
+#          # 9. Decision Tree
+#          "decision_tree" = list(
+#            cost_complexity = 0.01,
+#            tree_depth = 5,
+#            min_n = 5
+#          ),
+#          # 10. SVM Linear
+#          "svm_linear" = list(
+#            cost = 1
+#          ),
+#          # 11. SVM Radial
+#          "svm_radial" = list(
+#            cost = 1,
+#            rbf_sigma = 0.1
+#          ),
+#          # 12. KNN
+#          "knn" = list(
+#            neighbors = 5,
+#            weight_func = "rectangular",
+#            dist_power = 2
+#          ),
+#          # 13. Naive Bayes
+#          "naive_bayes" = list(
+#            smoothness = 1,
+#            Laplace = 0
+#          ),
+#          # 14. Neural Network (nnet)
+#          "neural_network" = list(
+#            hidden_units = 5,
+#            penalty = 0.01,
+#            epochs = 100
+#          ),
+#          # 15. Deep Learning (keras)
+#          "deep_learning" = list(
+#            hidden_units = 10,
+#            penalty = 0.001,
+#            epochs = 50
+#          ),
+#          # 16. LDA
+#          "lda" = list(),
+#          # 17. QDA
+#          "qda" = list(),
+#          # 18. Bagging
+#          "bagging" = list(
+#            min_n = 5
+#          ),
+#          # 19. Elastic Net
+#          "elastic_net" = list(
+#            penalty = 0.01,
+#            mixture = 0.5
+#          ),
+#          # 20. Bayesian GLM
+#          "bayes_glm" = list(),
+#          # 21. PLS
+#          "pls" = list(
+#            num_comp = 2
+#          ),
+#          # 22. Linear Regression
+#          "linear_regression" = list(),
+#          # 23. Ridge Regression
+#          "ridge_regression" = list(
+#            penalty = 0.01,
+#            mixture = 0
+#          ),
+#          # 24. Lasso Regression
+#          "lasso_regression" = list(
+#            penalty = 0.01,
+#            mixture = 1
+#          ),
+#          NULL)
+# }
 
 # Function to get default tuning parameters
 # Function to get default tuning parameters
