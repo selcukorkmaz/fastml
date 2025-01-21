@@ -90,11 +90,50 @@ train_models <- function(train_data,
   }
 
   if (resampling_method == "cv") {
-    resamples <- vfold_cv(train_data, v = folds, repeats = 1, strata = if (task == "classification") all_of(label) else NULL)
+    if (nrow(train_data) < folds) {
+      stop(
+        sprintf(
+          "You requested %d-fold cross-validation, but your training set only has %d rows. \nThis prevents each fold from having at least one row. \nEither reduce 'folds', increase data, or use a different resampling method (e.g. 'boot').",
+          folds,
+          nrow(train_data)
+        )
+      )
+    }
+    resamples <- vfold_cv(
+      train_data,
+      v = folds,
+      repeats = 1,
+      strata = if (task == "classification")
+        all_of(label)
+      else
+        NULL
+    )
   } else if (resampling_method == "boot") {
-    resamples <- bootstraps(train_data, times = folds, strata = if (task == "classification") all_of(label) else NULL)
+    resamples <- bootstraps(train_data,
+                            times = folds,
+                            strata = if (task == "classification")
+                              all_of(label)
+                            else
+                              NULL)
   } else if (resampling_method == "repeatedcv") {
-    resamples <- vfold_cv(train_data, v = folds, repeats = repeats, strata = if (task == "classification") all_of(label) else NULL)
+
+    if (nrow(train_data) < folds) {
+      stop(
+        sprintf(
+          "You requested %d-fold cross-validation, but your training set only has %d rows. \nThis prevents each fold from having at least one row. \nEither reduce 'folds', increase data, or use a different resampling method (e.g. 'boot').",
+          folds, nrow(train_data)
+        )
+      )
+    }
+    resamples <- vfold_cv(
+      train_data,
+      v = folds,
+      repeats = repeats,
+      strata = if (task == "classification")
+        all_of(label)
+      else
+        NULL
+    )
   } else if (resampling_method == "none") {
     resamples <- NULL
   } else {

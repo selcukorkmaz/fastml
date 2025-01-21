@@ -45,6 +45,7 @@
 #' @param tuning_iterations Number of tuning iterations (applicable for Bayesian or other iterative search methods). Default is \code{10}.
 #' @param early_stopping Logical indicating whether to use early stopping in Bayesian tuning methods (if supported). Default is \code{FALSE}.
 #' @param adaptive Logical indicating whether to use adaptive/racing methods for tuning. Default is \code{FALSE}.
+#' @param learning_curve Logical. If TRUE, generate learning curves (performance vs. training size).
 #' @param seed An integer value specifying the random seed for reproducibility.
 #' @importFrom magrittr %>%
 #' @importFrom rsample initial_split training testing
@@ -115,6 +116,7 @@ fastml <- function(data,
                    tuning_iterations = 10,
                    early_stopping = FALSE,
                    adaptive = FALSE,
+                   learning_curve = FALSE,
                    seed = 123) {
 
   set.seed(seed)
@@ -393,12 +395,25 @@ fastml <- function(data,
     if (!skip_recipe_imputation) {
       if (!is.null(impute_method) && impute_method == "medianImpute") {
         recipe <- recipe %>% step_impute_median(all_numeric_predictors())
+
+        warning("Missing values in numeric predictors are being imputed using the median.")
+
       } else if (!is.null(impute_method) && impute_method == "knnImpute") {
         recipe <- recipe %>% step_impute_knn(all_predictors())
+
+        warning("Missing values are being imputed using KNN (k-Nearest Neighbors).")
+
       } else if (!is.null(impute_method) && impute_method == "bagImpute") {
         recipe <- recipe %>% step_impute_bag(all_predictors())
+
+        warning("Missing values are being imputed using bagging (bootstrap aggregation)")
+
+
       } else if (!is.null(impute_method) && impute_method == "remove") {
         recipe <- recipe %>% step_naomit(all_predictors(), skip = TRUE)
+
+        warning("Rows with missing values in predictors are being removed.")
+
       } else if (impute_method == "error" || is.null(impute_method)) {
         # We'll detect if there's still NA after prep/bake, then stop
         # so do nothing special here
@@ -488,6 +503,90 @@ fastml <- function(data,
   # Now store processed training data for explainability:
   trained_recipe <- prep(recipe, training = train_data, retain = TRUE)
   processed_train_data <- bake(trained_recipe, new_data = NULL)
+
+  if (learning_curve) {
+    # You can define a grid of training set sizes (as proportions) to test
+    fractions <- c(0.1, 0.2, 0.4, 0.6, 0.8, 1.0)
+    lc_results <- list()
+
+    for (f in fractions) {
+      set.seed(seed)
+
+      # If fraction >= 1, we use the full training data directly
+      if (f >= 1.0) {
+        sub_train <- train_data
+      } else {
+        sub_split <- rsample::initial_split(
+          train_data,
+          prop = f,
+          strata = if (task == "classification") label else NULL
+        )
+        sub_train <- rsample::training(sub_split)
+      }
+
+      sub_models <- train_models(
+        train_data = sub_train,
+        label = label,
+        task = task,
+        algorithms = algorithms,
+        resampling_method = resampling_method,
+        folds = folds,
+        repeats = repeats,
+        tune_params = tune_params,
+        metric = metric,
+        summaryFunction = summaryFunction,
+        seed = seed,
+        recipe = recipe,
+        use_default_tuning = use_default_tuning,
+        tuning_strategy = tuning_strategy,
+        tuning_iterations = tuning_iterations,
+        early_stopping = early_stopping,
+        adaptive = adaptive
+      )
+
+      sub_eval <- evaluate_models(
+        sub_models,
+        sub_train,
+        test_data,
+        label,
+        task,
+        metric,
+        event_class
+      )
+
+      perf_values <- lapply(sub_eval$performance, function(m) {
+        m_df <- as.data.frame(m)
+        val <- m_df[m_df$.metric == metric, ".estimate"]
+        if (length(val) == 0) NA else val
+      })
+
+      avg_perf <- mean(unlist(perf_values), na.rm = TRUE)
+      lc_results[[as.character(f)]] <- avg_perf
+    }
+
+    # lc_results is a list: names = fractions, value = average performance
+    df_lc <- data.frame(
+      Fraction = as.numeric(names(lc_results)),
+      Performance = unlist(lc_results)
+    )
+
+    # Produce a simple plot (requires ggplot2)
+    if (requireNamespace("ggplot2", quietly = TRUE)) {
+      library(ggplot2)
+      lc_plot <- ggplot(df_lc, aes(x = Fraction, y = Performance)) +
+        geom_line(color = "blue") +
+        geom_point(color = "blue") +
+        labs(
+          title = "Learning Curve",
+          x = "Training Set Size (fraction)",
+          y = paste("Mean", toupper(metric), "across models")
+        ) +
+        theme_minimal()
+      print(lc_plot)
+    } else {
+      warning("ggplot2 not installed, cannot produce the learning curve plot.")
+    }
+  }
 
   result <- list(
     best_model = models[best_model_name],
