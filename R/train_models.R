@@ -20,6 +20,7 @@
 #' @param tuning_iterations Number of iterations for iterative tuning methods.
 #' @param early_stopping Logical for early stopping in Bayesian tuning.
 #' @param adaptive Logical indicating whether to use adaptive/racing methods.
+#' @param algorithm_engines A named list specifying the engine to use for each algorithm.
 #' @importFrom magrittr %>%
 #' @importFrom dplyr filter mutate select if_else
 #' @importFrom tibble tibble
@@ -50,7 +51,8 @@ train_models <- function(train_data,
                          tuning_strategy = "grid",
                          tuning_iterations = 10,
                          early_stopping = FALSE,
-                         adaptive = FALSE) {
+                         adaptive = FALSE,
+                         algorithm_engines = NULL) {
 
   set.seed(seed)
 
@@ -142,6 +144,15 @@ train_models <- function(train_data,
 
   models <- list()
 
+  # A helper function to choose the engine for an algorithm
+  get_engine <- function(algo, default_engine) {
+    if (!is.null(algorithm_engines) && !is.null(algorithm_engines[[algo]])) {
+      return(algorithm_engines[[algo]])
+    } else {
+      return(default_engine)
+    }
+  }
+
   update_params <- function(params_model, new_params) {
     for (param_name in names(new_params)) {
       param_value <- new_params[[param_name]]
@@ -178,60 +189,123 @@ train_models <- function(train_data,
   for (algo in algorithms) {
     set.seed(seed)
     model <- NULL
+    algo_engine <- get_engine(algo, get_default_engine(algo))
 
-    algo_tune_params <- if (!is.null(tune_params)) tune_params[[algo]] else NULL
-
-    if (is.null(algo_tune_params) && use_default_tuning) {
-      algo_tune_params <- get_default_tune_params(algo, train_data, label)
+    if (use_default_tuning) {
+      algo_tune_params <- get_default_tune_params(algo,
+                                                  train_data,
+                                                  label,
+                                                  algo_engine)
+    } else{
+      algo_tune_params <- get_default_params(algo, num_predictors = NULL, engine = algo_engine)
     }
 
-    perform_tuning <- !is.null(algo_tune_params) && !is.null(resamples)
+    perform_tuning <- !all(vapply(algo_tune_params, is.null, logical(1))) && !is.null(resamples)
 
 
     if (n_class > 2) {
       if ("logistic_regression" %in% algorithms) {
-        logistic_regression = define_multinomial_regression_spec(task, tune = perform_tuning)
+        logistic_regression = define_multinomial_regression_spec(
+          task,
+          tune = perform_tuning,
+          engine = get_engine("logistic_regression", "glm")
+        )
       }
 
-      if ("penalized_logistic_regression" %in% algorithms) {
-        penalized_logistic_regression = define_penalized_multinomial_regression_spec(task, tune = perform_tuning)
-
-      }
     } else {
       if ("logistic_regression" %in% algorithms) {
-        logistic_regression =  define_logistic_regression_spec(task, tune = perform_tuning)
+        logistic_regression = define_logistic_regression_spec(
+          task,
+          tune = perform_tuning,
+          engine = get_engine("logistic_regression", "glm")
+        )
       }
 
-      if ("penalized_logistic_regression" %in% algorithms) {
-        penalized_logistic_regression =  define_penalized_logistic_regression_spec(task, tune = perform_tuning)
-      }
     }
 
+
     model_info <- switch(algo,
-                         "random_forest" = define_random_forest_spec(task, train_data, label, tune = perform_tuning),
-                         "ranger" = define_ranger_spec(task, train_data, label, tune = perform_tuning),
-                         "c5.0" = define_c5_0_spec(task, tune = perform_tuning),
-                         "xgboost" = define_xgboost_spec(task, train_data, label, tune = perform_tuning),
-                         "lightgbm" = define_lightgbm_spec(task, train_data, label, tune = perform_tuning),
+                         "random_forest" = {
+                           eng <- get_engine("random_forest", "ranger")
+                           define_random_forest_spec(task, train_data, label, tune = perform_tuning, engine = eng)
+                         },
+                         "c5.0" = define_c5_0_spec(task, tune = perform_tuning),  # engine fixed
+                         "xgboost" = {
+                           eng <- get_engine("xgboost", "xgboost")
+                           define_xgboost_spec(task, train_data, label, tune = perform_tuning, engine = eng)
+                         },
+                         "lightgbm" = {
+                           eng <- get_engine("lightgbm", "lightgbm")
+                           define_lightgbm_spec(task, train_data, label, tune = perform_tuning, engine = eng)
+                         },
                          "logistic_regression" = logistic_regression,
-                         "penalized_logistic_regression" = penalized_logistic_regression,
-                         "decision_tree" = define_decision_tree_spec(task, tune = perform_tuning),
-                         "svm_linear" = define_svm_linear_spec(task, tune = perform_tuning),
-                         "svm_radial" = define_svm_radial_spec(task, tune = perform_tuning),
-                         "knn" = define_knn_spec(task, tune = perform_tuning),
-                         "naive_bayes" = define_naive_bayes_spec(task, tune = perform_tuning),
-                         "neural_network" = define_neural_network_spec(task, tune = perform_tuning),
-                         "lda" = define_lda_spec(task),
-                         "qda" = define_qda_spec(task),
-                         "bagging" = define_bagging_spec(task, tune = perform_tuning),
-                         "elastic_net" = define_elastic_net_spec(task, tune = perform_tuning),
-                         "bayes_glm" = define_bayes_glm_spec(task),
-                         "pls" = define_pls_spec(task, tune = perform_tuning),
-                         "linear_regression" = define_linear_regression_spec(task),
-                         "ridge_regression" = define_ridge_regression_spec(task, tune = perform_tuning),
-                         "lasso_regression" = define_lasso_regression_spec(task, tune = perform_tuning),
-                         { warning(paste("Algorithm", algo, "is not supported or failed to train.")); next }
+                         "decision_tree" = {
+                           eng <- get_engine("decision_tree", "rpart")
+                           define_decision_tree_spec(task, tune = perform_tuning, engine = eng)
+                         },
+                         "svm_linear" = {
+                           eng <- get_engine("svm_linear", "kernlab")
+                           define_svm_linear_spec(task, tune = perform_tuning, engine = eng)
+                         },
+                         "svm_radial" = {
+                           eng <- get_engine("svm_radial", "kernlab")
+                           define_svm_radial_spec(task, tune = perform_tuning, engine = eng)
+                         },
+                         "knn" = {
+                           eng <- get_engine("knn", "kknn")
+                           define_knn_spec(task, tune = perform_tuning, engine = eng)
+                         },
+                         "naive_bayes" = {
+                           eng <- get_engine("naive_bayes", "klaR")
+                           define_naive_bayes_spec(task, tune = perform_tuning, engine = eng)
+                         },
+                         "neural_network" = {
+                           eng <- get_engine("neural_network", "nnet")
+                           define_neural_network_spec(task, tune = perform_tuning, engine = eng)
+                         },
+                         "lda" = {
+                           eng <- get_engine("lda", "MASS")
+                           define_lda_spec(task, engine = eng)
+                         },
+                         "qda" = {
+                           eng <- get_engine("qda", "MASS")
+                           define_qda_spec(task, engine = eng)
+                         },
+                         "bagging" = {
+                           eng <- get_engine("bagging", "rpart")
+                           define_bagging_spec(task, tune = perform_tuning, engine = eng)
+                         },
+                         "elastic_net" = {
+                           eng <- get_engine("elastic_net", "glmnet")
+                           define_elastic_net_spec(task, tune = perform_tuning, engine = eng)
+                         },
+                         "bayes_glm" = {
+                           eng <- get_engine("bayes_glm", "stan")
+                           define_bayes_glm_spec(task, engine = eng)
+                         },
+                         "pls" = {
+                           eng <- get_engine("pls", "mixOmics")
+                           define_pls_spec(task, tune = perform_tuning, engine = eng)
+                         },
+                         "linear_regression" = {
+                           eng <- get_engine("linear_regression", "lm")
+                           define_linear_regression_spec(task, engine = eng)
+                         },
+                         "ridge_regression" = {
+                           eng <- get_engine("ridge_regression", "glmnet")
+                           define_ridge_regression_spec(task, tune = perform_tuning, engine = eng)
+                         },
+                         "lasso_regression" = {
+                           eng <- get_engine("lasso_regression", "glmnet")
+                           define_lasso_regression_spec(task, tune = perform_tuning, engine = eng)
+                         },
+                         {
+                           warning(paste("Algorithm", algo, "is not supported or failed to train."));
+                           next
+                         }
     )
+
+
     model_spec <- model_info$model_spec
 
     if (perform_tuning) {
@@ -270,7 +344,7 @@ train_models <- function(train_data,
       add_recipe(recipe)
 
     tryCatch({
-      if (perform_tuning) {
+      if (perform_tuning && !all(vapply(algo_tune_params, is.null, logical(1)))) {
         # Control objects
         ctrl_grid <- control_grid(save_pred = TRUE)
         ctrl_bayes <- control_bayes(save_pred = TRUE)
@@ -369,16 +443,10 @@ utils::globalVariables(c(
 ))
 
 # Central repository for default parameters
-get_default_params <- function(algo, num_predictors = NULL) {
+get_default_params <- function(algo, num_predictors = NULL, engine) {
   switch(algo,
          # 1. Random Forest
          "random_forest" = list(
-           mtry = if (!is.null(num_predictors)) max(1, floor(sqrt(num_predictors))) else 2,
-           trees = 100,
-           min_n = 5
-         ),
-         # 2. Ranger (same as Random Forest)
-         "ranger" = list(
            mtry = if (!is.null(num_predictors)) max(1, floor(sqrt(num_predictors))) else 2,
            trees = 100,
            min_n = 5
@@ -391,31 +459,43 @@ get_default_params <- function(algo, num_predictors = NULL) {
          ),
          # 5. XGBoost
          "xgboost" = list(
-           trees = 100,
-           tree_depth = 3,
-           learn_rate = 0.1,
-           loss_reduction = 0,
-           min_n = 5,
-           sample_size = 0.5,
-           mtry = if (!is.null(num_predictors)) max(1, floor(sqrt(num_predictors))) else 2
+           tree_depth = 6L,
+           trees = 15L,
+           learn_rate = -1,
+           mtry =  if (!is.null(num_predictors)) max(1, floor(sqrt(num_predictors))) else 2,
+           min_n =  2,
+           loss_reduction = 0.0,
+           sample_size =  0.5,
+           stop_iter =  Inf
          ),
          # 6. LightGBM
          "lightgbm" = list(
            trees = 100,
            tree_depth = 3,
-           learn_rate = 0.1,
+           learn_rate = -1,
            loss_reduction = 0,
            min_n = 5,
            sample_size = 0.5,
            mtry = if (!is.null(num_predictors)) max(1, floor(sqrt(num_predictors))) else 2
          ),
          # 7. Logistic Regression
-         "logistic_regression" = list(),
-         # 8. Penalized Logistic Regression
-         "penalized_logistic_regression" = list(
-           penalty = 0.01,
-           mixture = 0.5
-         ),
+         "logistic_regression" = {
+
+           if (engine %in% c("glm", "gee", "glmer", "stan", "stan_glmer")) {
+             list(penalty = NULL, mixture = NULL)
+           } else if (engine %in% c("brulee", "glmnet", "h20", "LiblineaR", "spark")) {
+             list(penalty = 0.01, mixture = 0.5)
+           } else if (engine %in% c("keras")) {
+             list(penalty = 0.01, mixture = NULL)
+           } else {
+             # Default if engine not recognized
+             list(penalty = 0.01, mixture = 0.5)
+           }
+
+         },
+
+
+
          # 9. Decision Tree
          "decision_tree" = list(
            cost_complexity = 0.01,
@@ -489,8 +569,7 @@ get_default_params <- function(algo, num_predictors = NULL) {
 }
 
 # Function to get default tuning parameters
-# Function to get default tuning parameters
-get_default_tune_params <- function(algo, train_data, label) {
+get_default_tune_params <- function(algo, train_data, label, engine) {
   # Determine the number of predictors
   num_predictors <- ncol(train_data %>% select(-!!sym(label)))
 
@@ -499,13 +578,6 @@ get_default_tune_params <- function(algo, train_data, label) {
          "random_forest" = list(
            mtry = c(1, max(1, floor(sqrt(num_predictors)))),
            trees = c(100, 200),  # Reduced upper limit for efficiency
-           min_n = c(2, 5)
-         ),
-
-         # 2. Ranger (same as Random Forest)
-         "ranger" = list(
-           mtry = c(1, max(1, floor(sqrt(num_predictors)))),
-           trees = c(100, 200),
            min_n = c(2, 5)
          ),
 
@@ -538,16 +610,22 @@ get_default_tune_params <- function(algo, train_data, label) {
          ),
 
          # 7. Logistic Regression
-         "logistic_regression" = list(
-           penalty = c(-5, 0),  # log scale
-           mixture = c(0, 1)
-         ),
 
-         # 8. Penalized Logistic Regression
-         "penalized_logistic_regression" = list(
-           penalty = c(-5, 0),  # log scale
-           mixture = c(0, 1)
-         ),
+
+         "logistic_regression" = {
+
+             if (engine %in% c("glm", "gee", "glmer", "stan", "stan_glmer")) {
+               list(penalty = NULL, mixture = NULL)
+             } else if (engine %in% c("brulee", "glmnet", "h20", "LiblineaR", "spark")) {
+               list(penalty = c(-5, 0), mixture = c(0, 1))
+             } else if (engine %in% c("keras")) {
+               list(penalty = c(-5, 0), mixture = NULL)
+             } else {
+               # Default if engine not recognized
+               list(penalty = c(-5, 0), mixture = c(0, 1))
+             }
+
+         },
 
          # 9. Decision Tree
          "decision_tree" = list(
@@ -636,6 +714,7 @@ get_default_tune_params <- function(algo, train_data, label) {
          # Default case
          NULL)
 }
+
 
 
 

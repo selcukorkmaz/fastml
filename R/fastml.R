@@ -21,6 +21,7 @@
 #' @param recipe A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.
 #' @param tune_params A list specifying hyperparameter tuning ranges. Default is \code{NULL}.
 #' @param metric The performance metric to optimize during training.
+#' @param algorithm_engines A named list specifying the engine to use for each algorithm.
 #' @param n_cores An integer specifying the number of CPU cores to use for parallel processing. Default is \code{1}.
 #' @param stratify Logical indicating whether to use stratified sampling when splitting the data. Default is \code{TRUE} for classification and \code{FALSE} for regression.
 #' @param impute_method Method for handling missing values. Options include:
@@ -104,6 +105,7 @@ fastml <- function(data,
                    recipe = NULL,
                    tune_params = NULL,
                    metric = NULL,
+                   algorithm_engines = NULL,
                    n_cores = 1,
                    stratify = TRUE,
                    impute_method = "error",
@@ -470,7 +472,8 @@ fastml <- function(data,
     tuning_strategy = tuning_strategy,
     tuning_iterations = tuning_iterations,
     early_stopping = early_stopping,
-    adaptive = adaptive
+    adaptive = adaptive,
+    algorithm_engines = algorithm_engines
   )
 
   if (length(models) == 0) {
@@ -505,25 +508,26 @@ fastml <- function(data,
   processed_train_data <- bake(trained_recipe, new_data = NULL)
 
   if (learning_curve) {
-    # You can define a grid of training set sizes (as proportions) to test
+    # Define the fractions to test
     fractions <- c(0.1, 0.2, 0.4, 0.6, 0.8, 1.0)
-    lc_results <- list()
 
-    for (f in fractions) {
+    # Helper function to run the learning curve step for a given fraction
+    run_curve <- function(fraction) {
       set.seed(seed)
 
-      # If fraction >= 1, we use the full training data directly
-      if (f >= 1.0) {
-        sub_train <- train_data
+      # Select training subset based on the fraction value
+      sub_train <- if (fraction >= 1.0) {
+        train_data
       } else {
         sub_split <- rsample::initial_split(
           train_data,
-          prop = f,
+          prop = fraction,
           strata = if (task == "classification") label else NULL
         )
-        sub_train <- rsample::training(sub_split)
+        rsample::training(sub_split)
       }
 
+      # Train models on the subset
       sub_models <- train_models(
         train_data = sub_train,
         label = label,
@@ -544,6 +548,7 @@ fastml <- function(data,
         adaptive = adaptive
       )
 
+      # Evaluate models on the subset
       sub_eval <- evaluate_models(
         sub_models,
         sub_train,
@@ -554,39 +559,38 @@ fastml <- function(data,
         event_class
       )
 
-      perf_values <- lapply(sub_eval$performance, function(m) {
+      # Extract the performance metric from each model evaluation
+      perf_values <- sapply(sub_eval$performance, function(m) {
         m_df <- as.data.frame(m)
         val <- m_df[m_df$.metric == metric, ".estimate"]
         if (length(val) == 0) NA else val
       })
 
-      avg_perf <- mean(unlist(perf_values), na.rm = TRUE)
-      lc_results[[as.character(f)]] <- avg_perf
+      # Compute the average performance (ignoring any missing values)
+      avg_perf <- mean(perf_values, na.rm = TRUE)
+
+      # Return a data frame for this fraction
+      data.frame(Fraction = fraction, Performance = avg_perf)
     }
 
-    # lc_results is a list: names = fractions, value = average performance
-    df_lc <- data.frame(
-      Fraction = as.numeric(names(lc_results)),
-      Performance = unlist(lc_results)
-    )
+    # Apply the helper function to each fraction and combine the results
+    df_lc <- do.call(rbind, lapply(fractions, run_curve))
 
-    # Produce a simple plot (requires ggplot2)
-    if (requireNamespace("ggplot2", quietly = TRUE)) {
-      library(ggplot2)
+    # Plot the learning curve
+
       lc_plot <- ggplot(df_lc, aes(x = Fraction, y = Performance)) +
         geom_line(color = "blue") +
         geom_point(color = "blue") +
         labs(
           title = "Learning Curve",
           x = "Training Set Size (fraction)",
-          y = paste("Mean", toupper(metric), "across models")
+          y = paste("Mean", metric, "across models")
         ) +
         theme_minimal()
       print(lc_plot)
-    } else {
-      warning("ggplot2 not installed, cannot produce the learning curve plot.")
-    }
+
   }
+
 
   result <- list(
     best_model = models[best_model_name],
