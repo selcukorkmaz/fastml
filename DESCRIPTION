@@ -61,6 +61,7 @@ Imports:
     tidyr,
     knitr,
     rmarkdown,
+    purrr
 Suggests:
     testthat (>= 3.0.0),
     C50,

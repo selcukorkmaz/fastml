@@ -59,6 +59,7 @@
 #' @importFrom stringr str_detect
 #' @importFrom mice mice complete
 #' @importFrom missForest missForest
+#' @importFrom purrr flatten
 #' @return An object of class \code{fastml_model} containing the best model, performance metrics, and other information.
 #' @examples
 #' \donttest{
@@ -71,7 +72,7 @@
 #' model <- fastml(
 #'   data = iris,
 #'   label = "Species",
-#'   algorithms = c("random_forest", "xgboost", "svm_radial")
+#'   algorithms = c("random_forest", "xgboost", "svm_rbf")
 #' )
 #'
 #' # View model summary
@@ -84,7 +85,7 @@
 #'   model <- fastml(
 #'     data = mtcars,
 #'     label = "mpg",
-#'     algorithms = c("random_forest", "xgboost", "svm_radial")
+#'     algorithms = c("random_forest", "xgboost", "svm_rbf")
 #'   )
 #'
 #'   # View model summary
@@ -154,13 +155,13 @@ fastml <- function(data,
 
   }
 
-  if(is.null(impute_method) && anyNA(data) && any(c("penalized_logistic_regression", "svm_linear", "svm_radial", "knn", "naive_bayes") %in% algorithms)){
+  if(is.null(impute_method) && anyNA(data) && any(c("svm_linear", "svm_rbf", "nearest_neighbor", "naive_Bayes") %in% algorithms)){
 
     stop(sprintf("The dataset contains missing values, and no imputation method was specified (`impute_method = NULL`).
         Missing values must be addressed as they are not supported by the following algorithms: %s.
         Please specify an imputation method (e.g., 'medianImpute', 'knnImpute', 'bagImpute', 'mice',
         or 'missForest') or remove rows with missing values before proceeding.",
-                 paste(algorithms[algorithms %in% c("penalized_logistic_regression", "svm_linear", "svm_radial", "knn", "naive_bayes")], collapse = ", ")))
+                 paste(algorithms[algorithms %in% c("svm_linear", "svm_rbf", "nearest_neighbor", "naive_Bayes")], collapse = ", ")))
 
 
   }
@@ -476,6 +477,8 @@ fastml <- function(data,
     algorithm_engines = algorithm_engines
   )
 
+  engine_names <- get_engine_names(models) # değiştir
+
   if (length(models) == 0) {
     stop("No models were successfully trained.")
   }
@@ -484,7 +487,16 @@ fastml <- function(data,
   performance <- eval_output$performance
   predictions <- eval_output$predictions
 
-  metric_values <- sapply(performance, function(x) x %>% filter(.metric == metric) %>% pull(.estimate))
+  # metric_values <- sapply(performance, function(x) x %>% filter(.metric == metric) %>% pull(.estimate))
+
+  # Flatten the performance list by one level
+  flattened_perf <- flatten(performance)
+
+  # Now apply the function over the flattened list
+  metric_values <- sapply(flattened_perf, function(x) {
+    x %>% filter(.metric == metric) %>% pull(.estimate)
+  })
+
 
   if (any(is.na(metric_values))) {
     warning("Some models did not return the specified metric.")
@@ -501,7 +513,8 @@ fastml <- function(data,
     names(metric_values[metric_values == max(metric_values)])
   }
 
-  best_model_name <- names(models)[names(models) %in% best_model_idx]
+  model_names <- get_model_engine_names(models)
+  best_model_name <- model_names[model_names %in% best_model_idx]
 
   # Now store processed training data for explainability:
   trained_recipe <- prep(recipe, training = train_data, retain = TRUE)
@@ -545,7 +558,8 @@ fastml <- function(data,
         tuning_strategy = tuning_strategy,
         tuning_iterations = tuning_iterations,
         early_stopping = early_stopping,
-        adaptive = adaptive
+        adaptive = adaptive,
+        algorithm_engines = algorithm_engines
       )
 
       # Evaluate models on the subset
@@ -593,7 +607,7 @@ fastml <- function(data,
 
 
   result <- list(
-    best_model = models[best_model_name],
+    best_model = get_best_workflows(models, best_model_name),
     best_model_name = best_model_name,
     performance = performance,
     predictions = predictions,
@@ -604,7 +618,8 @@ fastml <- function(data,
     models = models,
     metric = metric,
     positive_class = positive_class,
-    event_class = event_class
+    event_class = event_class,
+    engine_names = engine_names
   )
   class(result) <- "fastml_model"
   return(result)

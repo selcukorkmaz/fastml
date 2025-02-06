@@ -53,18 +53,40 @@ summary.fastml_model <- function(object,
   performance <- object$performance
   predictions_list <- object$predictions
   task <- object$task
+  best_model <- object$best_model
   best_model_name <- object$best_model_name
   optimized_metric <- object$metric
   model_count <- length(object$models)
   positive_class <- object$positive_class
+  engine_names <- object$engine_names
 
-  # Combine performance metrics
-  metrics_list <- lapply(names(performance), function(mn) {
-    df <- as.data.frame(performance[[mn]])
-    df$Model <- mn
-    df
+  # Loop over the top-level names (e.g. "rand_forest", "logistic_reg")
+  metrics_list <- lapply(names(performance), function(model_name) {
+
+    # For each model, loop over its engines
+    engine_dfs <- lapply(names(performance[[model_name]]), function(engine_name) {
+
+      # Get the tibble for this engine and convert it to a data.frame
+      df <- as.data.frame(performance[[model_name]][[engine_name]])
+
+      # Add an "Engine" column
+      df$Engine <- engine_name
+      df
+    })
+
+    # Combine the tibbles from different engines (row-wise)
+    combined_engines <- do.call(rbind, engine_dfs)
+
+    # Add a "Model" column
+    combined_engines$Model <- model_name
+    combined_engines
   })
+
+  # Combine all model groups into one data.frame
   performance_df <- do.call(rbind, metrics_list)
+
+
+
 
   all_metric_names <- unique(performance_df$.metric)
   if (is.null(sort_metric)) {
@@ -90,7 +112,14 @@ summary.fastml_model <- function(object,
   if (length(desired_metrics) == 0) desired_metrics <- main_metric
 
   performance_sub <- performance_df[performance_df$.metric %in% desired_metrics, ]
-  performance_wide <- dcast(performance_sub, Model ~ .metric, value.var = ".estimate")
+  performance_wide <- pivot_wider(
+    performance_sub,
+    names_from = .metric,
+    values_from = .estimate
+  ) %>%
+    dplyr::select(Model, Engine, accuracy, kap, sens, spec, precision, f_meas, roc_auc)
+  # performance_wide$Engine <- engine_names[match(performance_wide$Model, names(engine_names))]
+  # performance_wide <- performance_wide[, c("Model", "Engine", setdiff(colnames(performance_wide), c("Model", "Engine")))]
 
   if (task == "regression" && main_metric != "rsq") {
     performance_wide <- performance_wide[order(performance_wide[[main_metric]], na.last = TRUE), ]
@@ -114,14 +143,14 @@ summary.fastml_model <- function(object,
   cat("\n===== fastml Model Summary =====\n")
   cat("Task:", task, "\n")
   cat("Number of Models Trained:", model_count, "\n")
-  best_val <- unique(performance_wide[performance_wide$Model %in% best_model_name, main_metric])
-  cat("Best Model(s):", best_model_name, sprintf("(%s: %.7f)", main_metric, best_val), "\n\n")
+  best_val <- unique(performance_wide[performance_wide$Engine %in% best_model_name, main_metric])
+  cat("Best Model(s):", paste0(names(best_model_name), " (", best_model_name, ")"), sprintf("(%s: %.7f)", main_metric, best_val), "\n\n")
 
   cat("Performance Metrics (Sorted by", main_metric, "):\n\n")
 
-  metrics_to_print <- c("Model", desired_metrics)
+  metrics_to_print <- c("Model", "Engine", desired_metrics)
 
-  best_model_idx <- which(performance_wide$Model %in% best_model_name)
+  best_model_idx <- which(performance_wide$Engine %in% best_model_name)
 
 
   if(length(algorithm) == 1 && algorithm == "best"){
@@ -146,7 +175,7 @@ summary.fastml_model <- function(object,
     performance_wide[[m]] <- format(performance_wide[[m]], digits = 7, nsmall = 7)
   }
 
-  header <- c("Model", sapply(desired_metrics, function(m) {
+  header <- c("Model", "Engine", sapply(desired_metrics, function(m) {
     if (m %in% names(display_names)) display_names[[m]] else m
   }))
 
@@ -156,7 +185,7 @@ summary.fastml_model <- function(object,
 
   col_widths <- sapply(seq_along(header), function(i) {
     col_name <- header[i]
-    col_data <- data_str[[c("Model", desired_metrics)[i]]]
+    col_data <- data_str[[c("Model", "Engine", desired_metrics)[i]]]
     max(nchar(col_name), max(nchar(col_data)))
   })
 
@@ -169,7 +198,7 @@ summary.fastml_model <- function(object,
 
   for (i in seq_len(nrow(data_str))) {
     row_line <- paste(mapply(function(v, w) format(v, width = w, justify = "left"),
-                             data_str[i, c("Model", desired_metrics), drop=FALSE], col_widths),
+                             data_str[i, c("Model", "Engine", desired_metrics), drop=FALSE], col_widths),
                       collapse = "  ")
     cat(row_line, "\n")
   }
@@ -297,10 +326,13 @@ summary.fastml_model <- function(object,
 
   if (!plot) return(invisible(object))
 
-  performance_melt <- melt(performance_wide, id.vars = "Model", variable.name = "Metric", value.name = "Value")
-  performance_melt <- performance_melt[!is.na(performance_melt$Value), ]
+  performance_melt <- performance_wide %>%
+    pivot_longer(
+      cols = -c(Model, Engine),  # keep Model and Engine as identifiers
+      names_to = "Metric",
+      values_to = "Value"
+    )
   performance_melt$Value <- as.numeric(performance_melt$Value)
-  performance_melt$Metric <- as.character(performance_melt$Metric)
   performance_melt$Metric <- ifelse(
     performance_melt$Metric %in% names(display_names),
     display_names[performance_melt$Metric],
@@ -321,15 +353,16 @@ summary.fastml_model <- function(object,
     }
   }
 
-  p_bar <- ggplot(performance_melt, aes(x = Model, y = Value, fill = Model)) +
-    geom_bar(stat = "identity", position = "dodge") +
+  p_bar <- ggplot(performance_melt, aes(x = Model, y = Value, fill = Engine)) +
+    geom_bar(stat = "identity", position = position_dodge()) +
     facet_wrap(~ Metric, scales = "free_y") +
     theme_bw() +
     theme(
-      axis.text.x = element_text(angle = 45, hjust = 1),
-      legend.position = "none"
+      axis.text.x = element_text(angle = 45, hjust = 1)
     ) +
-    labs(title = "Model Performance Comparison", x = "Model", y = "Metric Value")
+    labs(title = "Model Performance Comparison",
+         x = "Model",
+         y = "Metric Value")
 
   # Adjust y-axis limits if it's a classification task
   if (task == "classification") {
@@ -341,128 +374,136 @@ summary.fastml_model <- function(object,
 
   # ROC curves for binary classification using yardstick
   if (task == "classification" && !is.null(predictions_list) && length(predictions_list) > 0) {
-    model_names_pred <- names(predictions_list)
-    if (length(model_names_pred) > 0) {
-      any_model_name <- model_names_pred[1]
-      df_example <- predictions_list[[any_model_name]]
-      if (!is.null(df_example) && "truth" %in% names(df_example)) {
-        unique_classes <- unique(df_example$truth)
-        if (length(unique_classes) == 2) {
-          # We'll create a combined data frame for ROC curves from all models
-          dfs = list()
-          for (model_name in model_names_pred) {
-            df <- predictions_list[[model_name]]
-            prob_cols <- grep("^\\.pred_", names(df), value = TRUE)
-            if (length(prob_cols) == 2) {
-              pred_col <- paste0(".pred_", positive_class)
-              if (pred_col %in% prob_cols) {
-                df$Model <- model_name
-                dfs[[model_name]] <- df
-              }
-            }
-          }
 
-          if (length(dfs) > 0) {
-            dfs_roc <- bind_rows(dfs)
+    # Create a list to collect data frames from all models/engines
+    dfs <- list()
 
-            # Convert 'truth' and 'Model' to factors if they aren't already
-            dfs_roc$truth <- factor(dfs_roc$truth)
-            dfs_roc$Model <- as.factor(dfs_roc$Model)
-
-            # Get the list of unique models
-            models <- levels(dfs_roc$Model)
-
-            # Initialize an empty list to store ROC objects
-            roc_list <- list()
+    # Loop over each algorithm (e.g., "rand_forest", "logistic_reg")
+    for (algo in names(predictions_list)) {
+      # Loop over each engine in the current algorithm group
+      for (eng in names(predictions_list[[algo]])) {
+        df <- predictions_list[[algo]][[eng]]
+        if (!is.null(df) && "truth" %in% names(df)) {
+          # Get probability columns matching ".pred_"
+          prob_cols <- grep("^\\.pred_", names(df), value = TRUE)
+          if (length(prob_cols) >= 2) {  # binary classification should have two probability columns
+            # Determine the predictor column for the positive class
             pred_col <- paste0(".pred_", positive_class)
-
-
-            # Compute ROC curves for each model
-            for (model in models) {
-              # Subset data for the current model
-              data_model <- subset(dfs_roc, Model == model)
-
-              # Compute ROC using .pred_1 as the predictor
-              roc_obj <- roc(response = data_model$truth,
-                             predictor = data_model[[pred_col]],
-                             direction = "auto",
-                             quiet = TRUE)  # Suppress messages
-
-              # Store the ROC object in the list
-              roc_list[[model]] <- roc_obj
+            if (pred_col %in% prob_cols) {
+              # Add columns for algorithm and engine
+              df$Model  <- algo
+              df$Engine <- eng
+              # Use a compound key to store in the list
+              key <- paste(algo, eng, sep = "_")
+              dfs[[key]] <- df
             }
-
-
-            # Compute AUC values for each model
-            auc_values <- sapply(roc_list, function(x) auc(x))
-
-            # Sort models by AUC values in descending order
-            sorted_models <- names(sort(auc_values, decreasing = TRUE))
-
-            # Reorder roc_data and update the legend
-            roc_data <- data.frame()
-            for (model in sorted_models) {
-              roc_obj <- roc_list[[model]]
-              roc_df <- data.frame(
-                FalsePositiveRate = rev(roc_obj$specificities),
-                TruePositiveRate = rev(roc_obj$sensitivities),
-                Model = model
-              )
-              roc_data <- rbind(roc_data, roc_df)
-            }
-
-            # Create the ggplot
-            roc_curve_plot <- ggplot(data = roc_data, aes(x = 1 - FalsePositiveRate, y = TruePositiveRate, color = Model)) +
-              geom_line(linewidth = 1) +
-              geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "grey") +
-              theme_minimal() +
-              labs(title = "ROC Curves for Models",
-                   x = "1 - Specificity",
-                   y = "Sensitivity") +
-              theme(plot.title = element_text(hjust = 0.5)) +
-              # Optionally add AUC to the legend, sorted by AUC
-              scale_color_manual(values = 1:length(sorted_models),
-                                 labels = paste0(sorted_models, " (AUC = ",
-                                                 sprintf("%.3f", auc_values[sorted_models]), ")")) +
-              theme(legend.title = element_blank())
-
-            print(roc_curve_plot)
-
-
-
-          } else {
-            cat("\nNo suitable probability predictions for ROC curves.\n")
           }
-
-        } else {
-          cat("\nROC curves are only generated for binary classification tasks.\n")
         }
-      } else {
-        cat("\nNo predictions available to generate ROC curves.\n")
       }
+    }
+
+    if (length(dfs) > 0) {
+      # Combine all prediction data frames
+      dfs_roc <- bind_rows(dfs)
+
+      # Ensure 'truth', 'Model', and 'Engine' are factors
+      dfs_roc$truth  <- factor(dfs_roc$truth)
+      dfs_roc$Model  <- as.factor(dfs_roc$Model)
+      dfs_roc$Engine <- as.factor(dfs_roc$Engine)
+
+      # We'll compute ROC curves for each unique combination of Model and Engine.
+      roc_list <- list()
+      pred_col <- paste0(".pred_", positive_class)
+
+      # Get the unique combinations by splitting the compound key back into Model and Engine
+      groups <- unique(dfs_roc[, c("Model", "Engine")])
+      for (i in seq_len(nrow(groups))) {
+        mod <- as.character(groups$Model[i])
+        eng <- as.character(groups$Engine[i])
+        data_model <- subset(dfs_roc, Model == mod & Engine == eng)
+
+        # Compute the ROC curve (using pROC::roc)
+        roc_obj <- roc(response = data_model$truth,
+                       predictor = data_model[[pred_col]],
+                       direction = "auto",
+                       quiet = TRUE)
+        # Use a combined label for the ROC list
+        key <- paste(mod, eng, sep = " - ")
+        roc_list[[key]] <- roc_obj
+      }
+
+      # Compute AUC values for each model/engine combination
+      auc_values <- sapply(roc_list, function(x) auc(x))
+
+      # Sort keys by AUC in descending order
+      sorted_keys <- names(sort(auc_values, decreasing = TRUE))
+
+      # Create a data frame for ROC curves by combining the ROC objects
+      roc_data <- data.frame()
+      for (key in sorted_keys) {
+        roc_obj <- roc_list[[key]]
+        roc_df <- data.frame(
+          FalsePositiveRate = rev(roc_obj$specificities),
+          TruePositiveRate  = rev(roc_obj$sensitivities),
+          ModelEngine       = key
+        )
+        roc_data <- rbind(roc_data, roc_df)
+      }
+
+      # Create the ROC curve plot, using the compound ModelEngine label for color
+      roc_curve_plot <- ggplot(data = roc_data,
+                               aes(x = 1 - FalsePositiveRate,
+                                   y = TruePositiveRate,
+                                   color = ModelEngine)) +
+        geom_line(linewidth = 1) +
+        geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "grey") +
+        theme_minimal() +
+        labs(title = "ROC Curves for Models",
+             x = "1 - Specificity",
+             y = "Sensitivity") +
+        theme(plot.title = element_text(hjust = 0.5)) +
+        # Use sorted keys to label the legend with AUC values
+        scale_color_manual(values = 1:length(sorted_keys),
+                           labels = paste0(sorted_keys, " (AUC = ",
+                                           sprintf("%.3f", auc_values[sorted_keys]), ")")) +
+        theme(legend.title = element_blank())
+
+      print(roc_curve_plot)
+
     } else {
+      cat("\nNo suitable probability predictions for ROC curves.\n")
+    }
+
+  } else {
+    if (is.null(predictions_list) || length(predictions_list) == 0) {
       cat("\nNo predictions available to generate ROC curves.\n")
+    } else {
+      cat("\nROC curves are only generated for binary classification tasks.\n")
     }
   }
 
-  # Additional Diagnostics
-  if (plot && !is.null(predictions_list) && all(desired_model_name %in% names(predictions_list))) {
 
-    if(length(desired_models) == 1){
-      df_best <- predictions_list[[desired_model_name]]
-      names_df_best <- names(df_best)
-    }else{
-      df_best <- predictions_list[desired_model_name]
-      names_df_best <- unique(unlist(lapply(df_best, names)))
+  # Additional Diagnostics
+  if (plot && !is.null(predictions_list) &&  length(predictions_list) > 0) {
+
+      df_best <- list()
+      for (x in desired_model_name) {
+        parts <- strsplit(x, " \\(")[[1]]
+        model <- parts[1]
+        engine <- gsub("\\)", "", parts[2])
+        if (!is.null(predictions_list[[model]]) && !is.null(predictions_list[[model]][[engine]])) {
+          # Use the original compound name as the list element name.
+          df_best[[ x ]] <- predictions_list[[model]][[engine]]
+        } else {
+          cat("No predictions found for", model, "with engine", engine, "\n")
+        }
       }
+      names_df_best <- unique(unlist(lapply(df_best, names)))
+
+
 
     if (task == "classification") {
       if (!is.null(df_best) && "truth" %in% names_df_best && "estimate" %in% names_df_best) {
-        if(length(desired_models) == 1){
-          cm <- conf_mat(df_best, truth = truth, estimate = estimate)
-          cat("\nConfusion Matrix for",desired_model_name, "\n")
-          print(cm)
-        }else{
 
           # Iterate through the models in df_best
           for (model_name in names(df_best)) {
@@ -481,34 +522,19 @@ summary.fastml_model <- function(object,
             cm <- conf_mat(model_predictions, truth = truth, estimate = estimate)
             print(cm)
           }
-        }
+
 
         # Calibration Plot
         if (requireNamespace("probably", quietly = TRUE)) {
-          if(length(desired_models) == 1){
-          prob_cols <- grep("^\\.pred_", names(df_best), value = TRUE)
-
-          }else{
 
             prob_cols <- grep("^\\.pred_", names_df_best, value = TRUE)
 
-          }
+
           if (length(prob_cols) > 1) {
             pred_col <- paste0(".pred_", positive_class)
             if (pred_col %in% prob_cols) {
 
-              if(length(desired_models) == 1){
-                p_cal <- cal_plot_breaks(
-                  df_best,
-                  truth = truth,
-                  estimate = !!sym(pred_col),
-                  event_level = object$event_class
-                ) +
-                  labs(title = paste("Calibration Plot", desired_model_name))
-              print(p_cal)
-              }else{
-
-                # Loop through each model in df_best
+                 # Loop through each model in df_best
                 for (model_name in names(df_best)) {
 
                   # Extract the predictions for the current model
@@ -531,7 +557,7 @@ summary.fastml_model <- function(object,
 
                   print(p_cal)
                 }
-              }
+
             }
           }
         } else {

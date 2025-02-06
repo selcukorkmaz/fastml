@@ -1,6 +1,6 @@
 #' Define LightGBM Model Specification
 #'
-#' @inheritParams define_random_forest_spec
+#' @inheritParams define_rand_forest_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip boost_tree set_mode set_engine
 #' @importFrom dplyr select all_of
@@ -10,7 +10,7 @@ define_lightgbm_spec <- function(task, train_data, label, tune = FALSE, engine =
   if (!requireNamespace("lightgbm", quietly = TRUE)) {
     stop("The 'lightgbm' package is required but is not installed.")
   }
-  num_predictors <- ncol(train_data %>% select(-all_of(label)))
+  num_predictors <- ncol(train_data %>% dplyr::select(-dplyr::all_of(label)))
   defaults <- get_default_params("lightgbm", num_predictors)
 
   if (tune) {
@@ -43,13 +43,13 @@ define_lightgbm_spec <- function(task, train_data, label, tune = FALSE, engine =
 
 #' Define XGBoost Model Specification
 #'
-#' @inheritParams define_random_forest_spec
+#' @inheritParams define_rand_forest_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip boost_tree set_mode set_engine
 #' @importFrom dplyr select all_of
 #' @noRd
 define_xgboost_spec <- function(task, train_data, label, tune = FALSE, engine = "xgboost") {
-  num_predictors <- ncol(train_data %>% select(-all_of(label)))
+  num_predictors <- ncol(train_data %>% dplyr::select(-dplyr::all_of(label)))
   defaults <- get_default_params("xgboost", num_predictors)
 
   if (tune) {
@@ -80,17 +80,17 @@ define_xgboost_spec <- function(task, train_data, label, tune = FALSE, engine = 
   list(model_spec = model_spec)
 }
 
-#' Define C5.0 Model Specification
+#' Define C5_rules Model Specification
 #'
-#' @inheritParams define_random_forest_spec
+#' @inheritParams define_rand_forest_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip boost_tree set_mode set_engine
 #' @noRd
-define_c5_0_spec <- function(task, tune = FALSE, engine = "C5.0") {
+define_C5_rules_spec <- function(task, tune = FALSE, engine = "C5.0") {
   if (task != "classification") {
     stop("C5.0 is only applicable for classification tasks.")
   }
-  defaults <- get_default_params("c5.0")
+  defaults <- get_default_params("C5_rules")
 
   if (tune) {
     model_spec <- boost_tree(
@@ -122,9 +122,9 @@ define_c5_0_spec <- function(task, tune = FALSE, engine = "C5.0") {
 #' @importFrom parsnip rand_forest set_mode set_engine
 #' @importFrom dplyr select all_of
 #' @noRd
-define_random_forest_spec <- function(task, train_data, label, tune = FALSE, engine = "ranger") {
-  num_predictors <- ncol(train_data %>% select(-all_of(label)))
-  defaults <- get_default_params("random_forest", num_predictors)
+define_rand_forest_spec <- function(task, train_data, label, tune = FALSE, engine = "ranger") {
+  num_predictors <- ncol(train_data %>% dplyr::select(-dplyr::all_of(label)))
+  defaults <- get_default_params("rand_forest", task, num_predictors, engine)
 
   if (tune) {
     model_spec <- rand_forest(
@@ -145,6 +145,9 @@ define_random_forest_spec <- function(task, train_data, label, tune = FALSE, eng
   }
   list(model_spec = model_spec)
 }
+
+
+
 
 
 #' Define Lasso Regression Model Specification
@@ -213,7 +216,7 @@ define_ridge_regression_spec <- function(task, tune = FALSE, engine = "glmnet") 
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip linear_reg set_mode set_engine
 #' @noRd
-define_linear_regression_spec <- function(task, engine = "lm") {
+define_linear_reg_spec <- function(task, engine = "lm") {
   if (task != "regression") {
     stop("Linear regression is only applicable for regression tasks.")
   }
@@ -245,7 +248,7 @@ define_bayes_glm_spec <- function(task, engine = "stan") {
 #' Define Elastic Net Model Specification
 #'
 #' @param task Character string specifying the task type ("regression").
-#' @inheritParams define_random_forest_spec
+#' @inheritParams define_rand_forest_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip linear_reg set_mode set_engine
 #' @noRd
@@ -272,15 +275,15 @@ define_elastic_net_spec <- function(task, tune = FALSE, engine = "glmnet") {
   list(model_spec = model_spec)
 }
 
-#' Define Bagging Model Specification
+#' Define bag_tree Model Specification
 #'
 #' @inheritParams define_decision_tree_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip bag_tree set_mode set_engine
 #' @import baguette
 #' @noRd
-define_bagging_spec <- function(task, tune = FALSE, engine = "rpart") {
-  defaults <- get_default_params("bagging")
+define_bag_tree_spec <- function(task, tune = FALSE, engine = "rpart") {
+  defaults <- get_default_params("bag_tree")
   if (tune) {
     model_spec <- bag_tree(
       min_n = tune()
@@ -299,13 +302,13 @@ define_bagging_spec <- function(task, tune = FALSE, engine = "rpart") {
 
 #' Define Quadratic Discriminant Analysis Model Specification
 #'
-#' @inheritParams define_logistic_regression_spec
+#' @inheritParams define_logistic_reg_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip set_mode set_engine discrim_quad
 #' @noRd
-define_qda_spec <- function(task, engine = "MASS") {
+define_discrim_quad_spec <- function(task, engine = "MASS") {
   if (task != "classification") {
-    stop("QDA is only applicable for classification tasks.")
+    stop("discrim_quad is only applicable for classification tasks.")
   }
   model_spec <- discrim_quad() %>%
     set_mode("classification") %>%
@@ -315,13 +318,13 @@ define_qda_spec <- function(task, engine = "MASS") {
 
 #' Define Linear Discriminant Analysis Model Specification
 #'
-#' @inheritParams define_logistic_regression_spec
+#' @inheritParams define_logistic_reg_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip set_mode set_engine discrim_linear
 #' @noRd
-define_lda_spec <- function(task, engine = "MASS") {
+define_discrim_linear_spec <- function(task, engine = "MASS") {
   if (task != "classification") {
-    stop("LDA is only applicable for classification tasks.")
+    stop("discrim_linear is only applicable for classification tasks.")
   }
   model_spec <- discrim_linear() %>%
     set_mode("classification") %>%
@@ -331,12 +334,12 @@ define_lda_spec <- function(task, engine = "MASS") {
 
 #' Define Neural Network Model Specification (nnet)
 #'
-#' @inheritParams define_random_forest_spec
+#' @inheritParams define_rand_forest_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip mlp set_mode set_engine
 #' @noRd
-define_neural_network_spec <- function(task, tune = FALSE, engine = "nnet") {
-  defaults <- get_default_params("neural_network")
+define_mlp_spec <- function(task, tune = FALSE, engine = "nnet") {
+  defaults <- get_default_params("mlp")
 
   if (tune) {
     model_spec <- mlp(
@@ -360,16 +363,16 @@ define_neural_network_spec <- function(task, tune = FALSE, engine = "nnet") {
 
 #' Define Naive Bayes Model Specification
 #'
-#' @inheritParams define_logistic_regression_spec
+#' @inheritParams define_logistic_reg_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip naive_Bayes set_mode set_engine
 #' @import discrim
 #' @noRd
-define_naive_bayes_spec <- function(task, tune = FALSE, engine = "klaR") {
+define_naive_Bayes_spec <- function(task, tune = FALSE, engine = "klaR") {
   if (task != "classification") {
     stop("Naive Bayes is only applicable for classification tasks.")
   }
-  defaults <- get_default_params("naive_bayes")
+  defaults <- get_default_params("naive_Bayes")
 
   if (tune) {
     model_spec <- naive_Bayes(
@@ -391,12 +394,12 @@ define_naive_bayes_spec <- function(task, tune = FALSE, engine = "klaR") {
 
 #' Define K-Nearest Neighbors Model Specification
 #'
-#' @inheritParams define_random_forest_spec
+#' @inheritParams define_rand_forest_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip nearest_neighbor set_mode set_engine
 #' @noRd
-define_knn_spec <- function(task, tune = FALSE, engine = "kknn") {
-  defaults <- get_default_params("knn")
+define_nearest_neighbor_spec <- function(task, tune = FALSE, engine = "kknn") {
+  defaults <- get_default_params("nearest_neighbor")
 
   if (tune) {
     model_spec <- nearest_neighbor(
@@ -424,8 +427,8 @@ define_knn_spec <- function(task, tune = FALSE, engine = "kknn") {
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip svm_rbf set_mode set_engine
 #' @noRd
-define_svm_radial_spec <- function(task, tune = FALSE, engine = "kernlab") {
-  defaults <- get_default_params("svm_radial")
+define_svm_rbf_spec <- function(task, tune = FALSE, engine = "kernlab") {
+  defaults <- get_default_params("svm_rbf")
 
   if (tune) {
     model_spec <- svm_rbf(
@@ -447,7 +450,7 @@ define_svm_radial_spec <- function(task, tune = FALSE, engine = "kernlab") {
 
 #' Define SVM Linear Model Specification
 #'
-#' @inheritParams define_random_forest_spec
+#' @inheritParams define_rand_forest_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip svm_linear set_mode set_engine
 #' @noRd
@@ -472,7 +475,7 @@ define_svm_linear_spec <- function(task, tune = FALSE, engine = "kernlab") {
 
 #' Define Decision Tree Model Specification
 #'
-#' @inheritParams define_random_forest_spec
+#' @inheritParams define_rand_forest_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip decision_tree set_mode set_engine
 #' @noRd
@@ -506,7 +509,7 @@ define_decision_tree_spec <- function(task, tune = FALSE, engine = "rpart") {
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip logistic_reg set_mode set_engine
 #' @noRd
-define_logistic_regression_spec <- function(task, tune = FALSE, engine) {
+define_logistic_reg_spec <- function(task, tune = FALSE, engine) {
   if (task != "classification") {
     stop("Logistic regression is only applicable for classification tasks.")
   }
