@@ -17,6 +17,7 @@ fastml(
   recipe = NULL,
   tune_params = NULL,
   metric = NULL,
+  algorithm_engines = NULL,
   n_cores = 1,
   stratify = TRUE,
   impute_method = "error",
@@ -58,6 +59,8 @@ Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.}
 \item{tune_params}{A list specifying hyperparameter tuning ranges. Default is \code{NULL}.}
 
 \item{metric}{The performance metric to optimize during training.}
+
+\item{algorithm_engines}{A named list specifying the engine to use for each algorithm.}
 
 \item{n_cores}{An integer specifying the number of CPU cores to use for parallel processing. Default is \code{1}.}
 
@@ -123,7 +126,7 @@ iris$Species <- factor(iris$Species)
 model <- fastml(
   data = iris,
   label = "Species",
-  algorithms = c("random_forest", "xgboost", "svm_radial")
+  algorithms = c("random_forest", "xgboost", "svm_rbf")
 )
 
 # View model summary
@@ -136,7 +139,7 @@ summary(model)
   model <- fastml(
     data = mtcars,
     label = "mpg",
-    algorithms = c("random_forest", "xgboost", "svm_radial")
+    algorithms = c("random_forest", "xgboost", "svm_rbf")
   )
 
   # View model summary

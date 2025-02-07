@@ -82,6 +82,14 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
         dplyr::mutate(estimate = pred_class) %>%
         dplyr::bind_cols(pred_prob)
 
+      if(any(grepl("^\\.pred_p", names(data_metrics)))){
+
+        pred_name = ".pred_p"
+      }else{
+
+        pred_name = ".pred_"
+      }
+
       num_classes <- length(unique(data_metrics$truth))
       if (num_classes == 2) {
         # Determine the positive class based on event_class parameter
@@ -108,14 +116,14 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
         roc_auc_value <- yardstick::roc_auc(
           data_metrics,
           truth = truth,
-          !!rlang::sym(paste0(".pred_", positive_class)),
+          !!rlang::sym(paste0(pred_name, positive_class)),
           event_level = "second"
         )
         if(roc_auc_value$.estimate < 0.50) {
           roc_auc_value <- yardstick::roc_auc(
             data_metrics,
             truth = truth,
-            !!rlang::sym(paste0(".pred_", positive_class)),
+            !!rlang::sym(paste0(pred_name, positive_class)),
             event_level = "first"
           )
         }
@@ -167,7 +175,7 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
     if (is.list(models[[algo]]) && !inherits(models[[algo]], "workflow") && !inherits(models[[algo]], "tune_results")) {
       for (eng in names(models[[algo]])) {
         model_obj <- models[[algo]][[eng]]
-        result <- process_model(model_obj, paste(algo, eng, sep = "_"))
+        result <- process_model(model_obj, model_id = paste(algo, eng, sep = "_"))
         if (!is.null(result)) {
           performance[[algo]][[eng]] <- result$performance
           predictions_list[[algo]][[eng]] <- result$predictions

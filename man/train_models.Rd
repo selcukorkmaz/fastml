@@ -21,7 +21,8 @@ train_models(
   tuning_strategy = "grid",
   tuning_iterations = 10,
   early_stopping = FALSE,
-  adaptive = FALSE
+  adaptive = FALSE,
+  algorithm_engines = NULL
 )
 }
 \arguments{
@@ -58,6 +59,8 @@ train_models(
 \item{early_stopping}{Logical for early stopping in Bayesian tuning.}
 
 \item{adaptive}{Logical indicating whether to use adaptive/racing methods.}
+
+\item{algorithm_engines}{A named list specifying the engine to use for each algorithm.}
 }
 \value{
 A list of trained model objects.

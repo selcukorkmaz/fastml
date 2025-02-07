@@ -208,7 +208,13 @@ train_models <- function(train_data,
         engine_tune_params <- get_default_params(algo, task, num_predictors = ncol(train_data %>% dplyr::select(-!!sym(label))), engine = engine)
       }
 
+      if(algo == "logistic_reg" && engine %in% c("glm", "gee" ,"glmer" , "stan" , "stan_glmer")){
+
+        perform_tuning = FALSE
+      }else{
+
       perform_tuning <- !all(vapply(engine_tune_params, is.null, logical(1))) && !is.null(resamples)
+      }
 
       # For logistic regression, we need to check the class count separately.
       # (You might want to add extra logic here if multiple engines are not supported for logistic_reg.)
@@ -217,13 +223,13 @@ train_models <- function(train_data,
           model_spec <- define_multinomial_regression_spec(
             task,
             tune = perform_tuning,
-            engine = "glm"  # typically logistic_reg uses "glm"; adjust as needed
+            engine = engine  # typically logistic_reg uses "glm"; adjust as needed
           )
         } else {
           model_spec <- define_logistic_reg_spec(
             task,
             tune = perform_tuning,
-            engine = "glm"
+            engine = engine
           )
         }
       } else {
@@ -338,7 +344,12 @@ train_models <- function(train_data,
 
       # Set up tuning parameters and grid (if needed)
       if (perform_tuning) {
-        tune_params_model <- extract_parameter_set_dials(model_spec)
+
+        if(inherits(model_spec, "model_spec")){
+          tune_params_model <- extract_parameter_set_dials(model_spec)
+        }else{
+        tune_params_model <- extract_parameter_set_dials(model_spec[[1]])
+        }
         tune_params_model <- finalize(
           tune_params_model,
           x = train_data %>% dplyr::select(-dplyr::all_of(label))
@@ -370,7 +381,31 @@ train_models <- function(train_data,
       tryCatch({
         if (perform_tuning && !all(vapply(engine_tune_params, is.null, logical(1)))) {
           # Set up control objects for tuning
-          ctrl_grid <- control_grid(save_pred = TRUE)
+
+          if (algo == "rand_forest" && engine == "h2o") {
+
+            roc_auc_h2o <- function(data, truth, ...) {
+              # Rename probability columns from ".pred_p0"/".pred_p1" to ".pred_0"/".pred_1"
+              data <- data %>%
+                rename_with(~ sub("^\\.pred_p", ".pred_", .x), starts_with(".pred_p"))
+
+              # Call the built-in roc_auc() with the renamed columns
+              yardstick::roc_auc(data, truth = {{truth}}, ...)
+            }
+
+            # Assign the same class as roc_auc()
+            class(roc_auc_h2o) <- class(roc_auc)
+            attr(roc_auc_h2o, "direction") <- "maximize"
+
+            my_metrics <- metric_set(accuracy, kap, sens, spec, precision, f_meas, roc_auc_h2o)
+
+            allow_par = FALSE
+          } else{
+            allow_par = TRUE
+            my_metrics = NULL
+          }
+
+          ctrl_grid <- control_grid(save_pred = TRUE, allow_par = allow_par)
           ctrl_bayes <- control_bayes(save_pred = TRUE)
           ctrl_race <- control_race(save_pred = TRUE)
 
@@ -389,7 +424,7 @@ train_models <- function(train_data,
               resamples = resamples,
               param_info = tune_params_model,
               iter = tuning_iterations,
-              metrics = metrics,
+              metrics = if(!is.null(my_metrics)) my_metrics else metrics,
               control = ctrl_bayes
             )
           } else if (adaptive) {
@@ -398,7 +433,7 @@ train_models <- function(train_data,
               resamples = resamples,
               param_info = tune_params_model,
               grid = if (is.null(tune_grid)) 20 else tune_grid,
-              metrics = metrics,
+              metrics = if(!is.null(my_metrics)) my_metrics else metrics,
               control = ctrl_race
             )
           } else if (tuning_strategy == "grid") {
@@ -409,7 +444,7 @@ train_models <- function(train_data,
               workflow_spec,
               resamples = resamples,
               grid = tune_grid,
-              metrics = metrics,
+              metrics = if(!is.null(my_metrics)) my_metrics else metrics,
               control = ctrl_grid
             )
           } else {
@@ -417,7 +452,7 @@ train_models <- function(train_data,
               workflow_spec,
               resamples = resamples,
               grid = if (is.null(tune_grid)) 5 else tune_grid,
-              metrics = metrics,
+              metrics = if(!is.null(my_metrics)) my_metrics else metrics,
               control = ctrl_grid
             )
           }
@@ -480,11 +515,13 @@ get_default_params <- function(algo, task, num_predictors = NULL, engine = NULL)
                  if (task == "classification") floor(sqrt(num_predictors)) else floor(num_predictors / 3)
                } else 2,
                trees = 50L,
-               min_n = 1
+               min_n = 2
              )
            } else if (engine == "partykit") {
              list(
-               mtry  = 5L,
+               mtry  = if (!is.null(num_predictors)) {
+                 if (task == "classification") floor(sqrt(num_predictors)) else floor(num_predictors / 3)
+               } else 2,
                trees = 500L,
                min_n = 20L
              )
@@ -540,20 +577,63 @@ get_default_params <- function(algo, task, num_predictors = NULL, engine = NULL)
            sample_size = 0.5,
            mtry = if (!is.null(num_predictors)) max(1, floor(sqrt(num_predictors))) else 2
          ),
-         # 7. Logistic Regression
+         # 7. Logistic Regression default parameters
+
          "logistic_reg" = {
-
-           if (engine %in% c("glm", "gee", "glmer", "stan", "stan_glmer")) {
-             list(penalty = NULL, mixture = NULL)
-           } else if (engine %in% c("brulee", "glmnet", "h20", "LiblineaR", "spark")) {
-             list(penalty = 0.01, mixture = 0.5)
+           if (engine %in% c("glm")) {
+             list(
+               penalty = NULL,
+               mixture = NULL
+             )
+           } else if (engine %in% c("gee")) {
+             list(
+               penalty = NULL,
+               mixture = NULL
+             )
+           } else if (engine %in% c("glmer")) {
+             list(
+               penalty = NULL,
+               mixture = NULL
+             )
+           } else if (engine %in% c("stan", "stan_glmer")) {
+             list(
+               penalty = NULL,
+               mixture = NULL
+             )
+           } else if (engine %in% c("brulee")) {
+             list(
+               penalty = -3,      # corresponds to a raw penalty of 0.001 (log10(0.001) = -3)
+               mixture = 0.0      # pure ridge (no L1 penalty)
+             )
+           } else if (engine %in% c("glmnet")) {
+             list(
+               penalty = -2,      # corresponds to a raw penalty of 0.01 (log10(0.01) = -2)
+               mixture = 1.0      # pure lasso
+             )
+           } else if (engine %in% c("h2o")) {
+             list(
+               penalty = NULL,
+               mixture = NULL
+             )
            } else if (engine %in% c("keras")) {
-             list(penalty = 0.01, mixture = NULL)
+             list(
+               penalty = 0.0,     # no regularization
+               mixture = NULL
+             )
+           } else if (engine %in% c("LiblineaR")) {
+             list(
+               penalty = -2,      # corresponds to a raw penalty of 0.01 (log10(0.01) = -2)
+               mixture = 0        # ridge regularization (mixture = 0)
+             )
+           } else if (engine %in% c("spark")) {
+             list(
+               penalty = 0.0,     # no regularization
+               mixture = 0.0
+             )
            } else {
-             # Default if engine not recognized
-             list(penalty = 0.01, mixture = 0.5)
+             # Fallback: use engine defaults
+             list(penalty = NULL, mixture = NULL)
            }
-
          },
 
          # 9. Decision Tree

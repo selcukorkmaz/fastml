@@ -30,13 +30,14 @@ utils::globalVariables(c("truth", "residual", "sensitivity", "specificity", "Fal
 #' @importFrom magrittr %>%
 #' @importFrom reshape2 melt dcast
 #' @importFrom tune extract_fit_parsnip
-#' @importFrom ggplot2 ggplot aes geom_bar geom_path facet_wrap theme_bw theme element_text labs geom_point geom_line geom_histogram geom_abline coord_equal scale_color_manual theme_minimal element_blank ylim
+#' @importFrom ggplot2 ggplot aes geom_bar geom_path facet_wrap theme_bw theme element_text labs geom_point geom_line geom_histogram geom_abline coord_equal scale_color_manual theme_minimal element_blank ylim position_dodge
 #' @importFrom RColorBrewer brewer.pal
 #' @importFrom yardstick conf_mat
 #' @importFrom pROC roc auc
 #' @importFrom probably cal_plot_breaks
 #' @importFrom rlang get_expr get_env sym
 #' @importFrom viridisLite viridis
+#' @importFrom tidyr pivot_wider
 #'
 #' @export
 summary.fastml_model <- function(object,
@@ -112,6 +113,8 @@ summary.fastml_model <- function(object,
   if (length(desired_metrics) == 0) desired_metrics <- main_metric
 
   performance_sub <- performance_df[performance_df$.metric %in% desired_metrics, ]
+
+
   performance_wide <- pivot_wider(
     performance_sub,
     names_from = .metric,
@@ -143,10 +146,19 @@ summary.fastml_model <- function(object,
   cat("\n===== fastml Model Summary =====\n")
   cat("Task:", task, "\n")
   cat("Number of Models Trained:", model_count, "\n")
-  best_val <- unique(performance_wide[performance_wide$Engine %in% best_model_name, main_metric])
+
+  # Filter rows where the Model is in best_model_name and its Engine equals best_model_name[Model]
+  best_val_df <- performance_wide %>%
+    filter(Model %in% names(best_model_name)) %>%
+    filter(mapply(function(m, e) e == best_model_name[[m]], Model, Engine))
+
+  # If you just want the unique metric values:
+  best_val <- best_val_df %>%
+    pull(!!sym(main_metric)) %>%
+    unique()
   cat("Best Model(s):", paste0(names(best_model_name), " (", best_model_name, ")"), sprintf("(%s: %.7f)", main_metric, best_val), "\n\n")
 
-  cat("Performance Metrics (Sorted by", main_metric, "):\n\n")
+  cat("Performance Metrics (Sorted by", main_metric,"):\n\n")
 
   metrics_to_print <- c("Model", "Engine", desired_metrics)
 
@@ -385,10 +397,22 @@ summary.fastml_model <- function(object,
         df <- predictions_list[[algo]][[eng]]
         if (!is.null(df) && "truth" %in% names(df)) {
           # Get probability columns matching ".pred_"
-          prob_cols <- grep("^\\.pred_", names(df), value = TRUE)
+
+          if(eng == "h2o"){
+            prob_cols <- grep("^\\.pred_p", names(df), value = TRUE)
+          } else {
+            prob_cols <- grep("^\\.pred_", names(df), value = TRUE)
+          }
+
           if (length(prob_cols) >= 2) {  # binary classification should have two probability columns
             # Determine the predictor column for the positive class
-            pred_col <- paste0(".pred_", positive_class)
+            if(eng == "h2o"){
+              pred_col <- paste0(".pred_p", positive_class)
+
+            }else{
+              pred_col <- paste0(".pred_", positive_class)
+            }
+
             if (pred_col %in% prob_cols) {
               # Add columns for algorithm and engine
               df$Model  <- algo
@@ -404,7 +428,17 @@ summary.fastml_model <- function(object,
 
     if (length(dfs) > 0) {
       # Combine all prediction data frames
-      dfs_roc <- bind_rows(dfs)
+
+      dfs_standardized <- lapply(dfs, function(df) {
+        # Check if any column starts with ".pred_p"
+        if (any(grepl("^\\.pred_p", names(df)))) {
+          df <- df %>%
+            rename_with(~ sub("^\\.pred_p", ".pred_", .x), starts_with(".pred_p"))
+        }
+        df
+      })
+
+      dfs_roc <-  bind_rows(dfs_standardized)
 
       # Ensure 'truth', 'Model', and 'Engine' are factors
       dfs_roc$truth  <- factor(dfs_roc$truth)
@@ -413,7 +447,11 @@ summary.fastml_model <- function(object,
 
       # We'll compute ROC curves for each unique combination of Model and Engine.
       roc_list <- list()
+
+
       pred_col <- paste0(".pred_", positive_class)
+
+
 
       # Get the unique combinations by splitting the compound key back into Model and Engine
       groups <- unique(dfs_roc[, c("Model", "Engine")])
@@ -527,18 +565,29 @@ summary.fastml_model <- function(object,
         # Calibration Plot
         if (requireNamespace("probably", quietly = TRUE)) {
 
-            prob_cols <- grep("^\\.pred_", names_df_best, value = TRUE)
+
+            prob_cols <- grep("^\\.pred", names_df_best, value = TRUE)
 
 
           if (length(prob_cols) > 1) {
-            pred_col <- paste0(".pred_", positive_class)
-            if (pred_col %in% prob_cols) {
 
                  # Loop through each model in df_best
                 for (model_name in names(df_best)) {
 
                   # Extract the predictions for the current model
                   model_predictions <- df_best[[model_name]]
+
+                  if(grepl("h2o", model_name)){
+
+                    names(model_predictions) <- sub("^\\.pred_p", ".pred_", names(model_predictions))
+
+                  }
+
+
+                    pred_col <- paste0(".pred_", positive_class)
+
+
+
 
                   # Ensure the pred_col exists in the data frame
                   if (!pred_col %in% colnames(model_predictions)) {
@@ -558,7 +607,7 @@ summary.fastml_model <- function(object,
                   print(p_cal)
                 }
 
-            }
+
           }
         } else {
           cat("\nInstall the 'probably' package for a calibration plot.\n")

@@ -509,47 +509,131 @@ define_decision_tree_spec <- function(task, tune = FALSE, engine = "rpart") {
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip logistic_reg set_mode set_engine
 #' @noRd
-define_logistic_reg_spec <- function(task, tune = FALSE, engine) {
+define_logistic_reg_spec <- function(task, tune = FALSE, engine = "glm") {
   if (task != "classification") {
     stop("Logistic regression is only applicable for classification tasks.")
   }
-  if (missing(engine)) {
-    engine <- "glm"
-  }
+
+  # Retrieve default parameters for logistic_reg (includes penalty and mixture on log scale)
+  defaults <- get_default_params("logistic_reg", task, engine = engine)
 
   if (tune) {
     if (engine %in% c("glm", "gee", "glmer", "stan", "stan_glmer")) {
+      # These engines do not have tunable penalty parameters
       model_spec <- logistic_reg(
         penalty = NULL,
         mixture = NULL
-      ) %>%
-        set_mode("classification") %>%
-        set_engine(engine)
-    } else if (engine %in% c("brulee", "glmnet", "h20", "LiblineaR", "spark")) {
+      )
+      if (engine == "glm") {
+        model_spec <- model_spec %>%
+          set_engine("glm", family = stats::binomial())
+      } else if (engine == "gee") {
+        model_spec <- model_spec %>%
+          set_engine("gee", corstr = "exchangeable")
+      } else if (engine == "glmer") {
+        model_spec <- model_spec %>%
+          set_engine("glmer")
+      } else if (engine %in% c("stan", "stan_glmer")) {
+        model_spec <- model_spec %>%
+          set_engine(engine, chains = 4L, iter = 2000L, seed = 123, cores = 1L,
+                     prior = NULL, prior_intercept = NULL)
+      }
+      model_spec <- model_spec %>% set_mode("classification")
+
+    } else if (engine %in% c("brulee", "glmnet", "h2o", "LiblineaR", "spark")) {
       model_spec <- logistic_reg(
         penalty = tune(),
         mixture = tune()
-      ) %>%
-        set_mode("classification") %>%
-        set_engine(engine)
-    } else if (engine %in% c("keras")) {
+      )
+      if (engine == "brulee") {
+        model_spec <- model_spec %>%
+          set_engine("brulee",
+                     optimizer = "SGD",
+                     epochs = 50L,
+                     learn_rate = -2,    # raw 0.01 -> log10(0.01) = -2
+                     momentum = 0.9,
+                     batch_size = 32,
+                     stop_iter = 5L,
+                     class_weights = NULL)
+      } else if (engine == "glmnet") {
+        model_spec <- model_spec %>%
+          set_engine("glmnet", standardize = TRUE)
+      } else if (engine == "h2o") {
+        model_spec <- model_spec %>%
+          set_engine("h2o", compute_p_values = FALSE, lambda_search = TRUE, nthreads = -1)
+      } else if (engine == "LiblineaR") {
+        model_spec <- model_spec %>%
+          set_engine("LiblineaR", cost = Inf, verbose = FALSE)
+      } else if (engine == "spark") {
+        model_spec <- model_spec %>%
+          set_engine("spark", standardization = TRUE, reg_param = 0.0, elastic_net_param = 0.0)
+      }
+      model_spec <- model_spec %>% set_mode("classification")
+
+    } else if (engine == "keras") {
       model_spec <- logistic_reg(
         penalty = tune(),
         mixture = NULL
       ) %>%
-        set_mode("classification") %>%
-        set_engine(engine)
+        set_engine("keras", hidden_units = 1, act = "linear") %>%
+        set_mode("classification")
     } else {
       stop("Unsupported engine specified for logistic regression.")
     }
+
   } else {
-    model_spec <- logistic_reg() %>%
-      set_mode("classification") %>%
-      set_engine(engine)
+    # Not tuning; use default penalty/mixture values from our defaults.
+    model_spec <- logistic_reg(
+      penalty = defaults$penalty,
+      mixture = defaults$mixture
+    )
+    if (engine == "glm") {
+      model_spec <- model_spec %>%
+        set_engine("glm", family = stats::binomial())
+    } else if (engine == "gee") {
+      model_spec <- model_spec %>%
+        set_engine("gee", corstr = "exchangeable")
+    } else if (engine == "glmer") {
+      model_spec <- model_spec %>%
+        set_engine("glmer")
+    } else if (engine %in% c("stan", "stan_glmer")) {
+      model_spec <- model_spec %>%
+        set_engine(engine, chains = 4L, iter = 2000L, seed = 123, cores = 1L,
+                   prior = NULL, prior_intercept = NULL)
+    } else if (engine == "brulee") {
+      model_spec <- model_spec %>%
+        set_engine("brulee",
+                   optimizer = "SGD",
+                   epochs = 50L,
+                   learn_rate = -2,
+                   momentum = 0.9,
+                   batch_size = 32,
+                   stop_iter = 5L,
+                   class_weights = NULL)
+    } else if (engine == "glmnet") {
+      model_spec <- model_spec %>%
+        set_engine("glmnet", standardize = TRUE)
+    } else if (engine == "h2o") {
+      model_spec <- model_spec %>%
+        set_engine("h2o", compute_p_values = FALSE, lambda_search = TRUE)
+    } else if (engine == "keras") {
+      model_spec <- model_spec %>%
+        set_engine("keras", hidden_units = 1, act = "linear")
+    } else if (engine == "LiblineaR") {
+      model_spec <- model_spec %>%
+        set_engine("LiblineaR", cost = Inf, verbose = FALSE)
+    } else if (engine == "spark") {
+      model_spec <- model_spec %>%
+        set_engine("spark", standardization = TRUE, reg_param = 0.0, elastic_net_param = 0.0)
+    } else {
+      stop("Unsupported engine specified for logistic regression.")
+    }
+    model_spec <- model_spec %>% set_mode("classification")
   }
 
   list(model_spec = model_spec)
 }
+
 
 
 #' Define Multinomial Logistic Regression Specification

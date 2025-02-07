@@ -489,11 +489,18 @@ fastml <- function(data,
 
   # metric_values <- sapply(performance, function(x) x %>% filter(.metric == metric) %>% pull(.estimate))
 
-  # Flatten the performance list by one level
-  flattened_perf <- flatten(performance)
+  # Create a new list where each element's name is "algorithm (engine)"
+  combined_performance  <- list()
+  for (alg in names(performance)) {
+    for (eng in names(performance[[alg]])) {
+      combined_name <- paste0(alg, " (", eng, ")")
+      combined_performance[[combined_name]] <- performance[[alg]][[eng]]
+    }
+  }
+
 
   # Now apply the function over the flattened list
-  metric_values <- sapply(flattened_perf, function(x) {
+  metric_values <- sapply(combined_performance, function(x) {
     x %>% filter(.metric == metric) %>% pull(.estimate)
   })
 
@@ -513,8 +520,21 @@ fastml <- function(data,
     names(metric_values[metric_values == max(metric_values)])
   }
 
-  model_names <- get_model_engine_names(models)
-  best_model_name <- model_names[model_names %in% best_model_idx]
+  # model_names <- get_model_engine_names(models)
+  # best_model_name <- model_names[model_names %in% best_model_idx]
+
+  # Split each compound name into algorithm and engine parts
+  best_model_components <- lapply(best_model_idx, function(x) {
+    parts <- strsplit(x, " \\(")[[1]]
+    algo <- parts[1]
+    engine <- gsub("\\)", "", parts[2])
+    list(algo = algo, engine = engine)
+  })
+
+  # Build a named vector: names are the algorithm and values are the engine
+  best_model_name <- sapply(best_model_components, function(comp) comp$engine)
+  names(best_model_name) <- sapply(best_model_components, function(comp) comp$algo)
+
 
   # Now store processed training data for explainability:
   trained_recipe <- prep(recipe, training = train_data, retain = TRUE)
