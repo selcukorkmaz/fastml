@@ -190,7 +190,9 @@ train_models <- function(train_data,
     set.seed(seed)
 
     # Assume that get_engine() now may return multiple engine names.
-    engines <- get_engine(algo, get_default_engine(algo))  # e.g. c("ranger", "randomForest")
+
+    engines <- get_engine(algo, get_default_engine(algo))
+
 
     # Create a nested list to store models by algorithm and engine.
     models[[algo]] <- list()
@@ -216,79 +218,78 @@ train_models <- function(train_data,
       perform_tuning <- !all(vapply(engine_tune_params, is.null, logical(1))) && !is.null(resamples)
       }
 
-      # For logistic regression, we need to check the class count separately.
-      # (You might want to add extra logic here if multiple engines are not supported for logistic_reg.)
-      if (algo == "logistic_reg") {
-        if (n_class > 2) {
-          model_spec <- define_multinomial_regression_spec(
-            task,
-            tune = perform_tuning,
-            engine = engine  # typically logistic_reg uses "glm"; adjust as needed
-          )
-        } else {
-          model_spec <- define_logistic_reg_spec(
-            task,
-            tune = perform_tuning,
-            engine = engine
-          )
-        }
-      } else {
-        # For other algorithms, use a switch that uses the current engine
+       # For other algorithms, use a switch that uses the current engine
         model_info <- switch(algo,
                              "rand_forest" = {
                                define_rand_forest_spec(task,
                                                        train_data,
                                                        label,
-                                                       tune = perform_tuning,
+                                                       tuning = perform_tuning,
                                                        engine = engine)
                              },
+
+                             "logistic_reg" = {
+                               define_logistic_reg_spec(
+                                 task,
+                                 tuning = perform_tuning,
+                                 engine = engine)
+                               },
+
+                             "multinom_reg" = {
+                               define_multinomial_reg_spec(
+                                 task,
+                                 tuning = perform_tuning,
+                                 engine = engine)
+                             },
+
+
                              "C5_rules" = {
                                define_C5_rules_spec(task,
-                                                    tune = perform_tuning,
+                                                    tuning = perform_tuning,
                                                     engine = engine)
                              },
                              "xgboost" = {
                                define_xgboost_spec(task,
                                                    train_data,
                                                    label,
-                                                   tune = perform_tuning,
+                                                   tuning = perform_tuning,
                                                    engine = engine)
                              },
                              "lightgbm" = {
                                define_lightgbm_spec(task,
                                                     train_data,
                                                     label,
-                                                    tune = perform_tuning,
+                                                    tuning = perform_tuning,
                                                     engine = engine)
                              },
                              "decision_tree" = {
                                define_decision_tree_spec(task,
-                                                         tune = perform_tuning,
+                                                         tuning = perform_tuning,
                                                          engine = engine)
                              },
                              "svm_linear" = {
                                define_svm_linear_spec(task,
-                                                      tune = perform_tuning,
+                                                      tuning = perform_tuning,
                                                       engine = engine)
                              },
                              "svm_rbf" = {
                                define_svm_rbf_spec(task,
-                                                   tune = perform_tuning,
+                                                   tuning = perform_tuning,
                                                    engine = engine)
                              },
                              "nearest_neighbor" = {
                                define_nearest_neighbor_spec(task,
-                                                            tune = perform_tuning,
+                                                            tuning = perform_tuning,
                                                             engine = engine)
                              },
                              "naive_Bayes" = {
                                define_naive_Bayes_spec(task,
-                                                       tune = perform_tuning,
+                                                       tuning = perform_tuning,
                                                        engine = engine)
                              },
                              "mlp" = {
                                define_mlp_spec(task,
-                                               tune = perform_tuning,
+                                               tuning = perform_tuning,
                                                engine = engine)
                              },
                              "discrim_linear" = {
@@ -301,12 +302,12 @@ train_models <- function(train_data,
                              },
                              "bag_tree" = {
                                define_bag_tree_spec(task,
-                                                    tune = perform_tuning,
+                                                    tuning = perform_tuning,
                                                     engine = engine)
                              },
                              "elastic_net" = {
                                define_elastic_net_spec(task,
-                                                       tune = perform_tuning,
+                                                       tuning = perform_tuning,
                                                        engine = engine)
                              },
                              "bayes_glm" = {
@@ -315,7 +316,7 @@ train_models <- function(train_data,
                              },
                              "pls" = {
                                define_pls_spec(task,
-                                               tune = perform_tuning,
+                                               tuning = perform_tuning,
                                                engine = engine)
                              },
                              "linear_reg" = {
@@ -324,12 +325,12 @@ train_models <- function(train_data,
                              },
                              "ridge_regression" = {
                                define_ridge_regression_spec(task,
-                                                            tune = perform_tuning,
+                                                            tuning = perform_tuning,
                                                             engine = engine)
                              },
                              "lasso_regression" = {
                                define_lasso_regression_spec(task,
-                                                            tune = perform_tuning,
+                                                            tuning = perform_tuning,
                                                             engine = engine)
                              },
                              {
@@ -340,7 +341,7 @@ train_models <- function(train_data,
 
         # Assume the model specification is stored in model_info$model_spec
         model_spec <- model_info$model_spec
-      }
+
 
       # Set up tuning parameters and grid (if needed)
       if (perform_tuning) {
@@ -603,7 +604,7 @@ get_default_params <- function(algo, task, num_predictors = NULL, engine = NULL)
            } else if (engine %in% c("brulee")) {
              list(
                penalty = -3,      # corresponds to a raw penalty of 0.001 (log10(0.001) = -3)
-               mixture = 0.0      # pure ridge (no L1 penalty)
+               mixture = 0.0
              )
            } else if (engine %in% c("glmnet")) {
              list(
@@ -633,6 +634,31 @@ get_default_params <- function(algo, task, num_predictors = NULL, engine = NULL)
            } else {
              # Fallback: use engine defaults
              list(penalty = NULL, mixture = NULL)
+           }
+         },
+
+         "multinom_reg" = {
+           if (engine %in% c("nnet")) {
+             # nnet::multinom() uses only a penalty (decay) parameter; its default is 0.0.
+             list(penalty = 0.0, mixture = NULL)
+           } else if (engine %in% c("brulee")) {
+             # brulee defaults: penalty = 0.001 and mixture = 0.0.
+             list(penalty = 0.001, mixture = 0.0)
+           } else if (engine %in% c("glmnet")) {
+             # glmnet: by convention, we use a penalty of 0.0 and a mixture default of 1.0 (pure lasso).
+             list(penalty = 0.0, mixture = 1.0)
+           } else if (engine %in% c("h2o")) {
+             # h2o: if no fixed penalty is given, a heuristic is used; here we choose 0.0 with ridge (mixture = 0.0).
+             list(penalty = 0.0, mixture = 0.0)
+           } else if (engine %in% c("keras")) {
+             # keras_mlp() only uses a penalty parameter (default 0.0); mixture is not applicable.
+             list(penalty = 0.0, mixture = NULL)
+           } else if (engine %in% c("spark")) {
+             # sparklyr: defaults are typically 0.0 for both penalty and mixture.
+             list(penalty = 0.0, mixture = 0.0)
+           } else {
+             # Fallback default if engine not recognized.
+             list(penalty = 0.0, mixture = 0.0)
            }
          },
 
@@ -766,6 +792,32 @@ get_default_tune_params <- function(algo, train_data, label, engine) {
              }
 
          },
+
+         "multinom_reg" = {
+           if (engine %in% c("nnet")) {
+             # nnet::multinom() uses only a penalty (decay) parameter; its default is 0.0.
+             list(penalty = 0.0, mixture = NULL)
+           } else if (engine %in% c("brulee")) {
+             # brulee defaults: penalty = 0.001 and mixture = 0.0.
+             list(penalty = 0.001, mixture = 0.0)
+           } else if (engine %in% c("glmnet")) {
+             # glmnet: by convention, we use a penalty of 0.0 and a mixture default of 1.0 (pure lasso).
+             list(penalty = 0.0, mixture = 1.0)
+           } else if (engine %in% c("h2o")) {
+             # h2o: if no fixed penalty is given, a heuristic is used; here we choose 0.0 with ridge (mixture = 0.0).
+             list(penalty = 0.0, mixture = 0.0)
+           } else if (engine %in% c("keras")) {
+             # keras_mlp() only uses a penalty parameter (default 0.0); mixture is not applicable.
+             list(penalty = 0.0, mixture = NULL)
+           } else if (engine %in% c("spark")) {
+             # sparklyr: defaults are typically 0.0 for both penalty and mixture.
+             list(penalty = 0.0, mixture = 0.0)
+           } else {
+             # Fallback default if engine not recognized.
+             list(penalty = 0.0, mixture = 0.0)
+           }
+         },
+
 
          # 9. Decision Tree
          "decision_tree" = list(

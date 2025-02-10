@@ -112,7 +112,8 @@ summary.fastml_model <- function(object,
   desired_metrics <- intersect(desired_metrics, all_metric_names)
   if (length(desired_metrics) == 0) desired_metrics <- main_metric
 
-  performance_sub <- performance_df[performance_df$.metric %in% desired_metrics, ]
+  performance_sub <- performance_df[performance_df$.metric %in% desired_metrics, ]%>%
+    select(-any_of(".estimator"))
 
 
   performance_wide <- pivot_wider(
@@ -461,10 +462,17 @@ summary.fastml_model <- function(object,
         data_model <- subset(dfs_roc, Model == mod & Engine == eng)
 
         # Compute the ROC curve (using pROC::roc)
-        roc_obj <- roc(response = data_model$truth,
-                       predictor = data_model[[pred_col]],
-                       direction = "auto",
-                       quiet = TRUE)
+        if(length(levels(data_model$truth)) > 2){
+          roc_obj <- multiclass.roc(response = data_model$truth,
+                         predictor = data_model[[pred_col]],
+                         direction = "auto",
+                         quiet = TRUE)
+        }else {
+          roc_obj <- roc(response = data_model$truth,
+                         predictor = data_model[[pred_col]],
+                         direction = "auto",
+                         quiet = TRUE)
+        }
         # Use a combined label for the ROC list
         key <- paste(mod, eng, sep = " - ")
         roc_list[[key]] <- roc_obj
@@ -477,6 +485,11 @@ summary.fastml_model <- function(object,
       sorted_keys <- names(sort(auc_values, decreasing = TRUE))
 
       # Create a data frame for ROC curves by combining the ROC objects
+
+      if(length(levels(dfs_roc$truth)) != 2){
+        cat("\nROC curves are only generated for binary classification tasks.\n")
+      }else{
+
       roc_data <- data.frame()
       for (key in sorted_keys) {
         roc_obj <- roc_list[[key]]
@@ -487,6 +500,7 @@ summary.fastml_model <- function(object,
         )
         roc_data <- rbind(roc_data, roc_df)
       }
+
 
       # Create the ROC curve plot, using the compound ModelEngine label for color
       roc_curve_plot <- ggplot(data = roc_data,
@@ -507,6 +521,7 @@ summary.fastml_model <- function(object,
         theme(legend.title = element_blank())
 
       print(roc_curve_plot)
+      }
 
     } else {
       cat("\nNo suitable probability predictions for ROC curves.\n")
@@ -515,8 +530,6 @@ summary.fastml_model <- function(object,
   } else {
     if (is.null(predictions_list) || length(predictions_list) == 0) {
       cat("\nNo predictions available to generate ROC curves.\n")
-    } else {
-      cat("\nROC curves are only generated for binary classification tasks.\n")
     }
   }
 

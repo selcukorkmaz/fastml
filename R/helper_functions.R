@@ -4,6 +4,7 @@ availableMethods <- function(type = c("classification", "regression"), ...){
   algorithms <- if (type == "classification"){
     c(
       "logistic_reg",
+      "multinom_reg",
       "decision_tree",
       "C5_rules",
       "rand_forest",
@@ -48,7 +49,8 @@ get_default_engine <- function(algo) {
          "C5_rules" = "C5.0",
          "rand_forest" = "ranger",
          "ranger" = "ranger",
-         "logistic_reg" = "glm",        # default fixed-effects logistic regression
+         "logistic_reg" = "glm",
+         "multinom_reg" = "nnet",
          "decision_tree" = "rpart",
          "svm_linear" = "kernlab",
          "svm_rbf" = "kernlab",
