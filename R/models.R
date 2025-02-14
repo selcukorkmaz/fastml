@@ -4,6 +4,7 @@
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip boost_tree set_mode set_engine
 #' @importFrom dplyr select all_of
+#' @importFrom tune tune
 #' @import bonsai
 #' @noRd
 define_lightgbm_spec <- function(task, train_data, label, tuning = FALSE, engine = "lightgbm") {
@@ -68,6 +69,7 @@ define_lightgbm_spec <- function(task, train_data, label, tuning = FALSE, engine
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip boost_tree set_mode set_engine
 #' @importFrom dplyr select all_of
+#' @importFrom tune tune
 #' @noRd
 define_xgboost_spec <- function(task, train_data, label, tuning = FALSE, engine = "xgboost") {
   num_predictors <- ncol(train_data %>% dplyr::select(-dplyr::all_of(label)))
@@ -106,6 +108,7 @@ define_xgboost_spec <- function(task, train_data, label, tuning = FALSE, engine 
 #' @inheritParams define_rand_forest_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip boost_tree set_mode set_engine
+#' @importFrom tune tune
 #' @noRd
 define_C5_rules_spec <- function(task, tuning = FALSE, engine = "C5.0") {
   if (task != "classification") {
@@ -142,6 +145,7 @@ define_C5_rules_spec <- function(task, tuning = FALSE, engine = "C5.0") {
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip rand_forest set_mode set_engine
 #' @importFrom dplyr select all_of
+#' @importFrom tune tune
 #' @noRd
 define_rand_forest_spec <- function(task, train_data, label, tuning = FALSE, engine = "ranger") {
   # Remove the label column to get predictors and count them
@@ -213,6 +217,7 @@ define_rand_forest_spec <- function(task, train_data, label, tuning = FALSE, eng
 #' @inheritParams define_elastic_net_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip linear_reg set_mode set_engine
+#' @importFrom tune tune
 #' @noRd
 define_lasso_regression_spec <- function(task, tuning = FALSE, engine = "glmnet") {
   if (task != "regression") {
@@ -243,6 +248,7 @@ define_lasso_regression_spec <- function(task, tuning = FALSE, engine = "glmnet"
 #' @inheritParams define_elastic_net_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip linear_reg set_mode set_engine
+#' @importFrom tune tune
 #' @noRd
 define_ridge_regression_spec <- function(task, tuning = FALSE, engine = "glmnet") {
   if (task != "regression") {
@@ -309,6 +315,7 @@ define_bayes_glm_spec <- function(task, engine = "stan") {
 #' @inheritParams define_rand_forest_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip linear_reg set_mode set_engine
+#' @importFrom tune tune
 #' @noRd
 define_elastic_net_spec <- function(task, tuning = FALSE, engine = "glmnet") {
   if (task != "regression") {
@@ -339,6 +346,7 @@ define_elastic_net_spec <- function(task, tuning = FALSE, engine = "glmnet") {
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip bag_tree set_mode set_engine
 #' @import baguette
+#' @importFrom tune tune
 #' @noRd
 define_bag_tree_spec <- function(task, tuning = FALSE, engine = "rpart") {
   defaults <- get_default_params("bag_tree")
@@ -395,6 +403,7 @@ define_discrim_linear_spec <- function(task, engine = "MASS") {
 #' @inheritParams define_rand_forest_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip mlp set_mode set_engine
+#' @importFrom tune tune
 #' @noRd
 define_mlp_spec <- function(task, tuning = FALSE, engine = "nnet") {
   defaults <- get_default_params("mlp")
@@ -425,6 +434,7 @@ define_mlp_spec <- function(task, tuning = FALSE, engine = "nnet") {
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip naive_Bayes set_mode set_engine
 #' @import discrim
+#' @importFrom tune tune
 #' @noRd
 define_naive_Bayes_spec <- function(task, tuning = FALSE, engine = "klaR") {
   if (task != "classification") {
@@ -455,6 +465,7 @@ define_naive_Bayes_spec <- function(task, tuning = FALSE, engine = "klaR") {
 #' @inheritParams define_rand_forest_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip nearest_neighbor set_mode set_engine
+#' @importFrom tune tune
 #' @noRd
 define_nearest_neighbor_spec <- function(task, tuning = FALSE, engine = "kknn") {
   defaults <- get_default_params("nearest_neighbor")
@@ -484,6 +495,7 @@ define_nearest_neighbor_spec <- function(task, tuning = FALSE, engine = "kknn") 
 #' @inheritParams define_svm_linear_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip svm_rbf set_mode set_engine
+#' @importFrom tune tune
 #' @noRd
 define_svm_rbf_spec <- function(task, tuning = FALSE, engine = "kernlab") {
   defaults <- get_default_params("svm_rbf")
@@ -511,6 +523,7 @@ define_svm_rbf_spec <- function(task, tuning = FALSE, engine = "kernlab") {
 #' @inheritParams define_rand_forest_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip svm_linear set_mode set_engine
+#' @importFrom tune tune
 #' @noRd
 define_svm_linear_spec <- function(task, tuning = FALSE, engine = "kernlab") {
   defaults <- get_default_params("svm_linear")
@@ -536,6 +549,7 @@ define_svm_linear_spec <- function(task, tuning = FALSE, engine = "kernlab") {
 #' @inheritParams define_rand_forest_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip decision_tree set_mode set_engine
+#' @importFrom tune tune
 #' @noRd
 define_decision_tree_spec <- function(task, tuning = FALSE, engine = "rpart") {
   defaults <- get_default_params("decision_tree")
@@ -566,6 +580,8 @@ define_decision_tree_spec <- function(task, tuning = FALSE, engine = "rpart") {
 #' @param tune Logical indicating whether to use tuning parameters.
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip logistic_reg set_mode set_engine
+#' @importFrom tune tune
+#' @importFrom tune tune
 #' @noRd
 define_logistic_reg_spec <- function(task, tuning = FALSE, engine = "glm") {
   if (task != "classification") {
@@ -700,6 +716,7 @@ define_logistic_reg_spec <- function(task, tuning = FALSE, engine = "glm") {
 #' @param tune Logical. If `TRUE`, includes hyperparameter tuning for the penalty parameter. Default is `FALSE`.
 #' @return A list containing the model specification (`model_spec`).
 #' @importFrom parsnip multinom_reg set_mode set_engine
+#' @importFrom tune tune
 #' @noRd
 define_multinomial_reg_spec <- function(task, tuning = FALSE, engine) {
   if (task != "classification") {
@@ -783,6 +800,7 @@ define_multinomial_reg_spec <- function(task, tuning = FALSE, engine) {
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip pls set_mode set_engine
 #' @import plsmod
+#' @importFrom tune tune
 #' @noRd
 define_pls_spec <- function(task, tuning = FALSE, engine = "mixOmics") {
   if (task != "regression") {

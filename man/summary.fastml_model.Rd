@@ -9,7 +9,6 @@
   algorithm = "best",
   sort_metric = NULL,
   plot = TRUE,
-  combined_roc = TRUE,
   notes = "",
   ...
 )
@@ -24,8 +23,6 @@
 \item{plot}{Logical. If TRUE, produce bar plot, yardstick-based ROC curves (for binary classification),
 confusion matrix (classification), smooth calibration plot (if probabilities),
 and residual plots (regression).}
-
-\item{combined_roc}{Logical. If TRUE, combined ROC plot; else separate ROC plots.}
 
 \item{notes}{User-defined commentary.}
 

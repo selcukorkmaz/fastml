@@ -12,7 +12,7 @@ test_that("'label' is not available in the data", {
     model <- fastml(
       data = iris,
       label = "Unknown",
-      algorithms = c("random_forest")
+      algorithms = c("rand_forest")
     )
   })
 })
@@ -28,7 +28,7 @@ test_that("special characters in column names are removed", {
     model <- fastml(
       data = tmp,
       label = "Species",
-      algorithms = c("random_forest")
+      algorithms = c("rand_forest")
     )
 
     "sepal_length" %in% colnames(model$processed_train_data)
@@ -47,7 +47,7 @@ test_that("model fails if reponse variable is not of supported type", {
     model <- fastml(
       data = iris,
       label = "Date",
-      algorithms = c("random_forest")
+      algorithms = c("rand_forest")
     )
   })
 })
@@ -59,7 +59,7 @@ test_that("stop if requested metric is not allowed.", {
     model <- fastml(
       data = iris,
       label = "Species",
-      algorithms = c("random_forest"),
+      algorithms = c("rand_forest"),
       metric = "unknown"
     )
   })
@@ -70,7 +70,7 @@ test_that("stop if requested metric is not allowed.", {
     model <- fastml(
       data = mtcars,
       label = "mpg",
-      algorithms = c("random_forest"),
+      algorithms = c("rand_forest"),
       metric = "unknown"
     )
   })
@@ -82,7 +82,7 @@ test_that("check for supported algorithms", {
     fastml(
       data = iris,
       label = "Species",
-      algorithms = c("random_forest", "unknown")
+      algorithms = c("rand_forest", "unknown")
     )
   })
 
@@ -101,7 +101,7 @@ test_that("variables successfuly excluded", {
     fastml(
       data = iris,
       label = "Species",
-      algorithms = c("random_forest"),
+      algorithms = c("rand_forest"),
       exclude = "Species"
     )
   })
@@ -110,57 +110,62 @@ test_that("variables successfuly excluded", {
     fastml(
       data = iris,
       label = "Species",
-      algorithms = c("random_forest"),
+      algorithms = c("rand_forest"),
       exclude = c("Sepal.Length", "unknown")
     )
   })
 })
 
 test_that("checks for impute_method", {
-  expect_no_error({
+  expect_warning(
     fastml(
       data = iris,
       label = "Species",
-      algorithms = c("random_forest")
-    )
-
-    fastml(
-      data = iris,
-      label = "Species",
-      algorithms = c("random_forest"),
+      algorithms = c("rand_forest"),
       impute_method = "medianImpute"
-    )
+    ),
+    "Missing values in numeric predictors are being imputed using the median."
+  )
 
+  expect_warning(
     fastml(
       data = iris,
       label = "Species",
-      algorithms = c("random_forest"),
+      algorithms = c("rand_forest"),
       impute_method = "knnImpute"
-    )
+    ),
+    "Missing values are being imputed using KNN"
+  )
 
+  expect_warning(
     fastml(
       data = iris,
       label = "Species",
-      algorithms = c("random_forest"),
+      algorithms = c("rand_forest"),
       impute_method = "bagImpute"
-    )
+    ),
+    "Missing values are being imputed using bagging"
+  )
 
+  expect_warning(
     fastml(
       data = iris,
       label = "Species",
-      algorithms = c("random_forest"),
+      algorithms = c("rand_forest"),
       impute_method = "remove"
-    )
-  })
+    ),
+    "Rows with missing values in predictors are being removed."
+  )
 
-  expect_error({
+  expect_error(
     fastml(
       data = iris,
       label = "Species",
-      algorithms = c("random_forest"),
-      impute_method = "unkownn"
-    )
-  })
+      algorithms = c("rand_forest"),
+      impute_method = "unknown"
+    ),
+    "Invalid impute_method specified."
+  )
 })
 
 test_that("stop if recipe is not correctly specified.", {
@@ -168,7 +173,7 @@ test_that("stop if recipe is not correctly specified.", {
     fastml(
       data = iris,
       label = "Species",
-      algorithms = c("random_forest"),
+      algorithms = c("rand_forest"),
       recipe = "unknown"
     )
   })
@@ -179,7 +184,7 @@ test_that("regression model successful.", {
     fastml(
       data = iris[,-5],
       label = "Sepal.Length",
-      algorithms = c("linear_regression")
+      algorithms = c("linear_reg")
     )
   })
 })
@@ -189,7 +194,7 @@ test_that("multicore tasks successful.", {
     fastml(
       data = iris[,-5],
       label = "Sepal.Length",
-      algorithms = c("linear_regression"),
+      algorithms = c("linear_reg"),
       n_cores = 2
     )
   })
@@ -200,7 +205,7 @@ test_that("stop if unsupported metric is selected.", {
     fastml(
       data = iris[,-5],
       label = "Sepal.Length",
-      algorithms = c("linear_regression"),
+      algorithms = c("linear_reg"),
       n_cores = 2,
       metric = "unkown"
     )
@@ -210,7 +215,7 @@ test_that("stop if unsupported metric is selected.", {
     fastml(
       data = iris[,-5],
       label = "Sepal.Length",
-      algorithms = c("linear_regression"),
+      algorithms = c("linear_reg"),
       n_cores = 2,
       metric = "rmse"
     )

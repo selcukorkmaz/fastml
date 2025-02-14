@@ -264,24 +264,24 @@ summary.fastml_model <- function(object,
 
     if(length(desired_models) == 1){
       params <- parsnip_fit$spec$args
-    }else{
+    } else {
       params <- lapply(parsnip_fit, function(model) model$spec$args)
     }
+
     if (length(params) > 0) {
-      cleaned_params <- list()
+      cleaned_params_list <- list()  # Initialize here to prevent missing object error
+
       if(length(desired_models) == 1){
-          for (pname in names(params)) {
-        val <- params[[pname]]
-        if (inherits(val, "quosure")) {
-          val <- tryCatch(eval(get_expr(val), envir = get_env(val)), error = function(e) val)
+        cleaned_params <- list()
+        for (pname in names(params)) {
+          val <- params[[pname]]
+          if (inherits(val, "quosure")) {
+            val <- tryCatch(eval(get_expr(val), envir = get_env(val)), error = function(e) val)
+          }
+          cleaned_params[[pname]] <- val
         }
-        cleaned_params[[pname]] <- val
-      }
-      }else{
-
-        # Initialize a list to store cleaned parameters for each model
-        cleaned_params_list <- list()
-
+        cleaned_params_list[[desired_model_name]] <- cleaned_params  # Store in the list to ensure availability
+      } else {
         # Process each model's parameters
         for (model_name in names(params)) {
           model_params <- params[[model_name]]
@@ -290,57 +290,36 @@ summary.fastml_model <- function(object,
           for (pname in names(model_params)) {
             val <- model_params[[pname]]
 
-            # Check if the parameter is a quosure
             if (inherits(val, "quosure")) {
               val <- tryCatch(
                 eval(rlang::get_expr(val), envir = rlang::get_env(val)),
-                error = function(e) val # Retain the quosure if evaluation fails
+                error = function(e) val # Retain quosure if evaluation fails
               )
             }
 
-            # Add the cleaned value to the cleaned_params list
             cleaned_params[[pname]] <- val
           }
-
-          # Store the cleaned parameters for the current model
           cleaned_params_list[[model_name]] <- cleaned_params
         }
-
       }
+
       if (length(cleaned_params_list) == 0) {
         cat("No hyperparameters found.\n")
       } else {
+        for (model_name in names(cleaned_params_list)) {
+          cat("Model:", model_name, "\n")
 
-        if(length(desired_models) == 1){
-          cat("Model:", desired_model_name, "\n")
+          cleaned_params <- cleaned_params_list[[model_name]]
+
           for (pname in names(cleaned_params)) {
             val <- cleaned_params[[pname]]
+
             if (is.numeric(val)) val <- as.character(val)
-            cat("  ", pname, ": ", rlang::eval_tidy(val), "\n", sep = "")
+
+            cat("  ", pname, ": ", val, "\n", sep = "")
           }
-        }else{
 
-          # Loop through the cleaned parameters for each model
-          for (model_name in names(cleaned_params_list)) {
-            cat("Model:", model_name, "\n")
-
-            # Extract cleaned parameters for the current model
-            cleaned_params <- cleaned_params_list[[model_name]]
-
-            # Process and print each parameter
-            for (pname in names(cleaned_params)) {
-              val <- cleaned_params[[pname]]
-
-              # Convert numeric values to character for consistent output
-              if (is.numeric(val)) val <- as.character(val)
-
-              # Print parameter name and value
-              cat("  ", pname, ": ", val, "\n", sep = "")
-            }
-
-            # Add a separator for readability between models
-            cat("\n")
-          }
+          cat("\n")
         }
       }
     } else {
@@ -349,6 +328,7 @@ summary.fastml_model <- function(object,
   } else {
     cat("No hyperparameters found.\n")
   }
+
 
   if (nzchar(notes)) {
     cat("\nUser Notes:\n", notes, "\n", sep = "")

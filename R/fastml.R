@@ -72,24 +72,12 @@
 #' model <- fastml(
 #'   data = iris,
 #'   label = "Species",
-#'   algorithms = c("random_forest", "xgboost", "svm_rbf")
+#'   algorithms = c("rand_forest", "xgboost", "svm_rbf")
 #' )
 #'
 #' # View model summary
 #' summary(model)
 #'
-#'   # Example 2: Using the mtcars dataset for regression
-#'   data(mtcars)
-#'
-#'   # Train models
-#'   model <- fastml(
-#'     data = mtcars,
-#'     label = "mpg",
-#'     algorithms = c("random_forest", "xgboost", "svm_rbf")
-#'   )
-#'
-#'   # View model summary
-#'   summary(model)
 #'
 #'   }
 #'
@@ -637,7 +625,7 @@ fastml <- function(data,
 
 
   result <- list(
-    best_model = best_model,
+    best_model = models[best_model_idx],
     best_model_name = best_model_name,
     performance = performance,
     predictions = predictions,

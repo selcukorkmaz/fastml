@@ -61,7 +61,9 @@ Imports:
     tidyr,
     knitr,
     rmarkdown,
-    purrr
+    purrr,
+    mice,
+    missForest
 Suggests:
     testthat (>= 3.0.0),
     C50,
