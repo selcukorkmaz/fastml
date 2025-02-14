@@ -229,17 +229,21 @@ train_models <- function(train_data,
                              },
 
                              "logistic_reg" = {
-                               define_logistic_reg_spec(
-                                 task,
-                                 tuning = perform_tuning,
-                                 engine = engine)
-                               },
+                               if(n_class == 2){
+                                 define_logistic_reg_spec(
+                                   task,
+                                   tuning = perform_tuning,
+                                   engine = engine)
+                               }
+                             },
 
                              "multinom_reg" = {
-                               define_multinomial_reg_spec(
-                                 task,
-                                 tuning = perform_tuning,
-                                 engine = engine)
+                               if(n_class > 2){
+                                 define_multinomial_reg_spec(
+                                   task,
+                                   tuning = perform_tuning,
+                                   engine = engine)
+                               }
                              },
 
 
@@ -342,6 +346,7 @@ train_models <- function(train_data,
         # Assume the model specification is stored in model_info$model_spec
         model_spec <- model_info$model_spec
 
+      if(!is.null(model_spec)){
 
       # Set up tuning parameters and grid (if needed)
       if (perform_tuning) {
@@ -471,6 +476,11 @@ train_models <- function(train_data,
         warning(paste("Training failed for algorithm:", algo, "with engine:", engine,
                       "\nError message:", e$message))
       })
+
+      }else{
+
+        models[[algo]] = NULL
+      }
 
     }  # end of loop over engines
 
@@ -643,13 +653,13 @@ get_default_params <- function(algo, task, num_predictors = NULL, engine = NULL)
              list(penalty = 0.0, mixture = NULL)
            } else if (engine %in% c("brulee")) {
              # brulee defaults: penalty = 0.001 and mixture = 0.0.
-             list(penalty = 0.001, mixture = 0.0)
+             list(penalty = 0.0, mixture = 0.0)
            } else if (engine %in% c("glmnet")) {
              # glmnet: by convention, we use a penalty of 0.0 and a mixture default of 1.0 (pure lasso).
              list(penalty = 0.0, mixture = 1.0)
            } else if (engine %in% c("h2o")) {
              # h2o: if no fixed penalty is given, a heuristic is used; here we choose 0.0 with ridge (mixture = 0.0).
-             list(penalty = 0.0, mixture = 0.0)
+             # list(mixture = 0.0)
            } else if (engine %in% c("keras")) {
              # keras_mlp() only uses a penalty parameter (default 0.0); mixture is not applicable.
              list(penalty = 0.0, mixture = NULL)

@@ -21,7 +21,6 @@ utils::globalVariables(c("truth", "residual", "sensitivity", "specificity", "Fal
 #' @param plot Logical. If TRUE, produce bar plot, yardstick-based ROC curves (for binary classification),
 #'   confusion matrix (classification), smooth calibration plot (if probabilities),
 #'   and residual plots (regression).
-#' @param combined_roc Logical. If TRUE, combined ROC plot; else separate ROC plots.
 #' @param notes User-defined commentary.
 #' @param ... Additional arguments.
 #' @return Prints summary and plots if requested.
@@ -33,7 +32,7 @@ utils::globalVariables(c("truth", "residual", "sensitivity", "specificity", "Fal
 #' @importFrom ggplot2 ggplot aes geom_bar geom_path facet_wrap theme_bw theme element_text labs geom_point geom_line geom_histogram geom_abline coord_equal scale_color_manual theme_minimal element_blank ylim position_dodge
 #' @importFrom RColorBrewer brewer.pal
 #' @importFrom yardstick conf_mat
-#' @importFrom pROC roc auc
+#' @importFrom pROC roc auc multiclass.roc
 #' @importFrom probably cal_plot_breaks
 #' @importFrom rlang get_expr get_env sym
 #' @importFrom viridisLite viridis
@@ -44,7 +43,6 @@ summary.fastml_model <- function(object,
                                  algorithm = "best",
                                  sort_metric = NULL,
                                  plot = TRUE,
-                                 combined_roc = TRUE,
                                  notes = "",
                                  ...) {
   if (!inherits(object, "fastml_model")) {
@@ -113,7 +111,7 @@ summary.fastml_model <- function(object,
   if (length(desired_metrics) == 0) desired_metrics <- main_metric
 
   performance_sub <- performance_df[performance_df$.metric %in% desired_metrics, ]%>%
-    select(-any_of(".estimator"))
+    dplyr::select(-dplyr::any_of(".estimator"))
 
 
   performance_wide <- pivot_wider(
@@ -163,7 +161,7 @@ summary.fastml_model <- function(object,
 
   metrics_to_print <- c("Model", "Engine", desired_metrics)
 
-  best_model_idx <- which(performance_wide$Engine %in% best_model_name)
+  best_model_idx <- which(performance_wide$Model %in% names(best_model_name))
 
 
   if(length(algorithm) == 1 && algorithm == "best"){
@@ -171,10 +169,20 @@ summary.fastml_model <- function(object,
     desired_models <- object$best_model
   }else{
 
-    if(all(algorithm %in% names(object$models))){
+    clean_names <- sub(" \\(.*\\)", "", names(object$models))
+
+    if(all(algorithm %in% clean_names)){
 
       selected_model_idx <- which(performance_wide$Model %in% algorithm)
-      desired_models <- object$models[algorithm]
+
+      clean_model_names <- sub(" \\(.*\\)", "", names(object$models))
+      matching_index <- match(algorithm, clean_model_names)
+
+      if (!is.na(matching_index)) {
+        desired_models <- object$models[matching_index]
+      } else {
+        desired_models <- NULL  # Handle case where algorithm is not found
+      }
 
     }else{
 
@@ -188,13 +196,21 @@ summary.fastml_model <- function(object,
     performance_wide[[m]] <- format(performance_wide[[m]], digits = 7, nsmall = 7)
   }
 
+  if(algorithm != "best"){
+
+    performance_wide = performance_wide %>% filter(Model %in% algorithm)
+  }
+
   header <- c("Model", "Engine", sapply(desired_metrics, function(m) {
     if (m %in% names(display_names)) display_names[[m]] else m
   }))
 
   data_str <- performance_wide
   data_str$Model <- as.character(data_str$Model)
-  data_str$Model[best_model_idx] <- paste0(data_str$Model[best_model_idx], "*")
+
+  if(algorithm == "best"){
+    data_str$Model[best_model_idx] <- paste0(data_str$Model[best_model_idx], "*")
+  }
 
   col_widths <- sapply(seq_along(header), function(i) {
     col_name <- header[i]
@@ -217,7 +233,10 @@ summary.fastml_model <- function(object,
   }
 
   cat(line_sep, "\n")
-  cat("(*Best model)\n\n")
+
+  if(algorithm == "best"){
+   cat("(*Best model)\n\n")
+  }
 
 
   if(length(algorithm) == 1 && algorithm == "best"){
@@ -288,7 +307,7 @@ summary.fastml_model <- function(object,
         }
 
       }
-      if (length(cleaned_params) == 0) {
+      if (length(cleaned_params_list) == 0) {
         cat("No hyperparameters found.\n")
       } else {
 
@@ -392,7 +411,16 @@ summary.fastml_model <- function(object,
     dfs <- list()
 
     # Loop over each algorithm (e.g., "rand_forest", "logistic_reg")
-    for (algo in names(predictions_list)) {
+
+    if(algorithm == "best"){
+      pred_list = predictions_list
+    }else{
+
+      pred_list = predictions_list[algorithm]
+
+    }
+
+    for (algo in names(pred_list)) {
       # Loop over each engine in the current algorithm group
       for (eng in names(predictions_list[[algo]])) {
         df <- predictions_list[[algo]][[eng]]
@@ -487,7 +515,7 @@ summary.fastml_model <- function(object,
       # Create a data frame for ROC curves by combining the ROC objects
 
       if(length(levels(dfs_roc$truth)) != 2){
-        cat("\nROC curves are only generated for binary classification tasks.\n")
+        cat("\nROC curves are only generated for binary classification tasks.\n\n")
       }else{
 
       roc_data <- data.frame()
@@ -524,12 +552,12 @@ summary.fastml_model <- function(object,
       }
 
     } else {
-      cat("\nNo suitable probability predictions for ROC curves.\n")
+      cat("\nNo suitable probability predictions for ROC curves.\n\n")
     }
 
   } else {
     if (is.null(predictions_list) || length(predictions_list) == 0) {
-      cat("\nNo predictions available to generate ROC curves.\n")
+      cat("\nNo predictions available to generate ROC curves.\n\n")
     }
   }
 
@@ -558,7 +586,7 @@ summary.fastml_model <- function(object,
 
           # Iterate through the models in df_best
           for (model_name in names(df_best)) {
-            cat("Confusion Matrix for", model_name, "\n")
+            cat("Confusion Matrix for", model_name, "\n\n")
 
             # Extract predictions for the current model
             model_predictions <- df_best[[model_name]]

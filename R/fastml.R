@@ -477,6 +477,9 @@ fastml <- function(data,
     algorithm_engines = algorithm_engines
   )
 
+  models <- models[sapply(models, function(x) length(x) > 0)]
+
+
   engine_names <- get_engine_names(models) # değiştir
 
   if (length(models) == 0) {
@@ -498,6 +501,13 @@ fastml <- function(data,
     }
   }
 
+  if(length(names(models)) == length(names(combined_performance))) {
+    names(models) <- names(combined_performance)
+  } else {
+    warning("Length mismatch: models and combined_performance must have the same number of elements")
+  }
+
+  models = lapply(models, function(x) x[[1]])
 
   # Now apply the function over the flattened list
   metric_values <- sapply(combined_performance, function(x) {
@@ -627,7 +637,7 @@ fastml <- function(data,
 
 
   result <- list(
-    best_model = get_best_workflows(models, best_model_name),
+    best_model = best_model,
     best_model_name = best_model_name,
     performance = performance,
     predictions = predictions,
@@ -635,7 +645,7 @@ fastml <- function(data,
     processed_train_data = processed_train_data,
     label = label,
     task = task,
-    models = models,
+    models =models,
     metric = metric,
     positive_class = positive_class,
     event_class = event_class,

@@ -616,7 +616,7 @@ define_logistic_reg_spec <- function(task, tuning = FALSE, engine = "glm") {
           set_engine("glmnet", standardize = TRUE)
       } else if (engine == "h2o") {
         model_spec <- model_spec %>%
-          set_engine("h2o", compute_p_values = FALSE, lambda_search = TRUE, nthreads = -1)
+          set_engine("h2o", compute_p_values = FALSE, lambda_search = TRUE)
       } else if (engine == "LiblineaR") {
         model_spec <- model_spec %>%
           set_engine("LiblineaR", cost = Inf, verbose = FALSE)
@@ -759,7 +759,7 @@ define_multinomial_reg_spec <- function(task, tuning = FALSE, engine) {
     # h2o uses agua::h2o_train_glm() behind the scenes.
     # It expects penalty and mixture translated to lambda and alpha.
     model_spec <- model_spec %>%
-      set_engine("h2o", lambda_search = TRUE, nthreads = -1)
+      set_engine("h2o", lambda_search = TRUE, solver = "AUTO")
   } else if (engine == "keras") {
     # keras_mlp() fits a linear network with one hidden unit.
     model_spec <- model_spec %>%
