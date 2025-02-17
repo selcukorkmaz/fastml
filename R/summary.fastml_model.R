@@ -161,7 +161,7 @@ summary.fastml_model <- function(object,
 
   metrics_to_print <- c("Model", "Engine", desired_metrics)
 
-  best_model_idx <- which(performance_wide$Model %in% names(best_model_name))
+  best_model_idx <- which(performance_wide$Engine == best_model_name[performance_wide$Model])
 
 
   if(length(algorithm) == 1 && algorithm == "best"){

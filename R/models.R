@@ -547,32 +547,121 @@ define_svm_linear_spec <- function(task, tuning = FALSE, engine = "kernlab") {
 #' Define Decision Tree Model Specification
 #'
 #' @inheritParams define_rand_forest_spec
+#' @param task A character string indicating the mode (e.g., "classification" or "regression").
+#' @param tuning Logical; if \code{TRUE}, the tuning parameters are set to \code{tune()}.
+#' @param engine A character string specifying the computational engine. Supported engines include
+#'   "rpart", "C5.0", and "partykit".
+#'
 #' @return List containing the model specification (`model_spec`).
+#'
+#' @details
+#' The available parameters and their defaults vary by engine:
+#'
+#' - **rpart:**
+#'   \itemize{
+#'     \item \code{tree_depth}: Tree Depth (default: 30L)
+#'     \item \code{min_n}: Minimal Node Size (default: 2L)
+#'     \item \code{cost_complexity}: Cost-Complexity Parameter (default: 0.01)
+#'   }
+#'
+#' - **C5.0:**
+#'   \itemize{
+#'     \item \code{min_n}: Minimal Node Size (default: 2L)
+#'   }
+#'
+#' - **partykit:**
+#'   \itemize{
+#'     \item \code{tree_depth}: Tree Depth (default: 30L; adjust as needed)
+#'     \item \code{min_n}: Minimal Node Size (default: 20L)
+#'   }
+#'
 #' @importFrom parsnip decision_tree set_mode set_engine
 #' @importFrom tune tune
 #' @noRd
 define_decision_tree_spec <- function(task, tuning = FALSE, engine = "rpart") {
-  defaults <- get_default_params("decision_tree")
 
-  if (tuning) {
-    model_spec <- decision_tree(
-      tree_depth = tune(),
-      min_n = tune(),
-      cost_complexity = tune()
-    ) %>%
-      set_mode(task) %>%
-      set_engine(engine)
+  # Set engine-specific defaults
+  defaults <- switch(engine,
+                     "rpart" = list(tree_depth = 30L, min_n = 2L, cost_complexity = 0.01),
+                     "C5.0" = list(min_n = 2L),
+                     "partykit" = list(tree_depth = 30L, min_n = 20L),
+                     # fallback: assume rpart defaults
+                     list(tree_depth = 30L, min_n = 2L, cost_complexity = 0.01)
+  )
+
+  # Build the model specification based on the engine and tuning flag.
+  if (engine == "rpart") {
+    if (tuning) {
+      model_spec <- decision_tree(
+        tree_depth = tune(),
+        min_n = tune(),
+        cost_complexity = tune()
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    } else {
+      model_spec <- decision_tree(
+        tree_depth = defaults$tree_depth,
+        min_n = defaults$min_n,
+        cost_complexity = defaults$cost_complexity
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    }
+  } else if (engine == "C5.0") {
+    if (tuning) {
+      model_spec <- decision_tree(
+        min_n = tune()
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    } else {
+      model_spec <- decision_tree(
+        min_n = defaults$min_n
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    }
+  } else if (engine == "partykit") {
+    if (tuning) {
+      model_spec <- decision_tree(
+        tree_depth = tune(),
+        min_n = tune()
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    } else {
+      model_spec <- decision_tree(
+        tree_depth = defaults$tree_depth,
+        min_n = defaults$min_n
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    }
   } else {
-    model_spec <- decision_tree(
-      tree_depth = defaults$tree_depth,
-      min_n = defaults$min_n,
-      cost_complexity = defaults$cost_complexity
-    ) %>%
-      set_mode(task) %>%
-      set_engine(engine)
+    # Fallback for unknown engine: assume rpart defaults
+    if (tuning) {
+      model_spec <- decision_tree(
+        tree_depth = tune(),
+        min_n = tune(),
+        cost_complexity = tune()
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    } else {
+      model_spec <- decision_tree(
+        tree_depth = defaults$tree_depth,
+        min_n = defaults$min_n,
+        cost_complexity = defaults$cost_complexity
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    }
   }
+
   list(model_spec = model_spec)
 }
+
 
 #' Define Logistic Regression Model Specification
 #'

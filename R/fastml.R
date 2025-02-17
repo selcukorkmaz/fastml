@@ -491,11 +491,16 @@ fastml <- function(data,
 
   if(length(names(models)) == length(names(combined_performance))) {
     names(models) <- names(combined_performance)
+    models = lapply(models, function(x) x[[1]])
+
   } else {
-    warning("Length mismatch: models and combined_performance must have the same number of elements")
+
+    models <- flatten_and_rename_models(models)
+    names(models) <- names(models)
+
+
   }
 
-  models = lapply(models, function(x) x[[1]])
 
   # Now apply the function over the flattened list
   metric_values <- sapply(combined_performance, function(x) {
