@@ -406,7 +406,14 @@ train_models <- function(train_data,
             my_metrics <- metric_set(accuracy, kap, sens, spec, precision, f_meas, roc_auc_h2o)
 
             allow_par = FALSE
-          } else{
+          }
+
+          else if(engine == "LiblineaR"){
+
+            my_metrics <- metric_set(accuracy, kap, sens, spec, precision, f_meas)
+            allow_par = TRUE
+
+          }else{
             allow_par = TRUE
             my_metrics = NULL
           }

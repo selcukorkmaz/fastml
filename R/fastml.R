@@ -467,8 +467,7 @@ fastml <- function(data,
 
   models <- models[sapply(models, function(x) length(x) > 0)]
 
-
-  engine_names <- get_engine_names(models) # değiştir
+  engine_names <- get_engine_names(models)
 
   if (length(models) == 0) {
     stop("No models were successfully trained.")

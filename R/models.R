@@ -440,23 +440,49 @@ define_naive_Bayes_spec <- function(task, tuning = FALSE, engine = "klaR") {
   if (task != "classification") {
     stop("Naive Bayes is only applicable for classification tasks.")
   }
-  defaults <- get_default_params("naive_Bayes")
 
+  # Retrieve default parameters for naive_Bayes based on engine.
+  defaults <- get_default_params("naive_Bayes", task, engine)
+
+  # Build the base model spec with tuning or default values.
   if (tuning) {
-    model_spec <- naive_Bayes(
-      smoothness = tune(),
-      Laplace = tune()
-    ) %>%
-      set_mode("classification") %>%
-      set_engine(engine)
+    if (engine %in% c("klaR", "naivebayes")) {
+      model_spec <- naive_Bayes(
+        smoothness = tune(),
+        Laplace = tune()
+      )
+    }else if (engine == "h2o") {
+
+      model_spec <- naive_Bayes(
+        Laplace = tune()
+      )
+    }
   } else {
-    model_spec <- naive_Bayes(
-      smoothness = defaults$smoothness,
-      Laplace = defaults$Laplace
-    ) %>%
-      set_mode("classification") %>%
-      set_engine(engine)
+    if (engine %in% c("klaR", "naivebayes")) {
+      model_spec <- naive_Bayes(
+        smoothness = defaults$smoothness,
+        Laplace = defaults$Laplace
+      )
+    }else if (engine == "h2o") {
+      model_spec <- naive_Bayes(
+        Laplace = defaults$Laplace
+      )
+    }
   }
+
+  # Set the model mode.
+  model_spec <- model_spec %>% set_mode("classification")
+
+  # Engine-specific parameter settings.
+  # For the klaR and naivebayes engines, usekernel is set to TRUE by default.
+  if (engine %in% c("klaR", "naivebayes")) {
+    model_spec <- model_spec %>% set_engine(engine, usekernel = TRUE)
+  } else if (engine == "h2o") {
+    model_spec <- model_spec %>% set_engine(engine)
+  } else {
+    stop("Unsupported engine specified for naive_Bayes.")
+  }
+
   list(model_spec = model_spec)
 }
 
@@ -529,20 +555,41 @@ define_svm_linear_spec <- function(task, tuning = FALSE, engine = "kernlab") {
   defaults <- get_default_params("svm_linear")
 
   if (tuning) {
-    model_spec <- svm_linear(
-      cost = tune()
-    ) %>%
-      set_mode(task) %>%
-      set_engine(engine)
+    if (task == "regression") {
+      # For regression, both cost and margin are tunable
+      model_spec <- svm_linear(
+        cost   = tune(),
+        margin = tune()
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    } else {  # classification
+      # For classification, only cost is tuned; margin is not applicable
+      model_spec <- svm_linear(
+        cost = tune()
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    }
   } else {
-    model_spec <- svm_linear(
-      cost = defaults$cost
-    ) %>%
-      set_mode(task) %>%
-      set_engine(engine)
+    if (task == "regression") {
+      model_spec <- svm_linear(
+        cost   = defaults$cost,
+        margin = defaults$margin  # defaults$margin will be 0.1 for kernlab or missing for LiblineaR
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    } else {  # classification
+      model_spec <- svm_linear(
+        cost = defaults$cost
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    }
   }
   list(model_spec = model_spec)
 }
+
 
 #' Define Decision Tree Model Specification
 #'

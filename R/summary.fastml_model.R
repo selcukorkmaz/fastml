@@ -84,9 +84,6 @@ summary.fastml_model <- function(object,
   # Combine all model groups into one data.frame
   performance_df <- do.call(rbind, metrics_list)
 
-
-
-
   all_metric_names <- unique(performance_df$.metric)
   if (is.null(sort_metric)) {
     if (optimized_metric %in% all_metric_names) {
@@ -113,13 +110,26 @@ summary.fastml_model <- function(object,
   performance_sub <- performance_df[performance_df$.metric %in% desired_metrics, ]%>%
     dplyr::select(-dplyr::any_of(".estimator"))
 
+  if(length(engine_names) == 1 && "LiblineaR" %in% engine_names){
 
-  performance_wide <- pivot_wider(
-    performance_sub,
-    names_from = .metric,
-    values_from = .estimate
-  ) %>%
-    dplyr::select(Model, Engine, accuracy, kap, sens, spec, precision, f_meas, roc_auc)
+      performance_wide <- pivot_wider(
+        performance_sub,
+        names_from = .metric,
+        values_from = .estimate
+      ) %>%
+        dplyr::select(Model, Engine, accuracy, kap, sens, spec, precision, f_meas)
+
+  }else{
+
+    performance_wide <- pivot_wider(
+      performance_sub,
+      names_from = .metric,
+      values_from = .estimate
+    ) %>%
+      dplyr::select(Model, Engine, accuracy, kap, sens, spec, precision, f_meas, roc_auc)
+
+  }
+
   # performance_wide$Engine <- engine_names[match(performance_wide$Model, names(engine_names))]
   # performance_wide <- performance_wide[, c("Model", "Engine", setdiff(colnames(performance_wide), c("Model", "Engine")))]
 
@@ -161,7 +171,7 @@ summary.fastml_model <- function(object,
 
   metrics_to_print <- c("Model", "Engine", desired_metrics)
 
-  best_model_idx <- which(performance_wide$Engine == best_model_name[performance_wide$Model])
+  best_model_idx <- get_best_model_idx(performance_wide, optimized_metric)
 
 
   if(length(algorithm) == 1 && algorithm == "best"){
@@ -178,7 +188,7 @@ summary.fastml_model <- function(object,
       clean_model_names <- sub(" \\(.*\\)", "", names(object$models))
       matching_index <- match(algorithm, clean_model_names)
 
-      if (!is.na(matching_index)) {
+      if (all(!is.na(matching_index))) {
         desired_models <- object$models[matching_index]
       } else {
         desired_models <- NULL  # Handle case where algorithm is not found
@@ -196,7 +206,7 @@ summary.fastml_model <- function(object,
     performance_wide[[m]] <- format(performance_wide[[m]], digits = 7, nsmall = 7)
   }
 
-  if(algorithm != "best"){
+  if(all(algorithm != "best")){
 
     performance_wide = performance_wide %>% filter(Model %in% algorithm)
   }
@@ -208,7 +218,7 @@ summary.fastml_model <- function(object,
   data_str <- performance_wide
   data_str$Model <- as.character(data_str$Model)
 
-  if(algorithm == "best"){
+  if(all(algorithm == "best")){
     data_str$Model[best_model_idx] <- paste0(data_str$Model[best_model_idx], "*")
   }
 
@@ -239,7 +249,7 @@ summary.fastml_model <- function(object,
   }
 
 
-  if(length(algorithm) == 1 && algorithm == "best"){
+  if(length(algorithm) == 1 && all(algorithm == "best")){
     cat("Best Model Hyperparameters:\n\n")
 
   }else{
@@ -312,11 +322,20 @@ summary.fastml_model <- function(object,
           cleaned_params <- cleaned_params_list[[model_name]]
 
           for (pname in names(cleaned_params)) {
+            # val <- cleaned_params[[pname]]
+            #
+            # if (is.numeric(val)) val <- as.character(val)
+            #
+            # cat("  ", pname, ": ", val, "\n", sep = "")
+
             val <- cleaned_params[[pname]]
-
-            if (is.numeric(val)) val <- as.character(val)
-
+            if (rlang::is_quosure(val)) {
+              val <- rlang::quo_text(val)
+            } else if (is.numeric(val)) {
+              val <- as.character(val)
+            }
             cat("  ", pname, ": ", val, "\n", sep = "")
+
           }
 
           cat("\n")
@@ -392,7 +411,7 @@ summary.fastml_model <- function(object,
 
     # Loop over each algorithm (e.g., "rand_forest", "logistic_reg")
 
-    if(algorithm == "best"){
+    if(all(algorithm == "best")){
       pred_list = predictions_list
     }else{
 
@@ -403,32 +422,37 @@ summary.fastml_model <- function(object,
     for (algo in names(pred_list)) {
       # Loop over each engine in the current algorithm group
       for (eng in names(predictions_list[[algo]])) {
-        df <- predictions_list[[algo]][[eng]]
-        if (!is.null(df) && "truth" %in% names(df)) {
-          # Get probability columns matching ".pred_"
+        if(eng == "LiblineaR"){
+          warning("Engine 'LiblineaR' does not provide probability predictions; no ROC curve (roc_auc) will be computed.")
 
-          if(eng == "h2o"){
-            prob_cols <- grep("^\\.pred_p", names(df), value = TRUE)
-          } else {
-            prob_cols <- grep("^\\.pred_", names(df), value = TRUE)
-          }
+          }else{
+          df <- predictions_list[[algo]][[eng]]
+          if (!is.null(df) && "truth" %in% names(df)) {
+            # Get probability columns matching ".pred_"
 
-          if (length(prob_cols) >= 2) {  # binary classification should have two probability columns
-            # Determine the predictor column for the positive class
             if(eng == "h2o"){
-              pred_col <- paste0(".pred_p", positive_class)
-
-            }else{
-              pred_col <- paste0(".pred_", positive_class)
+              prob_cols <- grep("^\\.pred_p", names(df), value = TRUE)
+            } else {
+              prob_cols <- grep("^\\.pred_", names(df), value = TRUE)
             }
 
-            if (pred_col %in% prob_cols) {
-              # Add columns for algorithm and engine
-              df$Model  <- algo
-              df$Engine <- eng
-              # Use a compound key to store in the list
-              key <- paste(algo, eng, sep = "_")
-              dfs[[key]] <- df
+            if (length(prob_cols) >= 2) {  # binary classification should have two probability columns
+              # Determine the predictor column for the positive class
+              if(eng == "h2o"){
+                pred_col <- paste0(".pred_p", positive_class)
+
+              }else{
+                pred_col <- paste0(".pred_", positive_class)
+              }
+
+              if (pred_col %in% prob_cols) {
+                # Add columns for algorithm and engine
+                df$Model  <- algo
+                df$Engine <- eng
+                # Use a compound key to store in the list
+                key <- paste(algo, eng, sep = "_")
+                dfs[[key]] <- df
+              }
             }
           }
         }
