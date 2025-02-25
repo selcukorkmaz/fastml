@@ -406,25 +406,97 @@ define_discrim_linear_spec <- function(task, engine = "MASS") {
 #' @importFrom tune tune
 #' @noRd
 define_mlp_spec <- function(task, tuning = FALSE, engine = "nnet") {
-  defaults <- get_default_params("mlp")
+
+  defaults <- get_default_params("mlp", task, num_predictors = NULL, engine)
 
   if (tuning) {
-    model_spec <- mlp(
-      hidden_units = tune(),
-      penalty = tune(),
-      epochs = tune()
-    ) %>%
-      set_mode(task) %>%
-      set_engine(engine)
+    if (engine == "nnet") {
+      model_spec <- mlp(
+        hidden_units = tune(),
+        penalty = tune(),
+        epochs = tune()
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    } else if (engine == "brulee") {
+      model_spec <- mlp(
+        hidden_units = tune(),
+        penalty = tune(),
+        epochs = tune(),
+        activation = tune(),
+        dropout = tune(),
+        learn_rate = tune()
+        # mixture = tune()
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    } else if (engine == "h2o") {
+      model_spec <- mlp(
+        hidden_units = tune(),
+        penalty = tune(),
+        dropout = tune(),
+        epochs = tune(),
+        activation = tune(),
+        learn_rate = tune()
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    } else if (engine == "keras") {
+      model_spec <- mlp(
+        hidden_units = tune(),
+        penalty = tune(),
+        dropout = tune(),
+        epochs = tune(),
+        activation = tune()
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    }
   } else {
-    model_spec <- mlp(
-      hidden_units = defaults$hidden_units,
-      penalty = defaults$penalty,
-      epochs = defaults$epochs
-    ) %>%
-      set_mode(task) %>%
-      set_engine(engine)
+    if (engine == "nnet") {
+      model_spec <- mlp(
+        hidden_units = defaults$hidden_units,
+        penalty = defaults$penalty,
+        epochs = defaults$epochs
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    } else if (engine == "brulee") {
+      model_spec <- mlp(
+        hidden_units = defaults$hidden_units,
+        penalty = defaults$penalty,
+        epochs = defaults$epochs,
+        activation = defaults$activation,
+        dropout = defaults$dropout,
+        learn_rate = defaults$learn_rate
+        # mixture = defaults$mixture
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    } else if (engine == "h2o") {
+      model_spec <- mlp(
+        hidden_units = defaults$hidden_units,
+        penalty = defaults$penalty,
+        dropout = defaults$dropout,
+        epochs = defaults$epochs,
+        activation = defaults$activation,
+        learn_rate = defaults$learn_rate
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    } else if (engine == "keras") {
+      model_spec <- mlp(
+        hidden_units = defaults$hidden_units,
+        penalty = defaults$penalty,
+        dropout = defaults$dropout,
+        epochs = defaults$epochs,
+        activation = defaults$activation
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    }
   }
+
   list(model_spec = model_spec)
 }
 

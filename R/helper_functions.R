@@ -415,15 +415,51 @@ get_default_params <- function(algo, task, num_predictors = NULL, engine = NULL)
          },
 
          # 14. Neural Network (nnet)
-         "mlp" = list(
-           hidden_units = 5,
-           penalty = -1,
-           epochs = 100
-         ),
+         "mlp" = {
+           if (is.null(engine)) engine <- "nnet"  # set default engine if not provided
+
+           if (engine %in% c("nnet")) {
+             list(
+               hidden_units = 5L,
+               penalty      = -1,
+               epochs       = 100L
+             )
+           } else if (engine %in% c("brulee")) {
+             list(
+               hidden_units = 3L,
+               penalty      = -1,
+               epochs       = 100L,
+               activation   = "relu",
+               # mixture      = 0.0,
+               dropout      = 0.0,
+               learn_rate   = -1
+             )
+           } else if (engine %in% c("h2o")) {
+             list(
+               hidden_units = 200L,
+               penalty      = 0.0,
+               dropout      = 0.5,
+               epochs       = 10L,
+               activation   = "relu",
+               learn_rate   = 0.005
+             )
+           } else if (engine %in% c("keras")) {
+             list(
+               hidden_units = 5L,
+               penalty      = -1,
+               dropout      = 0.0,
+               epochs       = 20L,
+               activation   = "softmax"
+             )
+           } else {
+             stop("Unsupported engine specified for mlp.")
+           }
+         },
+
          # 15. Deep Learning (keras)
          "deep_learning" = list(
            hidden_units = 10,
-           penalty = 0.001,
+           penalty = -1,
            epochs = 50
          ),
          # 16. discrim_linear

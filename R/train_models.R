@@ -156,30 +156,57 @@ train_models <- function(train_data,
   update_params <- function(params_model, new_params) {
     for (param_name in names(new_params)) {
       param_value <- new_params[[param_name]]
-
-      param_row <- params_model %>% filter(id == param_name)
-      if (nrow(param_row) == 0) {
-        next
-      }
+      param_row <- params_model %>% dplyr::filter(id == param_name)
+      if (nrow(param_row) == 0) next
 
       param_obj <- param_row$object[[1]]
 
-      if (length(param_value) == 2) {
-        if (inherits(param_obj, "integer_parameter")) {
-          param_obj <- param_obj %>% range_set(c(as.integer(param_value[1]), as.integer(param_value[2])))
+      # Helper function to update a parameter object
+      try_update <- function(obj, value) {
+        if (length(value) == 2) {
+          if (inherits(obj, "integer_parameter")) {
+            return(obj %>% dials::range_set(c(as.integer(value[1]), as.integer(value[2]))))
+          } else {
+            return(obj %>% dials::range_set(value))
+          }
         } else {
-          param_obj <- param_obj %>% range_set(param_value)
-        }
-      } else {
-        if (inherits(param_obj, "integer_parameter")) {
-          param_obj <- param_obj %>% value_set(as.integer(param_value))
-        } else {
-          param_obj <- param_obj %>% value_set(param_value)
+          if (inherits(obj, "integer_parameter")) {
+            return(obj %>% dials::value_set(as.integer(value)))
+          } else {
+            return(obj %>% dials::value_set(value))
+          }
         }
       }
 
+      updated_obj <- tryCatch({
+        try_update(param_obj, param_value)
+      }, error = function(e) {
+        # If update fails, expand the allowed range to include the new value.
+        current_lb <- attr(param_obj, "range")$lower
+        current_ub <- attr(param_obj, "range")$upper
+
+        # Ensure new value(s) are numeric
+        if (length(param_value) == 1) {
+          new_val <- if (inherits(param_obj, "integer_parameter")) as.integer(param_value) else param_value
+        } else {
+          new_val <- c(min(param_value), max(param_value))
+        }
+
+        # Compute new bounds that include the new value(s)
+        if (length(new_val) == 1) {
+          new_lb <- min(current_lb, new_val)
+          new_ub <- max(current_ub, new_val)
+        } else {
+          new_lb <- min(current_lb, new_val[1])
+          new_ub <- max(current_ub, new_val[2])
+        }
+
+        # Expand the range and update the parameter object
+        param_obj %>% dials::range_set(c(new_lb, new_ub))
+      })
+
       params_model <- params_model %>%
-        mutate(object = if_else(id == param_name, list(param_obj), object))
+        dplyr::mutate(object = if_else(id == param_name, list(updated_obj), object))
     }
     return(params_model)
   }
