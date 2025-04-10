@@ -1,59 +1,81 @@
 #' Define LightGBM Model Specification
 #'
-#' @inheritParams define_random_forest_spec
+#' @inheritParams define_rand_forest_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip boost_tree set_mode set_engine
 #' @importFrom dplyr select all_of
+#' @importFrom tune tune
 #' @import bonsai
 #' @noRd
-define_lightgbm_spec <- function(task, train_data, label, tune = FALSE) {
+define_lightgbm_spec <- function(task, train_data, label, tuning = FALSE, engine = "lightgbm") {
+  # Ensure the lightgbm package is installed.
   if (!requireNamespace("lightgbm", quietly = TRUE)) {
     stop("The 'lightgbm' package is required but is not installed.")
   }
-  num_predictors <- ncol(train_data %>% select(-all_of(label)))
-  defaults <- get_default_params("lightgbm", num_predictors)
 
-  if (tune) {
+  # Determine the number of predictors (all columns except the label).
+  num_predictors <- ncol(train_data %>% dplyr::select(-dplyr::all_of(label)))
+
+  # Retrieve default parameters for lightgbm.
+  # The helper is expected to return a list with elements:
+  # trees, tree_depth, learn_rate, mtry, min_n, loss_reduction, sample_size.
+  defaults <- get_default_params("lightgbm", task, num_predictors, engine)
+
+  # Define the model specification using boost_tree().
+  if (tuning) {
     model_spec <- boost_tree(
-      trees = tune(),
-      tree_depth = tune(),
-      learn_rate = tune(),
-      mtry = tune(),
-      min_n = tune(),
-      loss_reduction = tune(),
-      sample_size = tune()
-    ) %>%
-      set_mode(task) %>%
-      set_engine("lightgbm")
+      trees           = tune(),
+      tree_depth      = tune(),
+      learn_rate      = tune(),
+      mtry            = tune(),
+      min_n           = tune(),
+      loss_reduction  = tune(),
+      sample_size     = tune()
+    )
   } else {
     model_spec <- boost_tree(
-      trees = defaults$trees,
-      tree_depth = defaults$tree_depth,
-      learn_rate = defaults$learn_rate,
-      mtry = defaults$mtry,
-      min_n = defaults$min_n,
-      loss_reduction = defaults$loss_reduction,
-      sample_size = defaults$sample_size
-    ) %>%
-      set_mode(task) %>%
-      set_engine("lightgbm")
+      trees           = defaults$trees,
+      tree_depth      = defaults$tree_depth,
+      learn_rate      = defaults$learn_rate,
+      mtry            = defaults$mtry,
+      min_n           = defaults$min_n,
+      loss_reduction  = defaults$loss_reduction,
+      sample_size     = defaults$sample_size
+    )
   }
+
+  # Set the mode and specify engine-specific parameters.
+  # - counts = TRUE means that mtry is interpreted as a count (and later converted to a proportion)
+  # - bagging_freq = 1 will enable bagging at every iteration when sample_size (bagging fraction) is less than 1.
+  # - verbose = -1 quiets lightgbm's output.
+  # - num_threads = 0 instructs lightgbm to use all available cores.
+  # - seed and deterministic aid in reproducibility.
+  model_spec <- model_spec %>%
+    set_mode(task) %>%
+    set_engine(engine,
+               counts        = TRUE,
+               bagging_freq  = 1,
+               verbose       = -1,
+               num_threads   = 0,
+               seed          = 123,
+               deterministic = TRUE)
+
   list(model_spec = model_spec)
 }
-
 
 #' Define XGBoost Model Specification
 #'
-#' @inheritParams define_random_forest_spec
+#' @inheritParams define_rand_forest_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip boost_tree set_mode set_engine
 #' @importFrom dplyr select all_of
+#' @importFrom tune tune
 #' @noRd
-define_xgboost_spec <- function(task, train_data, label, tune = FALSE) {
-  num_predictors <- ncol(train_data %>% select(-all_of(label)))
+define_xgboost_spec <- function(task, train_data, label, tuning = FALSE, engine = "xgboost") {
+  num_predictors <- ncol(train_data %>% dplyr::select(-dplyr::all_of(label)))
   defaults <- get_default_params("xgboost", num_predictors)
 
-  if (tune) {
+  if (tuning) {
     model_spec <- boost_tree(
       trees = tune(),
       tree_depth = tune(),
@@ -64,7 +86,7 @@ define_xgboost_spec <- function(task, train_data, label, tune = FALSE) {
       sample_size = tune()
     ) %>%
       set_mode(task) %>%
-      set_engine("xgboost")
+      set_engine(engine)
   } else {
     model_spec <- boost_tree(
       trees = defaults$trees,
@@ -76,32 +98,32 @@ define_xgboost_spec <- function(task, train_data, label, tune = FALSE) {
       sample_size = defaults$sample_size
     ) %>%
       set_mode(task) %>%
-      set_engine("xgboost")
+      set_engine(engine)
   }
   list(model_spec = model_spec)
 }
 
-
-#' Define C5.0 Model Specification
+#' Define C5_rules Model Specification
 #'
-#' @inheritParams define_random_forest_spec
+#' @inheritParams define_rand_forest_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip boost_tree set_mode set_engine
+#' @importFrom tune tune
 #' @noRd
-define_c5_0_spec <- function(task, tune = FALSE) {
+define_C5_rules_spec <- function(task, tuning = FALSE, engine = "C5.0") {
   if (task != "classification") {
     stop("C5.0 is only applicable for classification tasks.")
   }
-  defaults <- get_default_params("c5.0")
+  defaults <- get_default_params("C5_rules")
 
-  if (tune) {
+  if (tuning) {
     model_spec <- boost_tree(
       trees = tune(),
       min_n = tune(),
       sample_size = tune()
     ) %>%
       set_mode("classification") %>%
-      set_engine("C5.0")
+      set_engine(engine)
   } else {
     model_spec <- boost_tree(
       trees = defaults$trees,
@@ -109,11 +131,10 @@ define_c5_0_spec <- function(task, tune = FALSE) {
       sample_size = defaults$sample_size
     ) %>%
       set_mode("classification") %>%
-      set_engine("C5.0")
+      set_engine(engine)
   }
   list(model_spec = model_spec)
 }
-
 
 #' Define Random Forest Model Specification
 #'
@@ -124,102 +145,134 @@ define_c5_0_spec <- function(task, tune = FALSE) {
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip rand_forest set_mode set_engine
 #' @importFrom dplyr select all_of
+#' @importFrom tune tune
 #' @noRd
-define_random_forest_spec <- function(task, train_data, label, tune = FALSE) {
-  num_predictors <- ncol(train_data %>% select(-all_of(label)))
-  defaults <- get_default_params("random_forest", num_predictors)
+define_rand_forest_spec <- function(task, train_data, label, tuning = FALSE, engine = "ranger") {
+  # Remove the label column to get predictors and count them
+  predictors <- train_data %>% dplyr::select(-dplyr::all_of(label))
+  num_predictors <- ncol(predictors)
 
-  if (tune) {
+  # Retrieve default parameters for a random forest.
+  # (Assumes get_default_params returns a list with mtry, trees, and min_n.)
+  defaults <- get_default_params("rand_forest", task, num_predictors, engine)
+
+  # Build the base model spec with tuning or default values.
+  if (tuning) {
     model_spec <- rand_forest(
-      mtry = tune(),
+      mtry  = tune(),
       trees = tune(),
       min_n = tune()
-    ) %>%
-      set_mode(task) %>%
-      set_engine("ranger")
+    )
   } else {
     model_spec <- rand_forest(
-      mtry = defaults$mtry,
+      mtry  = defaults$mtry,
       trees = defaults$trees,
       min_n = defaults$min_n
-    ) %>%
-      set_mode(task) %>%
-      set_engine("ranger")
+    )
   }
+
+  # Set the model mode (e.g. "classification", "regression", etc.)
+  model_spec <- model_spec %>% set_mode(task)
+
+  # Engine-specific parameter settings:
+  # - For ranger (the default engine), if doing classification, we enable probability estimates.
+  # - For h2o and randomForest, we pass along the number of trees (or a similar argument).
+  # - For spark, a seed is provided.
+  # - Other engines (e.g., aorsf, partykit) are simply set by name.
+  if (engine == "ranger") {
+    if (task == "classification") {
+      model_spec <- model_spec %>%
+        set_engine("ranger", probability = TRUE)
+    } else {
+      model_spec <- model_spec %>%
+        set_engine("ranger")
+    }
+  } else if (engine == "h2o") {
+    # For h2o, you might want to pass lambda_search or nthreads, etc.
+    model_spec <- model_spec %>%
+      set_engine("h2o")
+  } else if (engine == "randomForest") {
+    # For randomForest, the argument is ntree instead of trees.
+    model_spec <- model_spec %>%
+      set_engine("randomForest")
+  } else if (engine == "spark") {
+    model_spec <- model_spec %>%
+      set_engine("spark", seed = 1234)
+  } else if (engine == "aorsf") {
+    model_spec <- model_spec %>%
+      set_engine("aorsf")
+  } else if (engine == "partykit") {
+    model_spec <- model_spec %>%
+      set_engine("partykit")
+  } else {
+    stop("Unsupported engine specified for rand_forest")
+  }
+
   list(model_spec = model_spec)
 }
 
-
-#' Define Ranger Model Specification
-#'
-#' @inheritParams define_random_forest_spec
-#' @return List containing the model specification (`model_spec`).
-#' @noRd
-define_ranger_spec <- function(task, train_data, label, tune = FALSE) {
-  define_random_forest_spec(task, train_data, label, tune)
-}
 
 #' Define Lasso Regression Model Specification
 #'
 #' @inheritParams define_elastic_net_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip linear_reg set_mode set_engine
+#' @importFrom tune tune
 #' @noRd
-define_lasso_regression_spec <- function(task, tune = FALSE) {
+define_lasso_regression_spec <- function(task, tuning = FALSE, engine = "glmnet") {
   if (task != "regression") {
     stop("Lasso regression is only applicable for regression tasks.")
   }
   defaults <- get_default_params("lasso_regression")
 
-  if (tune) {
+  if (tuning) {
     model_spec <- linear_reg(
       penalty = tune(),
       mixture = defaults$mixture  # Fixed mixture for Lasso
     ) %>%
       set_mode("regression") %>%
-      set_engine("glmnet")
+      set_engine(engine)
   } else {
     model_spec <- linear_reg(
       penalty = defaults$penalty,
       mixture = defaults$mixture
     ) %>%
       set_mode("regression") %>%
-      set_engine("glmnet")
+      set_engine(engine)
   }
   list(model_spec = model_spec)
 }
-
 
 #' Define Ridge Regression Model Specification
 #'
 #' @inheritParams define_elastic_net_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip linear_reg set_mode set_engine
+#' @importFrom tune tune
 #' @noRd
-define_ridge_regression_spec <- function(task, tune = FALSE) {
+define_ridge_regression_spec <- function(task, tuning = FALSE, engine = "glmnet") {
   if (task != "regression") {
     stop("Ridge regression is only applicable for regression tasks.")
   }
   defaults <- get_default_params("ridge_regression")
 
-  if (tune) {
+  if (tuning) {
     model_spec <- linear_reg(
       penalty = tune(),
       mixture = defaults$mixture  # Fixed mixture for Ridge
     ) %>%
       set_mode("regression") %>%
-      set_engine("glmnet")
+      set_engine(engine)
   } else {
     model_spec <- linear_reg(
       penalty = defaults$penalty,
       mixture = defaults$mixture
     ) %>%
       set_mode("regression") %>%
-      set_engine("glmnet")
+      set_engine(engine)
   }
   list(model_spec = model_spec)
 }
-
 
 #' Define Linear Regression Model Specification
 #'
@@ -227,16 +280,15 @@ define_ridge_regression_spec <- function(task, tune = FALSE) {
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip linear_reg set_mode set_engine
 #' @noRd
-define_linear_regression_spec <- function(task) {
+define_linear_reg_spec <- function(task, engine = "lm") {
   if (task != "regression") {
     stop("Linear regression is only applicable for regression tasks.")
   }
   model_spec <- linear_reg() %>%
     set_mode("regression") %>%
-    set_engine("lm")
+    set_engine(engine)
   list(model_spec = model_spec)
 }
-
 
 #' Define Bayesian GLM Model Specification
 #'
@@ -244,7 +296,7 @@ define_linear_regression_spec <- function(task) {
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip linear_reg set_mode set_engine
 #' @noRd
-define_bayes_glm_spec <- function(task) {
+define_bayes_glm_spec <- function(task, engine = "stan") {
   if (!requireNamespace("rstanarm", quietly = TRUE)) {
     stop("The 'rstanarm' package is required but is not installed.")
   }
@@ -253,181 +305,277 @@ define_bayes_glm_spec <- function(task) {
   }
   model_spec <- linear_reg() %>%
     set_mode("regression") %>%
-    set_engine("stan")
+    set_engine(engine)
   list(model_spec = model_spec)
 }
-
 
 #' Define Elastic Net Model Specification
 #'
 #' @param task Character string specifying the task type ("regression").
-#' @inheritParams define_random_forest_spec
+#' @inheritParams define_rand_forest_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip linear_reg set_mode set_engine
+#' @importFrom tune tune
 #' @noRd
-define_elastic_net_spec <- function(task, tune = FALSE) {
+define_elastic_net_spec <- function(task, tuning = FALSE, engine = "glmnet") {
   if (task != "regression") {
     stop("Elastic Net is only applicable for regression tasks.")
   }
   defaults <- get_default_params("elastic_net")
-  if (tune) {
+  if (tuning) {
     model_spec <- linear_reg(
       penalty = tune(),
       mixture = tune()
     ) %>%
       set_mode("regression") %>%
-      set_engine("glmnet")
+      set_engine(engine)
   } else {
     model_spec <- linear_reg(
       penalty = defaults$penalty,
       mixture = defaults$mixture
     ) %>%
       set_mode("regression") %>%
-      set_engine("glmnet")
+      set_engine(engine)
   }
   list(model_spec = model_spec)
 }
 
-
-#' Define Bagging Model Specification
+#' Define bag_tree Model Specification
 #'
 #' @inheritParams define_decision_tree_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip bag_tree set_mode set_engine
 #' @import baguette
+#' @importFrom tune tune
 #' @noRd
-define_bagging_spec <- function(task, tune = FALSE) {
-  defaults <- get_default_params("bagging")
-  if (tune) {
+define_bag_tree_spec <- function(task, tuning = FALSE, engine = "rpart") {
+  defaults <- get_default_params("bag_tree")
+  if (tuning) {
     model_spec <- bag_tree(
       min_n = tune()
     ) %>%
       set_mode(task) %>%
-      set_engine("rpart", times = 25)
+      set_engine(engine, times = 25)
   } else {
     model_spec <- bag_tree(
       min_n = defaults$min_n
     ) %>%
       set_mode(task) %>%
-      set_engine("rpart", times = 25)
+      set_engine(engine, times = 25)
   }
   list(model_spec = model_spec)
 }
-
 
 #' Define Quadratic Discriminant Analysis Model Specification
 #'
-#' @inheritParams define_logistic_regression_spec
+#' @inheritParams define_logistic_reg_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip set_mode set_engine discrim_quad
 #' @noRd
-define_qda_spec <- function(task) {
+define_discrim_quad_spec <- function(task, engine = "MASS") {
   if (task != "classification") {
-    stop("QDA is only applicable for classification tasks.")
+    stop("discrim_quad is only applicable for classification tasks.")
   }
   model_spec <- discrim_quad() %>%
     set_mode("classification") %>%
-    set_engine("MASS")
+    set_engine(engine)
   list(model_spec = model_spec)
 }
-
 
 #' Define Linear Discriminant Analysis Model Specification
 #'
-#' @inheritParams define_logistic_regression_spec
+#' @inheritParams define_logistic_reg_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip set_mode set_engine discrim_linear
 #' @noRd
-define_lda_spec <- function(task) {
+define_discrim_linear_spec <- function(task, engine = "MASS") {
   if (task != "classification") {
-    stop("LDA is only applicable for classification tasks.")
+    stop("discrim_linear is only applicable for classification tasks.")
   }
   model_spec <- discrim_linear() %>%
     set_mode("classification") %>%
-    set_engine("MASS")
+    set_engine(engine)
   list(model_spec = model_spec)
 }
-
 
 #' Define Neural Network Model Specification (nnet)
 #'
-#' @inheritParams define_random_forest_spec
+#' @inheritParams define_rand_forest_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip mlp set_mode set_engine
+#' @importFrom tune tune
 #' @noRd
-define_neural_network_spec <- function(task, tune = FALSE) {
-  defaults <- get_default_params("neural_network")
+define_mlp_spec <- function(task, tuning = FALSE, engine = "nnet") {
 
-  if (tune) {
-    model_spec <- mlp(
-      hidden_units = tune(),
-      penalty = tune(),
-      epochs = tune()
-    ) %>%
-      set_mode(task) %>%
-      set_engine("nnet")
+  defaults <- get_default_params("mlp", task, num_predictors = NULL, engine)
+
+  if (tuning) {
+    if (engine == "nnet") {
+      model_spec <- mlp(
+        hidden_units = tune(),
+        penalty = tune(),
+        epochs = tune()
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    } else if (engine == "brulee") {
+      model_spec <- mlp(
+        hidden_units = tune(),
+        penalty = tune(),
+        epochs = tune(),
+        activation = tune(),
+        dropout = tune(),
+        learn_rate = tune()
+        # mixture = tune()
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    } else if (engine == "h2o") {
+      model_spec <- mlp(
+        hidden_units = tune(),
+        penalty = tune(),
+        dropout = tune(),
+        epochs = tune(),
+        activation = tune(),
+        learn_rate = tune()
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    } else if (engine == "keras") {
+      model_spec <- mlp(
+        hidden_units = tune(),
+        penalty = tune(),
+        dropout = tune(),
+        epochs = tune(),
+        activation = tune()
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    }
   } else {
-    model_spec <- mlp(
-      hidden_units = defaults$hidden_units,
-      penalty = defaults$penalty,
-      epochs = defaults$epochs
-    ) %>%
-      set_mode(task) %>%
-      set_engine("nnet")
+    if (engine == "nnet") {
+      model_spec <- mlp(
+        hidden_units = defaults$hidden_units,
+        penalty = defaults$penalty,
+        epochs = defaults$epochs
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    } else if (engine == "brulee") {
+      model_spec <- mlp(
+        hidden_units = defaults$hidden_units,
+        penalty = defaults$penalty,
+        epochs = defaults$epochs,
+        activation = defaults$activation,
+        dropout = defaults$dropout,
+        learn_rate = defaults$learn_rate
+        # mixture = defaults$mixture
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    } else if (engine == "h2o") {
+      model_spec <- mlp(
+        hidden_units = defaults$hidden_units,
+        penalty = defaults$penalty,
+        dropout = defaults$dropout,
+        epochs = defaults$epochs,
+        activation = defaults$activation,
+        learn_rate = defaults$learn_rate
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    } else if (engine == "keras") {
+      model_spec <- mlp(
+        hidden_units = defaults$hidden_units,
+        penalty = defaults$penalty,
+        dropout = defaults$dropout,
+        epochs = defaults$epochs,
+        activation = defaults$activation
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    }
   }
+
   list(model_spec = model_spec)
 }
-
 
 #' Define Naive Bayes Model Specification
 #'
-#' @inheritParams define_logistic_regression_spec
+#' @inheritParams define_logistic_reg_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip naive_Bayes set_mode set_engine
 #' @import discrim
+#' @importFrom tune tune
 #' @noRd
-define_naive_bayes_spec <- function(task, tune = FALSE) {
+define_naive_Bayes_spec <- function(task, tuning = FALSE, engine = "klaR") {
   if (task != "classification") {
     stop("Naive Bayes is only applicable for classification tasks.")
   }
-  defaults <- get_default_params("naive_bayes")
 
-  if (tune) {
-    model_spec <- naive_Bayes(
-      smoothness = tune(),
-      Laplace = tune()
-    ) %>%
-      set_mode("classification") %>%
-      set_engine("klaR")
+  # Retrieve default parameters for naive_Bayes based on engine.
+  defaults <- get_default_params("naive_Bayes", task, engine)
+
+  # Build the base model spec with tuning or default values.
+  if (tuning) {
+    if (engine %in% c("klaR", "naivebayes")) {
+      model_spec <- naive_Bayes(
+        smoothness = tune(),
+        Laplace = tune()
+      )
+    }else if (engine == "h2o") {
+
+      model_spec <- naive_Bayes(
+        Laplace = tune()
+      )
+    }
   } else {
-    model_spec <- naive_Bayes(
-      smoothness = defaults$smoothness,
-      Laplace = defaults$Laplace
-    ) %>%
-      set_mode("classification") %>%
-      set_engine("klaR")
+    if (engine %in% c("klaR", "naivebayes")) {
+      model_spec <- naive_Bayes(
+        smoothness = defaults$smoothness,
+        Laplace = defaults$Laplace
+      )
+    }else if (engine == "h2o") {
+      model_spec <- naive_Bayes(
+        Laplace = defaults$Laplace
+      )
+    }
   }
+
+  # Set the model mode.
+  model_spec <- model_spec %>% set_mode("classification")
+
+  # Engine-specific parameter settings.
+  # For the klaR and naivebayes engines, usekernel is set to TRUE by default.
+  if (engine %in% c("klaR", "naivebayes")) {
+    model_spec <- model_spec %>% set_engine(engine, usekernel = TRUE)
+  } else if (engine == "h2o") {
+    model_spec <- model_spec %>% set_engine(engine)
+  } else {
+    stop("Unsupported engine specified for naive_Bayes.")
+  }
+
   list(model_spec = model_spec)
 }
 
-
 #' Define K-Nearest Neighbors Model Specification
 #'
-#' @inheritParams define_random_forest_spec
+#' @inheritParams define_rand_forest_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip nearest_neighbor set_mode set_engine
+#' @importFrom tune tune
 #' @noRd
-define_knn_spec <- function(task, tune = FALSE) {
-  defaults <- get_default_params("knn")
+define_nearest_neighbor_spec <- function(task, tuning = FALSE, engine = "kknn") {
+  defaults <- get_default_params("nearest_neighbor")
 
-  if (tune) {
+  if (tuning) {
     model_spec <- nearest_neighbor(
       neighbors = tune(),
       weight_func = tune(),
       dist_power = tune()
     ) %>%
       set_mode(task) %>%
-      set_engine("kknn")
+      set_engine(engine)
   } else {
     model_spec <- nearest_neighbor(
       neighbors = defaults$neighbors,
@@ -435,91 +583,201 @@ define_knn_spec <- function(task, tune = FALSE) {
       dist_power = defaults$dist_power
     ) %>%
       set_mode(task) %>%
-      set_engine("kknn")
+      set_engine(engine)
   }
   list(model_spec = model_spec)
 }
-
 
 #' Define SVM Radial Model Specification
 #'
 #' @inheritParams define_svm_linear_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip svm_rbf set_mode set_engine
+#' @importFrom tune tune
 #' @noRd
-define_svm_radial_spec <- function(task, tune = FALSE) {
-  defaults <- get_default_params("svm_radial")
+define_svm_rbf_spec <- function(task, tuning = FALSE, engine = "kernlab") {
+  defaults <- get_default_params("svm_rbf")
 
-  if (tune) {
+  if (tuning) {
     model_spec <- svm_rbf(
       cost = tune(),
       rbf_sigma = tune()
     ) %>%
       set_mode(task) %>%
-      set_engine("kernlab")
+      set_engine(engine)
   } else {
     model_spec <- svm_rbf(
       cost = defaults$cost,
       rbf_sigma = defaults$rbf_sigma
     ) %>%
       set_mode(task) %>%
-      set_engine("kernlab")
+      set_engine(engine)
   }
   list(model_spec = model_spec)
 }
-
 
 #' Define SVM Linear Model Specification
 #'
-#' @inheritParams define_random_forest_spec
+#' @inheritParams define_rand_forest_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip svm_linear set_mode set_engine
+#' @importFrom tune tune
 #' @noRd
-define_svm_linear_spec <- function(task, tune = FALSE) {
+define_svm_linear_spec <- function(task, tuning = FALSE, engine = "kernlab") {
   defaults <- get_default_params("svm_linear")
 
-  if (tune) {
-    model_spec <- svm_linear(
-      cost = tune()
-    ) %>%
-      set_mode(task) %>%
-      set_engine("kernlab")
+  if (tuning) {
+    if (task == "regression") {
+      # For regression, both cost and margin are tunable
+      model_spec <- svm_linear(
+        cost   = tune(),
+        margin = tune()
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    } else {  # classification
+      # For classification, only cost is tuned; margin is not applicable
+      model_spec <- svm_linear(
+        cost = tune()
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    }
   } else {
-    model_spec <- svm_linear(
-      cost = defaults$cost
-    ) %>%
-      set_mode(task) %>%
-      set_engine("kernlab")
+    if (task == "regression") {
+      model_spec <- svm_linear(
+        cost   = defaults$cost,
+        margin = defaults$margin  # defaults$margin will be 0.1 for kernlab or missing for LiblineaR
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    } else {  # classification
+      model_spec <- svm_linear(
+        cost = defaults$cost
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    }
   }
   list(model_spec = model_spec)
 }
 
+
 #' Define Decision Tree Model Specification
 #'
-#' @inheritParams define_random_forest_spec
+#' @inheritParams define_rand_forest_spec
+#' @param task A character string indicating the mode (e.g., "classification" or "regression").
+#' @param tuning Logical; if \code{TRUE}, the tuning parameters are set to \code{tune()}.
+#' @param engine A character string specifying the computational engine. Supported engines include
+#'   "rpart", "C5.0", and "partykit".
+#'
 #' @return List containing the model specification (`model_spec`).
+#'
+#' @details
+#' The available parameters and their defaults vary by engine:
+#'
+#' - **rpart:**
+#'   \itemize{
+#'     \item \code{tree_depth}: Tree Depth (default: 30L)
+#'     \item \code{min_n}: Minimal Node Size (default: 2L)
+#'     \item \code{cost_complexity}: Cost-Complexity Parameter (default: 0.01)
+#'   }
+#'
+#' - **C5.0:**
+#'   \itemize{
+#'     \item \code{min_n}: Minimal Node Size (default: 2L)
+#'   }
+#'
+#' - **partykit:**
+#'   \itemize{
+#'     \item \code{tree_depth}: Tree Depth (default: 30L; adjust as needed)
+#'     \item \code{min_n}: Minimal Node Size (default: 20L)
+#'   }
+#'
 #' @importFrom parsnip decision_tree set_mode set_engine
+#' @importFrom tune tune
 #' @noRd
-define_decision_tree_spec <- function(task, tune = FALSE) {
-  defaults <- get_default_params("decision_tree")
+define_decision_tree_spec <- function(task, tuning = FALSE, engine = "rpart") {
 
-  if (tune) {
-    model_spec <- decision_tree(
-      tree_depth = tune(),
-      min_n = tune(),
-      cost_complexity = tune()
-    ) %>%
-      set_mode(task) %>%
-      set_engine("rpart")
+  # Set engine-specific defaults
+  defaults <- switch(engine,
+                     "rpart" = list(tree_depth = 30L, min_n = 2L, cost_complexity = 0.01),
+                     "C5.0" = list(min_n = 2L),
+                     "partykit" = list(tree_depth = 30L, min_n = 20L),
+                     # fallback: assume rpart defaults
+                     list(tree_depth = 30L, min_n = 2L, cost_complexity = 0.01)
+  )
+
+  # Build the model specification based on the engine and tuning flag.
+  if (engine == "rpart") {
+    if (tuning) {
+      model_spec <- decision_tree(
+        tree_depth = tune(),
+        min_n = tune(),
+        cost_complexity = tune()
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    } else {
+      model_spec <- decision_tree(
+        tree_depth = defaults$tree_depth,
+        min_n = defaults$min_n,
+        cost_complexity = defaults$cost_complexity
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    }
+  } else if (engine == "C5.0") {
+    if (tuning) {
+      model_spec <- decision_tree(
+        min_n = tune()
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    } else {
+      model_spec <- decision_tree(
+        min_n = defaults$min_n
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    }
+  } else if (engine == "partykit") {
+    if (tuning) {
+      model_spec <- decision_tree(
+        tree_depth = tune(),
+        min_n = tune()
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    } else {
+      model_spec <- decision_tree(
+        tree_depth = defaults$tree_depth,
+        min_n = defaults$min_n
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    }
   } else {
-    model_spec <- decision_tree(
-      tree_depth = defaults$tree_depth,
-      min_n = defaults$min_n,
-      cost_complexity = defaults$cost_complexity
-    ) %>%
-      set_mode(task) %>%
-      set_engine("rpart")
+    # Fallback for unknown engine: assume rpart defaults
+    if (tuning) {
+      model_spec <- decision_tree(
+        tree_depth = tune(),
+        min_n = tune(),
+        cost_complexity = tune()
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    } else {
+      model_spec <- decision_tree(
+        tree_depth = defaults$tree_depth,
+        min_n = defaults$min_n,
+        cost_complexity = defaults$cost_complexity
+      ) %>%
+        set_mode(task) %>%
+        set_engine(engine)
+    }
   }
+
   list(model_spec = model_spec)
 }
 
@@ -530,24 +788,132 @@ define_decision_tree_spec <- function(task, tune = FALSE) {
 #' @param tune Logical indicating whether to use tuning parameters.
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip logistic_reg set_mode set_engine
+#' @importFrom tune tune
+#' @importFrom tune tune
 #' @noRd
-define_logistic_regression_spec <- function(task, tune = FALSE) {
+define_logistic_reg_spec <- function(task, tuning = FALSE, engine = "glm") {
   if (task != "classification") {
     stop("Logistic regression is only applicable for classification tasks.")
   }
-  if (tune) {
-    model_spec <- logistic_reg(
-      penalty = tune()
-    ) %>%
-      set_mode("classification") %>%
-      set_engine("glmnet")
+
+  defaults <- get_default_params("logistic_reg", task, engine = engine)
+
+  if (tuning) {
+    if (engine %in% c("glm", "gee", "glmer", "stan", "stan_glmer")) {
+      model_spec <- logistic_reg(
+        penalty = NULL,
+        mixture = NULL
+      )
+      if (engine == "glm") {
+        model_spec <- model_spec %>%
+          set_engine("glm", family = stats::binomial())
+      } else if (engine == "gee") {
+        model_spec <- model_spec %>%
+          set_engine("gee", corstr = "exchangeable")
+      } else if (engine == "glmer") {
+        model_spec <- model_spec %>%
+          set_engine("glmer")
+      } else if (engine %in% c("stan", "stan_glmer")) {
+        model_spec <- model_spec %>%
+          set_engine(engine, chains = 4L, iter = 2000L, seed = 123, cores = 1L,
+                     prior = NULL, prior_intercept = NULL)
+      }
+      model_spec <- model_spec %>% set_mode("classification")
+
+    } else if (engine %in% c("brulee", "glmnet", "h2o", "LiblineaR", "spark")) {
+      model_spec <- logistic_reg(
+        penalty = tune(),
+        mixture = tune()
+      )
+      if (engine == "brulee") {
+        model_spec <- model_spec %>%
+          set_engine("brulee",
+                     optimizer = "SGD",
+                     epochs = 50L,
+                     learn_rate = 1,    # raw 0.01 -> log10(0.01) = -2
+                     momentum = 0.9,
+                     batch_size = 32,
+                     stop_iter = 5L,
+                     class_weights = NULL)
+      } else if (engine == "glmnet") {
+        model_spec <- model_spec %>%
+          set_engine("glmnet", standardize = TRUE)
+      } else if (engine == "h2o") {
+        model_spec <- model_spec %>%
+          set_engine("h2o", compute_p_values = FALSE, lambda_search = TRUE)
+      } else if (engine == "LiblineaR") {
+        model_spec <- model_spec %>%
+          set_engine("LiblineaR", cost = Inf, verbose = FALSE)
+      } else if (engine == "spark") {
+        model_spec <- model_spec %>%
+          set_engine("spark", standardization = TRUE, reg_param = 0.0, elastic_net_param = 0.0)
+      }
+      model_spec <- model_spec %>% set_mode("classification")
+
+    } else if (engine == "keras") {
+      model_spec <- logistic_reg(
+        penalty = tune(),
+        mixture = NULL
+      ) %>%
+        set_engine("keras", hidden_units = 1, act = "linear") %>%
+        set_mode("classification")
+    } else {
+      stop("Unsupported engine specified for logistic regression.")
+    }
+
   } else {
-    model_spec <- logistic_reg() %>%
-      set_mode("classification") %>%
-      set_engine("glm")
+    model_spec <- logistic_reg(
+      penalty = defaults$penalty,
+      mixture = defaults$mixture
+    )
+    if (engine == "glm") {
+      model_spec <- model_spec %>%
+        set_engine("glm", family = stats::binomial())
+    } else if (engine == "gee") {
+      model_spec <- model_spec %>%
+        set_engine("gee", corstr = "exchangeable")
+    } else if (engine == "glmer") {
+      model_spec <- model_spec %>%
+        set_engine("glmer")
+    } else if (engine %in% c("stan", "stan_glmer")) {
+      model_spec <- model_spec %>%
+        set_engine(engine, chains = 4L, iter = 2000L, seed = 123, cores = 1L,
+                   prior = NULL, prior_intercept = NULL)
+    } else if (engine == "brulee") {
+      model_spec <- model_spec %>%
+        set_engine("brulee",
+                   optimizer = "SGD",
+                   epochs = 50L,
+                   learn_rate = 1,
+                   momentum = 0.9,
+                   batch_size = 32,
+                   stop_iter = 5L,
+                   class_weights = NULL)
+    } else if (engine == "glmnet") {
+      model_spec <- model_spec %>%
+        set_engine("glmnet", standardize = TRUE)
+    } else if (engine == "h2o") {
+      model_spec <- model_spec %>%
+        set_engine("h2o", compute_p_values = FALSE, lambda_search = TRUE)
+    } else if (engine == "keras") {
+      model_spec <- model_spec %>%
+        set_engine("keras", hidden_units = 1, act = "linear")
+    } else if (engine == "LiblineaR") {
+      model_spec <- model_spec %>%
+        set_engine("LiblineaR", cost = Inf, verbose = FALSE)
+    } else if (engine == "spark") {
+      model_spec <- model_spec %>%
+        set_engine("spark", standardization = TRUE, reg_param = 0.0, elastic_net_param = 0.0)
+    } else {
+      stop("Unsupported engine specified for logistic regression.")
+    }
+    model_spec <- model_spec %>% set_mode("classification")
   }
+
   list(model_spec = model_spec)
 }
+
+
 
 #' Define Multinomial Logistic Regression Specification
 #'
@@ -558,95 +924,83 @@ define_logistic_regression_spec <- function(task, tune = FALSE) {
 #' @param tune Logical. If `TRUE`, includes hyperparameter tuning for the penalty parameter. Default is `FALSE`.
 #' @return A list containing the model specification (`model_spec`).
 #' @importFrom parsnip multinom_reg set_mode set_engine
+#' @importFrom tune tune
 #' @noRd
-define_multinomial_regression_spec <- function(task, tune = FALSE) {
+define_multinomial_reg_spec <- function(task, tuning = FALSE, engine) {
   if (task != "classification") {
     stop("Multinomial logistic regression is only applicable for classification tasks.")
   }
-  if (tune) {
-    model_spec <- multinom_reg(
-      penalty = tune()
-    ) %>%
-      set_mode("classification") %>%
-      set_engine("glmnet")
+
+  # Use a default engine if none is specified.
+  if (missing(engine)) {
+    engine <- "nnet"
+  }
+
+  # Build the base model specification based on whether tuning is requested.
+  if (tuning) {
+    if (engine %in% c("nnet", "keras")) {
+      # For nnet and keras, only the penalty tuning parameter is supported.
+      model_spec <- multinom_reg(
+        penalty = tune()
+      )
+    } else if (engine %in% c("brulee", "glmnet", "h2o", "spark")) {
+      # For these engines, both penalty and mixture can be tuned.
+      model_spec <- multinom_reg(
+        penalty = tune(),
+        mixture = tune()
+      )
+    } else {
+      stop("Unsupported engine specified for multinom_reg")
+    }
   } else {
-    model_spec <- multinom_reg() %>%
-      set_mode("classification") %>%
-      set_engine("nnet")
+    # When not tuning, use the default settings provided by multinom_reg()
+    model_spec <- multinom_reg()
   }
-  list(model_spec = model_spec)
-}
 
-#' Define Penalized Logistic Regression Model Specification
-#'
-#' @inheritParams define_logistic_regression_spec
-#' @return List containing the model specification (`model_spec`).
-#' @importFrom parsnip logistic_reg set_engine
-#' @importFrom tune finalize_model
-#' @importFrom tibble tibble
-#' @noRd
-define_penalized_logistic_regression_spec <- function(task, tune = FALSE) {
-  if (task != "classification") {
-    stop("Penalized logistic regression is only applicable for classification tasks.")
-  }
-  defaults <- get_default_params("penalized_logistic_regression")
+  # Set the model mode.
+  model_spec <- model_spec %>% set_mode("classification")
 
-  if (tune) {
-    model_spec <- logistic_reg(
-      penalty = tune(),
-      mixture = tune()
-    ) %>%
-      set_engine("glmnet")
+  # Engine-specific settings.
+  if (engine == "nnet") {
+    # nnet::multinom() uses a 'decay' parameter corresponding to penalty.
+    model_spec <- model_spec %>%
+      set_engine("nnet", trace = FALSE)
+  } else if (engine == "brulee") {
+    # brulee supports extra arguments (optimizer, epochs, learn_rate, etc.).
+    model_spec <- model_spec %>%
+      set_engine("brulee",
+                 optimizer    = "SGD",
+                 epochs       = 50L,
+                 learn_rate   = 0.01,
+                 momentum     = 0.9,
+                 batch_size   = 32,
+                 stop_iter    = 5L,
+                 class_weights = NULL)
+  } else if (engine == "glmnet") {
+    # glmnet requires specifying standardization and family = "multinomial"
+    model_spec <- model_spec %>%
+      set_engine("glmnet", standardize = TRUE, family = "multinomial")
+  } else if (engine == "h2o") {
+    # h2o uses agua::h2o_train_glm() behind the scenes.
+    # It expects penalty and mixture translated to lambda and alpha.
+    model_spec <- model_spec %>%
+      set_engine("h2o", lambda_search = TRUE, solver = "AUTO")
+  } else if (engine == "keras") {
+    # keras_mlp() fits a linear network with one hidden unit.
+    model_spec <- model_spec %>%
+      set_engine("keras", hidden_units = 1, act = "linear")
+  } else if (engine == "spark") {
+    # For spark, the underlying function (sparklyr::ml_logistic_regression) expects
+    # reg_param and elastic_net_param in place of penalty and mixture.
+    model_spec <- model_spec %>%
+      set_engine("spark", standardization = TRUE, reg_param = 0.0, elastic_net_param = 0.0)
   } else {
-    model_spec <- logistic_reg(
-      penalty = defaults$penalty,
-      mixture = defaults$mixture
-    ) %>%
-      set_engine("glmnet")
-    model_spec <- finalize_model(model_spec, parameters = tibble())
-  }
-  list(model_spec = model_spec)
-}
-
-#' Define Penalized Multinomial Logistic Regression Model Specification
-#'
-#' This function defines a multinomial logistic regression model specification
-#' with optional penalty and mixture hyperparameter tuning.
-#'
-#' @inheritParams define_penalized_logistic_regression_spec
-#' @return A list containing the model specification (`model_spec`).
-#' @importFrom parsnip multinom_reg set_engine
-#' @importFrom tune finalize_model
-#' @importFrom tibble tibble
-#' @noRd
-define_penalized_multinomial_regression_spec <- function(task, tune = FALSE) {
-  if (task != "classification") {
-    stop("Penalized multinomial logistic regression is only applicable for classification tasks.")
-  }
-
-  # Retrieve default parameters for penalized multinomial regression
-  defaults <- get_default_params("penalized_logistic_regression")
-
-  if (tune) {
-    # Model specification with tuning
-    model_spec <- multinom_reg(
-      penalty = tune(),
-      mixture = tune()
-    ) %>%
-      set_engine("glmnet")
-  } else {
-    # Model specification with defaults
-    model_spec <- multinom_reg(
-      penalty = defaults$penalty,
-      mixture = defaults$mixture
-    ) %>%
-      set_engine("glmnet")
-    # Finalize model with default parameters
-    model_spec <- finalize_model(model_spec, parameters = tibble())
+    stop("Unsupported engine specified for multinom_reg")
   }
 
   list(model_spec = model_spec)
 }
+
 
 #' Define Partial Least Squares Model Specification
 #'
@@ -654,26 +1008,26 @@ define_penalized_multinomial_regression_spec <- function(task, tune = FALSE) {
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip pls set_mode set_engine
 #' @import plsmod
+#' @importFrom tune tune
 #' @noRd
-define_pls_spec <- function(task, tune = FALSE) {
+define_pls_spec <- function(task, tuning = FALSE, engine = "mixOmics") {
   if (task != "regression") {
     stop("PLS is only applicable for regression tasks.")
   }
   defaults <- get_default_params("pls")
 
-  if (tune) {
+  if (tuning) {
     model_spec <- pls(
       num_comp = tune()
     ) %>%
       set_mode("regression") %>%
-      set_engine("mixOmics")
+      set_engine(engine)
   } else {
     model_spec <- pls(
       num_comp = defaults$num_comp
     ) %>%
       set_mode("regression") %>%
-      set_engine("mixOmics")
+      set_engine(engine)
   }
   list(model_spec = model_spec)
 }
-

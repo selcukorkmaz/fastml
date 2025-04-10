@@ -21,18 +21,23 @@
 #' @param recipe A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.
 #' @param tune_params A list specifying hyperparameter tuning ranges. Default is \code{NULL}.
 #' @param metric The performance metric to optimize during training.
+#' @param algorithm_engines A named list specifying the engine to use for each algorithm.
 #' @param n_cores An integer specifying the number of CPU cores to use for parallel processing. Default is \code{1}.
 #' @param stratify Logical indicating whether to use stratified sampling when splitting the data. Default is \code{TRUE} for classification and \code{FALSE} for regression.
 #' @param impute_method Method for handling missing values. Options include:
 #'   \describe{
-#'     \item{\code{"medianImpute"}}{Impute missing values using median imputation.}
-#'     \item{\code{"knnImpute"}}{Impute missing values using k-nearest neighbors.}
-#'     \item{\code{"bagImpute"}}{Impute missing values using bagging.}
-#'     \item{\code{"remove"}}{Remove rows with missing values from the data.}
-#'     \item{\code{"error"}}{Do not perform imputation; if missing values are detected after preprocessing, stop execution with an error.}
+#'     \item{\code{"medianImpute"}}{Impute missing values using median imputation (recipe-based).}
+#'     \item{\code{"knnImpute"}}{Impute missing values using k-nearest neighbors (recipe-based).}
+#'     \item{\code{"bagImpute"}}{Impute missing values using bagging (recipe-based).}
+#'     \item{\code{"remove"}}{Remove rows with missing values from the data (recipe-based).}
+#'     \item{\code{"mice"}}{Impute missing values using MICE (Multiple Imputation by Chained Equations).}
+#'     \item{\code{"missForest"}}{Impute missing values using the missForest algorithm.}
+#'     \item{\code{"custom"}}{Use a user-provided imputation function (see `impute_custom_function`).}
+#'     \item{\code{"error"}}{Do not perform imputation; if missing values are detected, stop execution with an error.}
 #'     \item{\code{NULL}}{Equivalent to \code{"error"}. No imputation is performed, and the function will stop if missing values are present.}
 #'   }
 #'   Default is \code{"error"}.
+#' @param impute_custom_function A function that takes a data.frame as input and returns an imputed data.frame. Used only if \code{impute_method = "custom"}.
 #' @param encode_categoricals Logical indicating whether to encode categorical variables. Default is \code{TRUE}.
 #' @param scaling_methods Vector of scaling methods to apply. Default is \code{c("center", "scale")}.
 #' @param summaryFunction A custom summary function for model evaluation. Default is \code{NULL}.
@@ -41,45 +46,40 @@
 #' @param tuning_iterations Number of tuning iterations (applicable for Bayesian or other iterative search methods). Default is \code{10}.
 #' @param early_stopping Logical indicating whether to use early stopping in Bayesian tuning methods (if supported). Default is \code{FALSE}.
 #' @param adaptive Logical indicating whether to use adaptive/racing methods for tuning. Default is \code{FALSE}.
+#' @param learning_curve Logical. If TRUE, generate learning curves (performance vs. training size).
 #' @param seed An integer value specifying the random seed for reproducibility.
 #' @importFrom magrittr %>%
 #' @importFrom rsample initial_split training testing
 #' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake all_numeric_predictors all_predictors all_nominal_predictors all_outcomes step_zv
-#' @importFrom dplyr filter pull rename_with mutate across where select
+#' @importFrom dplyr filter pull rename_with mutate across where select all_of
 #' @importFrom stats as.formula
 #' @importFrom doFuture registerDoFuture
 #' @importFrom future plan multisession sequential
 #' @importFrom janitor make_clean_names
 #' @importFrom stringr str_detect
+#' @importFrom mice mice complete
+#' @importFrom missForest missForest
+#' @importFrom purrr flatten
 #' @return An object of class \code{fastml_model} containing the best model, performance metrics, and other information.
 #' @examples
+#' \donttest{
 #' # Example 1: Using the iris dataset for binary classification (excluding 'setosa')
 #' data(iris)
 #' iris <- iris[iris$Species != "setosa", ]  # Binary classification
 #' iris$Species <- factor(iris$Species)
 #'
-#' # Train models with Bayesian optimization
+#' # Train models
 #' model <- fastml(
 #'   data = iris,
 #'   label = "Species",
-#'   algorithms = c("random_forest", "xgboost", "svm_radial")
+#'   algorithms = c("rand_forest", "xgboost", "svm_rbf")
 #' )
 #'
 #' # View model summary
 #' summary(model)
 #'
-#'   # Example 2: Using the mtcars dataset for regression
-#'   data(mtcars)
 #'
-#'   # Train models
-#'   model <- fastml(
-#'     data = mtcars,
-#'     label = "mpg",
-#'     algorithms = c("random_forest", "xgboost", "svm_radial")
-#'   )
-#'
-#'   # View model summary
-#'   summary(model)
+#'   }
 #'
 #' @export
 fastml <- function(data,
@@ -94,9 +94,11 @@ fastml <- function(data,
                    recipe = NULL,
                    tune_params = NULL,
                    metric = NULL,
+                   algorithm_engines = NULL,
                    n_cores = 1,
                    stratify = TRUE,
                    impute_method = "error",
+                   impute_custom_function = NULL,
                    encode_categoricals = TRUE,
                    scaling_methods = c("center", "scale"),
                    summaryFunction = NULL,
@@ -105,7 +107,9 @@ fastml <- function(data,
                    tuning_iterations = 10,
                    early_stopping = FALSE,
                    adaptive = FALSE,
+                   learning_curve = FALSE,
                    seed = 123) {
+
   set.seed(seed)
   if (!(label %in% names(data))) {
     stop("The specified label does not exist in the data.")
@@ -130,6 +134,26 @@ fastml <- function(data,
       select(-all_of(exclude))
   }
 
+  if(!is.null(impute_method) && impute_method == "error" && anyNA(data)){
+
+    stop("The dataset contains missing values, and 'impute_method = \"error\"' was specified.
+        Missing values must be handled before proceeding. Consider removing rows with missing values
+        or using an imputation method such as 'medianImpute', 'knnImpute', 'bagImpute', 'mice', or 'missForest'.")
+
+
+  }
+
+  if(is.null(impute_method) && anyNA(data) && any(c("svm_linear", "svm_rbf", "nearest_neighbor", "naive_Bayes") %in% algorithms)){
+
+    stop(sprintf("The dataset contains missing values, and no imputation method was specified (`impute_method = NULL`).
+        Missing values must be addressed as they are not supported by the following algorithms: %s.
+        Please specify an imputation method (e.g., 'medianImpute', 'knnImpute', 'bagImpute', 'mice',
+        or 'missForest') or remove rows with missing values before proceeding.",
+                 paste(algorithms[algorithms %in% c("svm_linear", "svm_rbf", "nearest_neighbor", "naive_Bayes")], collapse = ", ")))
+
+
+  }
+
 
   data <- data %>%
     mutate(
@@ -140,21 +164,19 @@ fastml <- function(data,
   target_var <- data[[label]]
   label_index <- which(colnames(data) == label)
 
-
+  # If numeric target has <= 5 unique values, convert to factor
   if (is.numeric(target_var) && length(unique(target_var)) <= 5) {
-    # Convert target_var to factor
     target_var <- as.factor(target_var)
-    data[[label]] = as.factor(data[[label]])
-
+    data[[label]] <- as.factor(data[[label]])
     task <- "classification"
-
-    # Issue a warning to inform the user about the change
-    warning(sprintf("The target variable '%s' is numeric with %d unique values. It has been converted to a factor and the task has been set to 'classification'.",
-                    label, length(unique(target_var))))
+    warning(sprintf(
+      "The target variable '%s' is numeric with %d unique values. It has been converted to a factor and the task has been set to 'classification'.",
+      label, length(unique(target_var))
+    ))
   }
 
+  # sanitize function
   data = sanitize(data)
-
 
   label <- colnames(data[label_index])
 
@@ -167,14 +189,18 @@ fastml <- function(data,
   }
 
   if(task == "classification"){
-    positive_class <- ifelse(event_class == "first", levels(data[[label]])[1], levels(data[[label]])[2])
-  }else{positive_class = NULL}
+    positive_class <- ifelse(event_class == "first",
+                             levels(data[[label]])[1],
+                             levels(data[[label]])[2])
+  } else {
+    positive_class = NULL
+  }
 
   if (is.null(metric)) {
     metric <- if (task == "classification") "accuracy" else "rmse"
   }
 
-  # Define allowed metrics for each task
+  # Define allowed metrics
   allowed_metrics_classification <- c("accuracy", "kap", "sens", "spec", "precision", "f_meas", "roc_auc")
   allowed_metrics_regression <- c("rmse", "rsq", "mae")
 
@@ -199,7 +225,6 @@ fastml <- function(data,
     if (length(intersect(algorithms, supported_algorithms)) == 0) {
       stop("No valid algorithms specified.")
     }
-
     invalid_algos <- setdiff(algorithms, supported_algorithms)
     if (length(invalid_algos) > 0) {
       warning("Invalid algorithm(s) specified: ", paste(invalid_algos, collapse = ", "))
@@ -216,6 +241,27 @@ fastml <- function(data,
   train_data <- training(split)
   test_data <- testing(split)
 
+  if(!is.null(impute_method) && impute_method == "remove") {
+    if (anyNA(train_data)) {
+      train_data <- train_data %>%
+        filter(complete.cases(.))
+
+      warning("Rows with missing values have been removed from the training set.")
+
+    }
+
+    if (anyNA(test_data)) {
+      test_data <- test_data %>%
+        filter(complete.cases(.))
+
+      warning("Rows with missing values have been removed from the test set.")
+
+    }
+
+  }
+
+
+
   if (task == "classification") {
     train_data[[label]] <- as.factor(train_data[[label]])
     test_data[[label]] <- factor(test_data[[label]], levels = levels(train_data[[label]]))
@@ -224,31 +270,160 @@ fastml <- function(data,
     test_data[[label]] <- as.numeric(test_data[[label]])
   }
 
+  ###############################################################################
+  # NEW BLOCK: Advanced Imputation (MICE, missForest, or custom) if no recipe supplied
+  ###############################################################################
+  # We handle advanced or custom imputation outside of the recipes step.
+  # We'll do it on train_data and test_data directly if requested.
+
+  # If user has provided a custom recipe, skip internal imputation logic
   if (is.null(recipe)) {
+
+    if (!is.null(impute_method) && impute_method %in% c("mice", "missForest", "custom")) {
+
+      # If 'custom', user must provide a function
+      if (impute_method == "custom") {
+        if (!is.function(impute_custom_function)) {
+          stop("You selected impute_method='custom' but did not provide a valid `impute_custom_function`.")
+        }
+        # Apply user function to train/test
+        train_data <- impute_custom_function(train_data)
+        test_data <- impute_custom_function(test_data)
+
+        warning("Missing values in the training and test set have been imputed using the 'custom' method.")
+
+
+        } else if (impute_method == "mice") {
+          if (!requireNamespace("mice", quietly = TRUE)) {
+            stop("impute_method='mice' requires the 'mice' package to be installed.")
+          }
+          # Perform MICE on train_data only. Typically, you do MICE on training and apply
+          # some approach to test, but for simplicity, we'll do them separately:
+          # 1) For train_data:
+          train_data_mice <- mice(train_data)  # Basic usage
+          train_data <- complete(train_data_mice)
+
+          warning("Missing values in the training set have been imputed using the 'mice' method.")
+
+          # 2) For test_data:
+          # There's no built-in perfect approach for test_data in MICE. For simplicity,
+          # we do a quick single pass (though in practice you might combine with train).
+          # We'll create a temporary combined approach or re-run MICE on test alone.
+          # This is simplistic but workable for demonstration.
+          if (anyNA(test_data)) {
+            test_data_mice <- mice(test_data)
+            test_data <- complete(test_data_mice)
+
+            warning("Missing values in the test set have been imputed using the 'mice' method.")
+
+          }
+
+        } else if (impute_method == "missForest") {
+        if (!requireNamespace("missForest", quietly = TRUE)) {
+          stop("impute_method='missForest' requires the 'missForest' package to be installed.")
+        }
+        # Perform missForest on train_data
+        train_data_imp <- missForest(train_data, verbose = FALSE)
+        train_data <- train_data_imp$ximp
+
+        warning("Missing values in the training set have been imputed using the 'missForest' method.")
+
+
+        # Similarly for test_data if needed
+        if (anyNA(test_data)) {
+          test_data_imp <- missForest(test_data, verbose = FALSE)
+          test_data <- test_data_imp$ximp
+
+          warning("Missing values in the test set have been imputed using the 'missForest' method.")
+
+        }
+      }
+
+      # If user has requested advanced or custom imputation, we won't also do recipe-based steps
+      # for imputation. We'll effectively skip those inside the recipes below.
+      # We'll keep a note to skip recipe imputation steps:
+      skip_recipe_imputation <- TRUE
+
+    } else {
+      skip_recipe_imputation <- FALSE
+    }
+
+  } else {
+    # If user provided a recipe, do not do advanced or custom imputation outside
+    skip_recipe_imputation <- TRUE
+  }
+  ###############################################################################
+
+  # Set up parallel processing using future
+  if (n_cores > 1) {
+    if (!requireNamespace("doFuture", quietly = TRUE)) {
+      stop("The 'doFuture' package is required for parallel processing but is not installed.")
+    }
+    if (!requireNamespace("future", quietly = TRUE)) {
+      stop("The 'future' package is required but is not installed.")
+    }
+    registerDoFuture()
+    plan(multisession, workers = n_cores)
+  } else {
+    if (!requireNamespace("future", quietly = TRUE)) {
+      stop("The 'future' package is required but is not installed.")
+    }
+    plan(sequential)
+  }
+
+  ########################################################################
+  # Build or use recipe if user hasn't provided it
+  ########################################################################
+  if (is.null(recipe)) {
+    # Build a default recipe, possibly skipping recipe-based imputation if advanced used
     recipe <- recipe(as.formula(paste(label, "~ .")), data = train_data)
 
     # Remove zero-variance predictors
     recipe <- recipe %>%
       step_zv(all_predictors())
 
-    if (impute_method == "medianImpute") {
-      recipe <- recipe %>% step_impute_median(all_numeric_predictors())
-    } else if (impute_method == "knnImpute") {
-      recipe <- recipe %>% step_impute_knn(all_predictors())
-    } else if (impute_method == "bagImpute") {
-      recipe <- recipe %>% step_impute_bag(all_predictors())
-    } else if (impute_method == "remove") {
-      recipe <- recipe %>% step_naomit(all_predictors(), skip = TRUE)
-    } else if (impute_method == "error" || is.null(impute_method)) {
-      # do nothing
+    # Apply recipe-based imputation steps only if skip_recipe_imputation = FALSE
+    if (!skip_recipe_imputation) {
+      if (!is.null(impute_method) && impute_method == "medianImpute") {
+        recipe <- recipe %>% step_impute_median(all_numeric_predictors())
+
+        warning("Missing values in numeric predictors are being imputed using the median.")
+
+      } else if (!is.null(impute_method) && impute_method == "knnImpute") {
+        recipe <- recipe %>% step_impute_knn(all_predictors())
+
+        warning("Missing values are being imputed using KNN (k-Nearest Neighbors).")
+
+      } else if (!is.null(impute_method) && impute_method == "bagImpute") {
+        recipe <- recipe %>% step_impute_bag(all_predictors())
+
+        warning("Missing values are being imputed using bagging (bootstrap aggregation)")
+
+
+      } else if (!is.null(impute_method) && impute_method == "remove") {
+        recipe <- recipe %>% step_naomit(all_predictors(), skip = TRUE)
+
+        warning("Rows with missing values in predictors are being removed.")
+
+      } else if (impute_method == "error" || is.null(impute_method)) {
+        # We'll detect if there's still NA after prep/bake, then stop
+        # so do nothing special here
+      } else {
+        # If it's a leftover method not recognized
+        stop("Invalid impute_method specified.")
+      }
     } else {
-      stop("Invalid impute_method specified.")
+      # skip_recipe_imputation = TRUE means we are using advanced or custom
+      # so if "error" was set but we do have NAs after that, it won't be handled here
+      # do nothing in recipe for imputation
     }
 
+    # If encoding needed
     if (encode_categoricals) {
       recipe <- recipe %>% step_dummy(all_nominal_predictors(), -all_outcomes())
     }
 
+    # scaling
     if (!is.null(scaling_methods)) {
       if ("center" %in% scaling_methods) {
         recipe <- recipe %>% step_center(all_numeric_predictors())
@@ -258,32 +433,15 @@ fastml <- function(data,
       }
     }
 
-    # Do not prep yet
+    # do not prep yet
   } else {
-    # User provided a recipe, must be untrained
+    # user provided a recipe
     if (!inherits(recipe, "recipe")) {
       stop("The provided recipe is not a valid recipe object.")
     }
     if (length(recipe$steps) > 0 && any(sapply(recipe$steps, function(x) x$trained))) {
       stop("The provided recipe is already trained. Please supply an untrained recipe.")
     }
-  }
-
-  # Set up parallel processing using future
-  if (n_cores > 1) {
-    if (!requireNamespace("doFuture", quietly = TRUE)) {
-      stop("The 'doFuture' package is required for parallel processing but is not installed.")
-    }
-    if (!requireNamespace("future", quietly = TRUE)) {
-      stop("The 'future' package is required for parallel processing but is not installed.")
-    }
-    registerDoFuture()
-    plan(multisession, workers = n_cores)
-  } else {
-    if (!requireNamespace("future", quietly = TRUE)) {
-      stop("The 'future' package is required but is not installed.")
-    }
-    plan(sequential)
   }
 
   models <- train_models(
@@ -303,8 +461,13 @@ fastml <- function(data,
     tuning_strategy = tuning_strategy,
     tuning_iterations = tuning_iterations,
     early_stopping = early_stopping,
-    adaptive = adaptive
+    adaptive = adaptive,
+    algorithm_engines = algorithm_engines
   )
+
+  models <- models[sapply(models, function(x) length(x) > 0)]
+
+  engine_names <- get_engine_names(models)
 
   if (length(models) == 0) {
     stop("No models were successfully trained.")
@@ -314,7 +477,35 @@ fastml <- function(data,
   performance <- eval_output$performance
   predictions <- eval_output$predictions
 
-  metric_values <- sapply(performance, function(x) x %>% filter(.metric == metric) %>% pull(.estimate))
+  # metric_values <- sapply(performance, function(x) x %>% filter(.metric == metric) %>% pull(.estimate))
+
+  # Create a new list where each element's name is "algorithm (engine)"
+  combined_performance  <- list()
+  for (alg in names(performance)) {
+    for (eng in names(performance[[alg]])) {
+      combined_name <- paste0(alg, " (", eng, ")")
+      combined_performance[[combined_name]] <- performance[[alg]][[eng]]
+    }
+  }
+
+  if(length(names(models)) == length(names(combined_performance))) {
+    names(models) <- names(combined_performance)
+    models = lapply(models, function(x) x[[1]])
+
+  } else {
+
+    models <- flatten_and_rename_models(models)
+    names(models) <- names(models)
+
+
+  }
+
+
+  # Now apply the function over the flattened list
+  metric_values <- sapply(combined_performance, function(x) {
+    x %>% filter(.metric == metric) %>% pull(.estimate)
+  })
+
 
   if (any(is.na(metric_values))) {
     warning("Some models did not return the specified metric.")
@@ -331,26 +522,126 @@ fastml <- function(data,
     names(metric_values[metric_values == max(metric_values)])
   }
 
-  best_model_name <- names(models)[names(models) %in% best_model_idx]
+  # model_names <- get_model_engine_names(models)
+  # best_model_name <- model_names[model_names %in% best_model_idx]
+
+  # Split each compound name into algorithm and engine parts
+  best_model_components <- lapply(best_model_idx, function(x) {
+    parts <- strsplit(x, " \\(")[[1]]
+    algo <- parts[1]
+    engine <- gsub("\\)", "", parts[2])
+    list(algo = algo, engine = engine)
+  })
+
+  # Build a named vector: names are the algorithm and values are the engine
+  best_model_name <- sapply(best_model_components, function(comp) comp$engine)
+  names(best_model_name) <- sapply(best_model_components, function(comp) comp$algo)
+
 
   # Now store processed training data for explainability:
-  # Prep and bake the recipe on train_data to store processed_train_data
   trained_recipe <- prep(recipe, training = train_data, retain = TRUE)
   processed_train_data <- bake(trained_recipe, new_data = NULL)
 
+  if (learning_curve) {
+    # Define the fractions to test
+    fractions <- c(0.1, 0.2, 0.4, 0.6, 0.8, 1.0)
+
+    # Helper function to run the learning curve step for a given fraction
+    run_curve <- function(fraction) {
+      set.seed(seed)
+
+      # Select training subset based on the fraction value
+      sub_train <- if (fraction >= 1.0) {
+        train_data
+      } else {
+        sub_split <- rsample::initial_split(
+          train_data,
+          prop = fraction,
+          strata = if (task == "classification") label else NULL
+        )
+        rsample::training(sub_split)
+      }
+
+      # Train models on the subset
+      sub_models <- train_models(
+        train_data = sub_train,
+        label = label,
+        task = task,
+        algorithms = algorithms,
+        resampling_method = resampling_method,
+        folds = folds,
+        repeats = repeats,
+        tune_params = tune_params,
+        metric = metric,
+        summaryFunction = summaryFunction,
+        seed = seed,
+        recipe = recipe,
+        use_default_tuning = use_default_tuning,
+        tuning_strategy = tuning_strategy,
+        tuning_iterations = tuning_iterations,
+        early_stopping = early_stopping,
+        adaptive = adaptive,
+        algorithm_engines = algorithm_engines
+      )
+
+      # Evaluate models on the subset
+      sub_eval <- evaluate_models(
+        sub_models,
+        sub_train,
+        test_data,
+        label,
+        task,
+        metric,
+        event_class
+      )
+
+      # Extract the performance metric from each model evaluation
+      perf_values <- sapply(sub_eval$performance, function(m) {
+        m_df <- as.data.frame(m)
+        val <- m_df[m_df$.metric == metric, ".estimate"]
+        if (length(val) == 0) NA else val
+      })
+
+      # Compute the average performance (ignoring any missing values)
+      avg_perf <- mean(perf_values, na.rm = TRUE)
+
+      # Return a data frame for this fraction
+      data.frame(Fraction = fraction, Performance = avg_perf)
+    }
+
+    # Apply the helper function to each fraction and combine the results
+    df_lc <- do.call(rbind, lapply(fractions, run_curve))
+
+    # Plot the learning curve
+
+      lc_plot <- ggplot(df_lc, aes(x = Fraction, y = Performance)) +
+        geom_line(color = "blue") +
+        geom_point(color = "blue") +
+        labs(
+          title = "Learning Curve",
+          x = "Training Set Size (fraction)",
+          y = paste("Mean", metric, "across models")
+        ) +
+        theme_minimal()
+      print(lc_plot)
+
+  }
+
+
   result <- list(
-    best_model = models[best_model_name],
+    best_model = models[best_model_idx],
     best_model_name = best_model_name,
     performance = performance,
     predictions = predictions,
-    preprocessor = trained_recipe, # Store the trained recipe
-    processed_train_data = processed_train_data, # Store processed training data
+    preprocessor = trained_recipe,
+    processed_train_data = processed_train_data,
     label = label,
     task = task,
-    models = models,
+    models =models,
     metric = metric,
     positive_class = positive_class,
-    event_class = event_class
+    event_class = event_class,
+    engine_names = engine_names
   )
   class(result) <- "fastml_model"
   return(result)
