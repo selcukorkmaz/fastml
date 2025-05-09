@@ -587,6 +587,8 @@ fastml <- function(data,
         algorithm_engines = algorithm_engines
       )
 
+
+
       # Evaluate models on the subset
       sub_eval <- evaluate_models(
         sub_models,
@@ -598,12 +600,15 @@ fastml <- function(data,
         event_class
       )
 
+
       # Extract the performance metric from each model evaluation
-      perf_values <- sapply(sub_eval$performance, function(m) {
-        m_df <- as.data.frame(m)
-        val <- m_df[m_df$.metric == metric, ".estimate"]
-        if (length(val) == 0) NA else val
+      perf_values <- sapply(sub_eval$performance, function(engine_list) {
+        perf_df <- engine_list[[1]]
+        val <- perf_df[perf_df$.metric == metric, ".estimate", drop = TRUE]
+        if (length(val) == 0) NA_real_ else as.numeric(val[[1]])
       })
+
+      perf_values
 
       # Compute the average performance (ignoring any missing values)
       avg_perf <- mean(perf_values, na.rm = TRUE)

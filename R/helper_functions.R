@@ -986,7 +986,7 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
     # Regression task
     predictions <- predict(final_model, new_data = test_data)
     pred <- predictions$.pred
-    data_metrics <- tibble::tibble(truth = true_labels, estimate = pred)
+    data_metrics <- tibble::tibble(truth = test_data[[label]], estimate = pred)
     metrics_set <- yardstick::metric_set(yardstick::rmse, yardstick::rsq, yardstick::mae)
     perf <- metrics_set(data_metrics, truth = truth, estimate = estimate)
   }
@@ -1009,6 +1009,7 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
 #' @importFrom stats ave
 #'
 #' @export
+#'
 get_best_model_idx <- function(df, metric, group_cols = c("Model", "Engine")) {
   # Convert the metric to numeric in case it's not already
   metric_values <- as.numeric(as.character(df[[metric]]))
@@ -1017,13 +1018,23 @@ get_best_model_idx <- function(df, metric, group_cols = c("Model", "Engine")) {
   group_values <- interaction(df[, group_cols], drop = TRUE)
 
   # Compute the maximum metric for each group
-  group_max <- ave(metric_values, group_values, FUN = max)
+  if(metric %in% c("rmse", "mae")){
 
-  # Determine the overall best metric value
-  overall_max <- max(metric_values)
+    group_val <- ave(metric_values, group_values, FUN = min)
+    overall_val <- min(metric_values)
+
+
+  }else{
+
+    group_val <- ave(metric_values, group_values, FUN = max)
+    overall_val <- max(metric_values)
+
+
+  }
+
 
   # Identify groups whose maximum equals the overall maximum
-  best_groups <- unique(group_values[group_max == overall_max])
+  best_groups <- unique(group_values[group_val == overall_val])
 
   # Return indices where the group is one of the best groups
   idx <- which(group_values %in% best_groups)

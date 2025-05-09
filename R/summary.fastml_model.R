@@ -110,25 +110,41 @@ summary.fastml_model <- function(object,
   performance_sub <- performance_df[performance_df$.metric %in% desired_metrics, ]%>%
     dplyr::select(-dplyr::any_of(".estimator"))
 
-  if(length(engine_names) == 1 && "LiblineaR" %in% engine_names){
+
+
+    if(length(engine_names) == 1 && "LiblineaR" %in% engine_names){
+
+        performance_wide <- pivot_wider(
+          performance_sub,
+          names_from = .metric,
+          values_from = .estimate
+        ) %>%
+          dplyr::select(Model, Engine, accuracy, kap, sens, spec, precision, f_meas)
+
+    }else{
+
+      if(task == "classification"){
 
       performance_wide <- pivot_wider(
         performance_sub,
         names_from = .metric,
         values_from = .estimate
       ) %>%
-        dplyr::select(Model, Engine, accuracy, kap, sens, spec, precision, f_meas)
+        dplyr::select(Model, Engine, accuracy, kap, sens, spec, precision, f_meas, roc_auc)
 
-  }else{
+      }else{
 
-    performance_wide <- pivot_wider(
-      performance_sub,
-      names_from = .metric,
-      values_from = .estimate
-    ) %>%
-      dplyr::select(Model, Engine, accuracy, kap, sens, spec, precision, f_meas, roc_auc)
+        performance_wide <- pivot_wider(
+          performance_sub,
+          names_from = .metric,
+          values_from = .estimate
+        ) %>%
+          dplyr::select(Model, Engine, rmse, rsq, mae)
+      }
 
-  }
+    }
+
+
 
   # performance_wide$Engine <- engine_names[match(performance_wide$Model, names(engine_names))]
   # performance_wide <- performance_wide[, c("Model", "Engine", setdiff(colnames(performance_wide), c("Model", "Engine")))]
