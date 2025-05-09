@@ -22,7 +22,7 @@
 #' @param adaptive Logical indicating whether to use adaptive/racing methods.
 #' @param algorithm_engines A named list specifying the engine to use for each algorithm.
 #' @importFrom magrittr %>%
-#' @importFrom dplyr filter mutate select if_else
+#' @importFrom dplyr filter mutate select if_else starts_with
 #' @importFrom tibble tibble
 #' @importFrom rlang sym
 #' @importFrom dials range_set value_set grid_regular grid_latin_hypercube finalize

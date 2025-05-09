@@ -1,4 +1,4 @@
-utils::globalVariables(c("truth", "residual", "sensitivity", "specificity", "FalsePositiveRate", "TruePositiveRate"))
+utils::globalVariables(c("truth", "residual", "sensitivity", "specificity", "FalsePositiveRate", "TruePositiveRate", "Engine", "ModelEngine"))
 
 #' Summary Function for fastml_model (Using yardstick for ROC Curves)
 #'
@@ -25,7 +25,7 @@ utils::globalVariables(c("truth", "residual", "sensitivity", "specificity", "Fal
 #' @param ... Additional arguments.
 #' @return Prints summary and plots if requested.
 #'
-#' @importFrom dplyr filter select mutate bind_rows group_by summarise n
+#' @importFrom dplyr filter select mutate bind_rows group_by summarise n starts_with
 #' @importFrom magrittr %>%
 #' @importFrom reshape2 melt dcast
 #' @importFrom tune extract_fit_parsnip
@@ -459,6 +459,7 @@ summary.fastml_model <- function(object,
       }
     }
 
+
     if (length(dfs) > 0) {
       # Combine all prediction data frames
 
@@ -514,7 +515,7 @@ summary.fastml_model <- function(object,
       auc_values <- sapply(roc_list, function(x) auc(x))
 
       # Sort keys by AUC in descending order
-      sorted_keys <- names(sort(auc_values, decreasing = TRUE))
+      sorted_keys <- auc_values[order(names(auc_values))] #names(sort(auc_values, decreasing = TRUE))
 
       # Create a data frame for ROC curves by combining the ROC objects
 
@@ -523,7 +524,7 @@ summary.fastml_model <- function(object,
       }else{
 
       roc_data <- data.frame()
-      for (key in sorted_keys) {
+      for (key in names(sorted_keys)) {
         roc_obj <- roc_list[[key]]
         roc_df <- data.frame(
           FalsePositiveRate = rev(roc_obj$specificities),
@@ -548,8 +549,8 @@ summary.fastml_model <- function(object,
         theme(plot.title = element_text(hjust = 0.5)) +
         # Use sorted keys to label the legend with AUC values
         scale_color_manual(values = 1:length(sorted_keys),
-                           labels = paste0(sorted_keys, " (AUC = ",
-                                           sprintf("%.3f", auc_values[sorted_keys]), ")")) +
+                           labels = paste0(names(sorted_keys), " (AUC = ",
+                                           sprintf("%.3f", auc_values[names(sorted_keys)]), ")")) +
         theme(legend.title = element_blank())
 
       print(roc_curve_plot)

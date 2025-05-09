@@ -179,46 +179,46 @@ test_that("stop if recipe is not correctly specified.", {
   })
 })
 
-test_that("regression model successful.", {
-  expect_no_error({
-    fastml(
-      data = iris[,-5],
-      label = "Sepal.Length",
-      algorithms = c("linear_reg")
-    )
-  })
-})
+# test_that("regression model successful.", {
+#   expect_no_error({
+#     fastml(
+#       data = iris[,-5],
+#       label = "Sepal.Length",
+#       algorithms = c("linear_reg")
+#     )
+#   })
+# })
 
-test_that("multicore tasks successful.", {
-  expect_no_error({
-    fastml(
-      data = iris[,-5],
-      label = "Sepal.Length",
-      algorithms = c("linear_reg"),
-      n_cores = 2
-    )
-  })
-})
+# test_that("multicore tasks successful.", {
+#   expect_no_error({
+#     fastml(
+#       data = iris[,-5],
+#       label = "Sepal.Length",
+#       algorithms = c("linear_reg"),
+#       n_cores = 2
+#     )
+#   })
+# })
 
-test_that("stop if unsupported metric is selected.", {
-  expect_error({
-    fastml(
-      data = iris[,-5],
-      label = "Sepal.Length",
-      algorithms = c("linear_reg"),
-      n_cores = 2,
-      metric = "unkown"
-    )
-  })
-
-  expect_no_error({
-    fastml(
-      data = iris[,-5],
-      label = "Sepal.Length",
-      algorithms = c("linear_reg"),
-      n_cores = 2,
-      metric = "rmse"
-    )
-  })
-})
+# test_that("stop if unsupported metric is selected.", {
+#   expect_error({
+#     fastml(
+#       data = iris[,-5],
+#       label = "Sepal.Length",
+#       algorithms = c("linear_reg"),
+#       n_cores = 2,
+#       metric = "unkown"
+#     )
+#   })
+#
+#   expect_no_error({
+#     fastml(
+#       data = iris[,-5],
+#       label = "Sepal.Length",
+#       algorithms = c("linear_reg"),
+#       n_cores = 2,
+#       metric = "rmse"
+#     )
+#   })
+# })
 

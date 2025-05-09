@@ -126,7 +126,8 @@ iris$Species <- factor(iris$Species)
 model <- fastml(
   data = iris,
   label = "Species",
-  algorithms = c("rand_forest", "xgboost", "svm_rbf")
+  algorithms = c("rand_forest", "xgboost", "svm_rbf"), algorithm_engines = c(
+  list(rand_forest = c("ranger","aorsf", "partykit", "randomForest")))
 )
 
 # View model summary

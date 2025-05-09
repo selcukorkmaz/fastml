@@ -1,3 +1,5 @@
+utils::globalVariables(c("Fraction", "Performance"))
+
 #' Fast Machine Learning Function
 #'
 #' Trains and evaluates multiple classification or regression models automatically detecting the task based on the target variable type.
@@ -52,7 +54,7 @@
 #' @importFrom rsample initial_split training testing
 #' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake all_numeric_predictors all_predictors all_nominal_predictors all_outcomes step_zv
 #' @importFrom dplyr filter pull rename_with mutate across where select all_of
-#' @importFrom stats as.formula
+#' @importFrom stats as.formula complete.cases
 #' @importFrom doFuture registerDoFuture
 #' @importFrom future plan multisession sequential
 #' @importFrom janitor make_clean_names
@@ -72,7 +74,8 @@
 #' model <- fastml(
 #'   data = iris,
 #'   label = "Species",
-#'   algorithms = c("rand_forest", "xgboost", "svm_rbf")
+#'   algorithms = c("rand_forest", "xgboost", "svm_rbf"), algorithm_engines = c(
+#'   list(rand_forest = c("ranger","aorsf", "partykit", "randomForest")))
 #' )
 #'
 #' # View model summary
