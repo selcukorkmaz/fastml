@@ -1,0 +1,248 @@
+---
+title: "Advanced Workflows with fastml()"
+format: html
+editor: visual
+---
+  # Why an Advanced Tutorial?
+
+  `fastml()` handles 90 % of day‑to‑day modelling out‑of‑the‑box, but real projects often need more control.
+This guide dives into the **power‑user levers**:
+
+  * Custom **recipes** (feature engineering, text / time features)
+* Alternative **hyper‑parameter search** strategies (Bayesian, adaptive racing)
+* **Parallel** and **distributed** engines (multi‑core, *sparklyr*, *h2o*)
+* **Stacking / ensembling** multiple `fastml` runs
+* **Learning curves** and automated model monitoring
+
+We assume you’ve worked through the classification and regression tutorials.
+
+---
+
+  ## 1 · Set‑up
+
+  ```r
+library(fastml)
+library(tidymodels)
+library(dplyr)
+
+data("credit_data", package = "modeldata")
+credit_data <- credit_data %>%
+  mutate(Status = factor(Status, levels = c("good", "bad")))
+```
+
+We’ll predict **credit status** (binary classification). The dataset contains wide ordinals, categoricals, and numeric predictors — perfect for advanced preprocessing.
+
+---
+
+  ## 2 · Custom Recipe
+
+  Below we:
+
+  1. **Impute** missing numerics with KNN; categoricals with the mode.
+2. **Create** interaction terms (`Income × Limit`).
+3. **Normalize** numeric predictors.
+4. **Collapse infrequent factor levels** (< 3 %).
+
+```r
+credit_rec <- recipe(Status ~ ., data = credit_data) %>%
+  step_impute_knn(all_numeric_predictors()) %>%
+  step_impute_mode(all_nominal_predictors()) %>%
+  step_interact(terms = ~ Income:Limit) %>%
+  step_other(all_nominal_predictors(), threshold = 0.03) %>%
+  step_dummy(all_nominal_predictors()) %>%
+  step_normalize(all_numeric_predictors())
+```
+
+> If you supply `recipe = credit_rec` to `fastml()` **internal preprocessing (imputation/encoding/scaling) is skipped**, preventing conflicts.
+
+---
+
+  ## 3 · Tuning Strategies
+
+  ### 3.1 Bayesian Optimisation
+
+  ```r
+bayes_res <- fastml(
+  data       = credit_data,
+  label      = "Status",
+  algorithms = c("rand_forest", "xgboost"),
+  metric     = "roc_auc",
+  resampling_method = "cv",
+  folds      = 5,
+  recipe     = credit_rec,
+  tuning_strategy   = "bayes",
+  tuning_iterations = 40,      # iterations after the 10‑point space‑filling start
+  early_stopping    = TRUE,    # stop when no improvement for 5 iters
+  n_cores           = 6,
+  seed              = 2025)
+```
+
+Bayesian search explores the hyper‑parameter space efficiently, especially when evaluation is costly.
+
+### 3.2 Adaptive Racing (ANOVA)
+
+```r
+race_res <- fastml(
+  data       = credit_data,
+  label      = "Status",
+  algorithms = c("rand_forest", "xgboost"),
+  recipe     = credit_rec,
+  metric     = "roc_auc",
+  adaptive   = TRUE,           # enables `finetune::tune_race_anova()`
+  tuning_strategy = "grid",   # initial grid; racing drops losers
+  folds      = 10,
+  n_cores    = 6,
+  seed       = 2025)
+```
+
+Racing aggressively prunes poor combos early; handy for large grids.
+
+---
+
+  ## 4 · Parallel & Distributed Engines
+
+  ### 4.1 Multi‑core (doFuture)
+
+  `fastml()` automatically parallelises when `n_cores > 1`:
+
+  ```r
+library(doFuture)
+registerDoFuture()
+
+plan(multisession, workers = 8)  # or multicore on Linux/macOS
+```
+
+### 4.2 Spark Cluster
+
+```r
+library(sparklyr)
+sc <- spark_connect(master = "spark://my‑cluster:7077")
+
+spark_res <- fastml(
+  data       = credit_data,
+  label      = "Status",
+  algorithms = c("rand_forest", "linear_reg"),
+  algorithm_engines = list(rand_forest = "spark",
+                           linear_reg  = "spark"),
+  metric     = "roc_auc",
+  n_cores    = 4)  # number of executor cores per worker
+```
+
+> Spark engines (*sparklyr* wrappers) offload model fitting to the cluster while `fastml` coordinates.
+
+### 4.3 H2O AutoML + fastml API
+
+```r
+library(h2o)
+h2o.init(nthreads = -1)
+
+h2o_res <- fastml(
+  data       = credit_data,
+  label      = "Status",
+  algorithms = c("rand_forest", "logistic_reg"),
+  algorithm_engines = list(rand_forest  = "h2o",
+                           logistic_reg = "h2o"),
+  metric     = "roc_auc",
+  impute_method = "h2o",   # optional custom imputation function
+  n_cores    = 4)
+```
+
+---
+
+  ## 5 · Learning Curves & Monitoring
+
+  ```r
+lc_res <- fastml(
+  data           = credit_data,
+  label          = "Status",
+  algorithms     = c("xgboost"),
+  learning_curve = TRUE,
+  folds          = 5)
+```
+
+The built‑in learning curve shows **ROC AUC** vs training fraction, helping spot under‑/over‑fitting.
+
+---
+
+  ## 6 · Ensembling / Stacking
+
+  While `fastml()` returns individual models, you can ensemble their predictions easily.
+
+```r
+pred_dfs <- bayes_res$predictions  # nested list
+
+# Extract probabilities for the positive class across models
+probs <- purrr::map_df(pred_dfs, ~ .x[[1]][, c(".pred_bad")], .id = "Model") %>%
+  bind_cols(truth = rep(credit_data$Status, times = length(pred_dfs)))
+
+# Simple average ensemble
+probs$avg <- probs %>%
+  select(starts_with(".pred_")) %>%
+  rowMeans()
+
+library(yardstick)
+roc_auc(probs, truth = truth, avg)
+```
+
+For a tidy stacking pipeline use the **`stacks`** package and supply `fastml` workflows as candidates.
+
+---
+
+  ## 7 · Custom Metrics
+
+  Pass any `yardstick`-compatible summariser via `summaryFunction`.
+
+```r
+geometric_mean <- function(data, ...) {
+  yardstick::mcc(data, ...)  # Matthew’s correlation coefficient as example
+}
+
+custom_res <- fastml(
+  data      = credit_data,
+  label     = "Status",
+  algorithms = c("rand_forest", "xgboost"),
+  summaryFunction = geometric_mean,
+  metric    = "mcc")
+```
+
+---
+
+  ## 8 · Save & Reload Best Model
+
+  ```r
+best_wf <- bayes_res$best_model[[1]]
+
+tidymodels::write_rds(best_wf, "models/best_credit_model.rds")
+
+# later...
+loaded_wf <- readr::read_rds("models/best_credit_model.rds")
+predict(loaded_wf, new_data = credit_data[1:3, ])
+```
+
+---
+
+  ## 9 · Frequently Asked Questions
+
+  | Question                                                       | Answer                                                                                                                                   |
+  | -------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------------------------- |
+  | *“Can I tune across multiple engines for the same algorithm?”* | Yes – supply `algorithm_engines = list(rand_forest = c("ranger", "partykit"))`. Each engine is tuned independently.                      |
+  | *“Why does tuning seem slow?”*                                 | Check `n_cores`, reduce `folds`, or switch to adaptive racing.                                                                           |
+  | *“How do I use a grouped time‑series CV?”*                     | Prepare `rsample::vfold_cv` object yourself and pass via `resampling_method = "none"`, then supply `resamples` (coming in next release). |
+
+  ---
+
+  ## 10 · Where to Next?
+
+  * **Explainability**: revisit `fastexplain()` with SHAP & PDPs on your best model.
+* **Production**: convert workflow to a **`vetiver`** model for API deployment.
+* **Automated monitoring**: schedule `fastml` re‑training with **GitHub Actions** or `cronR`.
+
+Happy modelling!
+
+  ---
+
+  ### Session Info
+
+  ```r
+sessionInfo()
+```

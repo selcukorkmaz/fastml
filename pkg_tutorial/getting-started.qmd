@@ -1,0 +1,100 @@
+---
+title: "Getting Started with fastml"
+format: html
+editor: source
+---
+
+# Introduction
+
+The `fastml` package provides a streamlined, user-friendly interface for training, evaluating, and comparing multiple machine learning models for classification or regression tasks. Built on top of the `tidymodels` ecosystem, it automates common steps like resampling, preprocessing, model tuning, and performance reporting, so you can focus on insights rather than infrastructure.
+
+This tutorial will help you get started with `fastml`, explaining how to install the package, prepare your data, train multiple models in one command, and inspect their performance.
+
+# Installation
+
+Install the latest stable version from CRAN:
+
+``` r
+install.packages("fastml")
+```
+
+You can install the development version from GitHub:
+
+``` r
+# install.packages("devtools")
+devtools::install_github("selcukkorkmaz/fastml")
+```
+
+Once installed, load the package:
+
+``` r
+library(fastml)
+```
+
+# Example Dataset
+
+To illustrate how `fastml` works, we'll use the built-in `iris` dataset. We'll convert it into a binary classification task for simplicity:
+
+``` r
+library(dplyr)
+data <- iris %>%
+  filter(Species != "setosa") %>%
+  mutate(Species = factor(Species))
+```
+
+# Running fastml()
+
+The main function in this package is `fastml()`. It takes in a dataset and automates model training for a selected list of algorithms.
+
+``` r
+result <- fastml(
+  data = data,
+  label = "Species",
+  task = "classification",
+  metric = "accuracy",
+  algorithms = c("logistic_reg", "rand_forest", "svm_linear"),
+  nfolds = 5,
+  tune = TRUE,
+  seed = 123
+)
+```
+
+### Key Arguments Explained:
+
+-   `data`: A data frame containing predictors and the outcome.
+-   `label`: The name of the outcome column (character).
+-   `task`: Either "classification" or "regression".
+-   `metric`: The performance metric to optimize (e.g., "accuracy", "rmse").
+-   `algorithms`: A vector of algorithm names. Use `availableMethods("classification")` to see all.
+-   `nfolds`: Number of folds for cross-validation.
+-   `tune`: Whether to perform hyperparameter tuning (TRUE/FALSE).
+-   `seed`: Reproducibility seed.
+
+# Output
+
+The result is a list with the following key elements:
+
+-   `models`: Nested list of fitted model workflows.
+-   `performance`: Performance metrics for each model-engine pair.
+-   `predictions`: Predictions and class probabilities.
+-   `best_model_name`: Best engine for each algorithm.
+-   `best_model`: Finalized best model workflows.
+
+# Summary of Results
+
+You can generate a comprehensive summary with:
+
+``` r
+summary(result)
+```
+
+This command prints model-wise performance metrics, highlights the best model, and produces comparison plots.
+
+# Next Steps
+
+Once you’ve trained models using `fastml()`, you can:
+
+-   Use `summary()` with `plot = TRUE` to visualize ROC curves, confusion matrices, and more.
+-   Run `fastexplain()` to compute variable importance and SHAP values (explained in another tutorial).
+
+In the next tutorial, we will explain in detail how `fastml` handles model training, including resampling, engine selection, and hyperparameter tuning.

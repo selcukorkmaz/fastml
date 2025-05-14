@@ -1,0 +1,57 @@
+---
+title: "Reference"
+format:
+  html:
+    toc: true
+    page-layout: full
+editor: visual
+---
+
+::: {.callout-tip collapse="false" icon="book"}
+# How to use this reference
+
+-   **Click any function name** to see its complete help page.
+-   Sections are grouped so you can quickly locate functions for each step of the workflow.
+
+*These pages are generated from roxygen2 docs, so they stay in sync with each release.*
+:::
+
+## Core workflow verbs
+
+| Function | Purpose |
+|--------------------------------------|----------------------------------|
+| [`fastml()`](fastml.qmd) | Train, tune & compare many models in one call. |
+| [`fastexplore()`](fastexplore_ref.qmd) | One-shot EDA: missings, outliers, correlations, plots. |
+| [`fastexplain()`](fastexplain_ref.qmd) | Permutation VI, SHAP values, profiles & calibration. |
+
+## Model-training helpers
+
+| Function | Description |
+|-------------------------------|----------------------------------------|
+| `train_models()` | Internal engine powering **fastml** (multi-engine, tuning). |
+| `evaluate_models()` | Computes metrics, collects predictions, highlights best. |
+| `availableMethods()` | Returns keys for all supported algorithms. |
+
+## Specification builders
+
+*All exported so you can use them directly:*
+
+`define_rand_forest_spec()` `define_lightgbm_spec()` `define_xgboost_spec()`\
+`define_decision_tree_spec()` `define_svm_linear_spec()` `define_svm_rbf_spec()`\
+…and the rest.
+
+## Utility helpers
+
+| Helper | What it does |
+|---------------------------|---------------------------------------------|
+| `sanitize()` | Clean column names / vectors (spaces → `_`, remove `/`, etc.). |
+| `get_default_engine()` | Map algorithm → default engine. |
+| `get_default_params()` | Sensible defaults when you skip tuning. |
+| `get_default_tune_params()` | Lightweight grids when `tune = TRUE`. |
+| `get_engine_names()` | Extract engine labels from nested workflows. |
+
+------------------------------------------------------------------------
+
+### Looking for step-by-step walkthroughs?
+
+Visit the [Tutorials](../tutorials/index.qmd) section for narrative, hands-on guides that combine many of the functions listed above.

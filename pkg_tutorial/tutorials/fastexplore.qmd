@@ -1,0 +1,84 @@
+---
+title: "Exploring Data with fastexplore()"
+format: html
+editor: visual
+---
+
+  # Introduction
+
+  Before building predictive models, it's essential to understand your dataset. The `fastexplore()` function in the `fastml` package provides a quick and informative overview of your data. It computes descriptive statistics, detects missing values, highlights class imbalance, and gives early insights into feature distributions and correlations.
+
+In this tutorial, we'll explore how to use `fastexplore()` to inspect datasets before model training.
+
+# Loading the Package and Data
+
+We’ll use the classic `PimaIndiansDiabetes` dataset from the `mlbench` package to demonstrate.
+
+```r
+library(fastml)
+library(mlbench)
+data(PimaIndiansDiabetes)
+
+# View structure
+str(PimaIndiansDiabetes)
+```
+
+# Using fastexplore()
+
+The `fastexplore()` function expects a data frame and the name of the outcome column. It works for both classification and regression problems.
+
+```r
+explore <- fastexplore(
+  data = PimaIndiansDiabetes,
+  label = "diabetes"
+)
+```
+
+# Output Summary
+
+The result is a list with structured summaries:
+
+  * `basic`: General info like number of rows, columns, and missing values.
+* `target`: Outcome distribution.
+* `features`: Summary statistics for each feature.
+* `correlation`: Feature correlation matrix (for numeric predictors).
+
+You can inspect these components individually:
+
+  ```r
+explore$basic
+explore$target
+explore$features
+explore$correlation
+```
+
+# Visualizing Exploration Results
+
+`fastexplore()` also provides an optional argument `plot = TRUE` to visualize results.
+
+```r
+fastexplore(
+  data = PimaIndiansDiabetes,
+  label = "diabetes",
+  plot = TRUE
+)
+```
+
+This generates:
+
+  * A bar plot of outcome class distribution.
+* Histograms of numerical features.
+* A heatmap of pairwise correlations.
+
+# When to Use fastexplore()
+
+Use `fastexplore()`:
+
+  * Right after loading your dataset.
+* Before splitting the data.
+* To detect class imbalance or outliers.
+* To guide feature engineering decisions.
+
+# Conclusion
+
+The `fastexplore()` function helps you quickly assess your dataset’s structure and quality. Understanding your data is the first step toward building a robust machine learning model. In the next tutorial, we'll demonstrate how to train and compare models using `fastml()`.

@@ -1,0 +1,173 @@
+---
+title: "Predicting Continuous Outcomes with fastml()"
+format: html
+editor: visual
+---
+
+  # Overview
+
+  In this tutorial we’ll use **fastml** to tackle a **regression** problem: predicting house sale prices.
+You’ll see how `fastml()` automates preprocessing, resampling, tuning, and model comparison for continuous targets just as effortlessly as for classification.
+
+*Next stop after this tutorial: advanced topics (stacking, ensembling, adaptive racing).*
+
+  ---
+
+  ## 1 · Load Packages and Data
+
+  ```r
+library(fastml)
+library(dplyr)
+library(modeldata)   # provides the Ames housing data
+
+data(ames)
+ames(ames)[names(ames) == "Sale_Price"] <- "Sale_Price"  # target already named
+
+set.seed(123)  # reproducibility
+```
+
+The **Ames** dataset (`ames`) contains \~2 900 rows and 80 predictors describing Iowa homes.
+
+---
+
+  ## 2 · Quick EDA with `fastexplore()` (optional but useful)
+
+  ```r
+fastexplore(ames, label = "Sale_Price",
+            visualize = c("histogram", "boxplot", "heatmap"),
+            save_results = FALSE,
+            sample_size  = 1000)   # sample to keep plotting fast
+```
+
+Explore distributions, missingness, and correlations before modelling.
+
+---
+
+  ## 3 · Train Several Regression Models
+
+  We’ll compare a mix of linear and non‑linear algorithms.
+
+```r
+reg_result <- fastml(
+  data        = ames,
+  label       = "Sale_Price",
+  algorithms  = c("linear_reg",      # baseline OLSE
+                  "elastic_net",    # regularised linear
+                  "rand_forest",    # tree ensemble
+                  "xgboost",        # gradient boosting
+                  "svm_rbf",        # kernel SVM
+                  "pls"),           # partial least squares
+  metric      = "rmse",            # lower is better
+  resampling_method = "cv",
+  folds       = 10,
+  tune        = TRUE,               # grid tuning by default
+  n_cores     = 6,
+  impute_method = "medianImpute",  # Ames has some NA values
+  seed        = 123)
+```
+
+### Under the Hood
+
+1. **Recipe**: median‑imputes NAs, one‑hot‑encodes categoricals, centres & scales numerics.
+2. **Resampling**: 10‑fold CV within the train split.
+3. **Tuning grids**: automatically generated per algorithm.
+4. **Finalisation**: the best hyper‑parameters are selected and the workflow refit on the full training data.
+
+---
+
+  ## 4 · Compare Model Performance
+
+  ```r
+summary(reg_result, plot = TRUE)
+```
+
+* Table of RMSE / R‑squared / MAE for each algorithm‑engine pair.
+* Bar‑plots faceted by metric.
+* Residual diagnostics (truth vs predicted, histogram of residuals) for the best model.
+
+> **Tip:** Lower RMSE indicates better fit; higher R‑squared indicates more variance explained.
+
+---
+
+  ## 5 · Inspect the Best Model
+
+  ```r
+reg_result$best_model_name      # which engine won?
+
+best_wf <- reg_result$best_model[[1]]
+best_wf
+```
+
+### Predict on New Observations
+
+```r
+new_homes <- ames %>% slice_sample(n = 5)
+
+predict(best_wf, new_homes)
+```
+
+The predictions are numeric sale‑price estimates.
+
+---
+
+  ## 6 · Variable Importance & SHAP Values
+
+  ```r
+fastexplain(reg_result,
+            vi_iterations = 30,
+            shap_sample   = 50)
+```
+
+* Permutation‑based variable importance with uncertainty bands.
+* SHAP summary bar plot: average absolute impact of each feature.
+* Partial‑dependence profiles for top drivers.
+
+---
+
+  ## 7 · Learning Curves (optional)
+
+  How much data do we need before returns diminish?
+
+  ```r
+reg_result_lc <- fastml(
+  data            = ames,
+  label           = "Sale_Price",
+  algorithms      = c("rand_forest", "xgboost"),
+  metric          = "rmse",
+  learning_curve  = TRUE,
+  folds           = 5,
+  n_cores         = 6,
+  tune            = TRUE,
+  seed            = 123)
+```
+
+Look for the elbow in the RMSE vs training‑fraction plot to judge data sufficiency.
+
+---
+
+  ## 8 · Advanced Options Cheat‑Sheet (Regression)
+
+  | Argument            | Purpose                     | Example                                             |
+  | ------------------- | --------------------------- | --------------------------------------------------- |
+  | `scaling_methods`   | Choose centre / scale steps | `scaling_methods = NULL` to skip                    |
+  | `tuning_strategy`   | Bayesian search             | `tuning_strategy = "bayes", tuning_iterations = 40` |
+  | `adaptive = TRUE`   | Racing / ANOVA pruning      | `adaptive = TRUE`                                   |
+  | `algorithm_engines` | Change engines              | `list(rand_forest = "ranger", xgboost = "xgboost")` |
+
+  ---
+
+  ## 9 · Wrap‑up & Next Steps
+
+  * Experiment with more algorithms via `availableMethods("regression")`.
+* Try alternative metrics: `metric = "mae"` or a custom summary function.
+* Scale out using distributed engines (`spark`, `h2o`).
+
+Move on to the **Advanced fastml Tutorial** to learn about ensembling and custom recipes.
+
+---
+
+  ### Session Info
+
+  ```r
+sessionInfo()
+```

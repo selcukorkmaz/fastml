@@ -1,0 +1,76 @@
+---
+title: "Explaining Models with fastexplain()"
+format: html
+editor: visual
+---
+
+# Introduction
+
+After training your models using the `fastml()` function, you can gain deeper insights into model behavior using the `fastexplain()` function. This function provides a set of visual and quantitative tools to help you interpret model predictions, understand feature importance, and explore the relationships between predictors and the outcome.
+
+The `fastexplain()` function is built on top of the `DALEX` package, allowing for model-agnostic explanations that work across a wide range of algorithms.
+
+# Purpose
+
+`fastexplain()` helps to answer questions such as:
+
+  * Which features are the most important for model prediction?
+  * How do features affect the predicted outcome?
+  * Are model predictions stable or sensitive to small changes in input?
+
+  # Usage
+
+  ```r
+explanation <- fastexplain(result, type = "full")
+```
+
+### Key Arguments:
+
+* `object`: The output object from `fastml()`.
+* `type`: Type of explanation. Options are:
+
+  * `"importance"`: Show variable importance only
+* `"shap"`: Show SHAP values only
+* `"profiles"`: Show model profile plots
+* `"full"`: Display all available explanation types
+* `model_index`: Optional index if you want to explain a model other than the best one
+
+# Example
+
+We’ll continue using the `result` object from the `fastml()` example in the previous tutorial:
+
+  ```r
+explanation <- fastexplain(result, type = "full")
+```
+
+This call produces:
+
+  * A variable importance plot (permutation-based)
+* A SHAP summary plot
+* Model profile plots (how individual features influence predictions)
+
+# Visual Outputs
+
+Each of the outputs helps you understand different aspects:
+
+  * **Variable Importance**: Shows which variables contribute most to the model's predictive performance.
+* **SHAP Summary**: Breaks down individual predictions by showing how much each feature contributed.
+* **Model Profiles**: Depicts the functional form of how features affect predictions (analogous to partial dependence plots).
+
+# Customization
+
+You can pass additional arguments to customize behavior. For example:
+
+```r
+fastexplain(result, type = "importance", top_n = 10)
+```
+
+Limits the explanation to the top 10 most important features.
+
+# Notes
+
+Make sure that your data contains enough features and variation to compute reliable explanations. For very small datasets, some explanation techniques may produce unstable results.
+
+# Next Steps
+
+In the next tutorial, we’ll explore how to perform model stacking and ensembling in `fastml` to further improve predictive performance.

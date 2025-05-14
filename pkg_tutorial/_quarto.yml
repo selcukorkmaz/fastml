@@ -1,0 +1,26 @@
+project:
+  type: website
+  output-dir: docs/html
+
+website:
+  title: "fastml"
+  navbar:
+    left:
+      - href: index.qmd
+        text: Home
+      - href: getting-started.qmd
+        text: Getting Started
+      - href: tutorials/index.qmd
+        text: Tutorials
+      - href: reference/index.qmd
+        text: Reference
+
+format:
+  html:
+    theme: cosmo
+    toc: true
+    code-copy: true
+    css:
+      - assets/css/style.css
+      - assets/css/custom_style.css
+      - assets/css/tutorial_style.css

@@ -1,0 +1,48 @@
+---
+title: "Tutorials"
+format:
+  html:
+    toc: false
+    page-layout: full
+    #css: ../assets/css/tutorial_style.css
+---
+Welcome to the tutorials page! Choose a tutorial below to start learning how to use the fastml package for machine learning tasks, ranging from data exploration to advanced techniques.
+
+<div class="tutorial-list">
+
+<div class="tutorial-item">
+### 🔍 Exploring Data
+Get a feel for your dataset, visualize missing values, spot outliers, and understand correlations in one call.  
+[Start the **fastexplore()** guide »](fastexplore.qmd)
+</div>
+
+<div class="tutorial-item">
+### 🏷️ Classification Workflows
+Tune and compare dozens of algorithms for categorical outcomes.  
+[Jump to **fastml-classification** »](fastml-classification.qmd)
+</div>
+
+<div class="tutorial-item">
+### 📈 Regression Workflows
+Automate numeric-target modeling with cross-validation, grid searches, and performance plots.  
+[Jump to **fastml-regression** »](fastml-regression.qmd)
+</div>
+
+<div class="tutorial-item">
+### 🚀 Advanced Techniques
+Learn about Bayesian & racing searches, parallel processing engines (H2O/Spark), ensembling, and learning curves.  
+[Explore **fastml-advanced** »](fastml-advanced.qmd)
+</div>
+
+<div class="tutorial-item">
+### 🔎 Model Explainability
+Understand model predictions with permutation variable importance, SHAP values, and profile plots.  
+[Open the **fastexplain()** guide »](fastexplain.qmd)
+</div>
+
+</div>
+
+<br/>
+
+Need a refresher on installing **fastml**?  
+See the [Getting Started](../getting-started.qmd) page for installation, basic usage, and package philosophy.

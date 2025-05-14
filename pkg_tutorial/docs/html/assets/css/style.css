@@ -1,0 +1,51 @@
+/* overall typography & colors */
+body {
+  font-family: "Inter", sans-serif;
+  color: #333;
+    line-height: 1.6;
+}
+
+/* hero banner */
+.hero {
+  background: linear-gradient(135deg, #f0faff 50%, #e8f6ff 100%);
+                              padding: 4rem 2rem;
+                              text-align: center;
+                              border-radius: 0.5rem;
+                              margin-bottom: 2rem;
+}
+
+/* tip callout width */
+.callout-tip {
+  margin: 2rem auto;
+  max-width: 720px;
+}
+
+/* center & constrain the feature grid */
+.grid {
+  max-width: 960px;
+  margin: 0 auto 3rem;
+}
+
+/* grid cell headings & copy */
+.grid h3 {
+  margin-top: 0;
+  font-size: 1.25rem;
+  color: #005ea2;
+}
+
+.grid p {
+  margin-bottom: 1.5rem;
+  color: #555;
+}
+
+/* buttons */
+.btn-primary {
+  background-color: #007bff;
+  border-color: #007bff;
+  color: #fff !important;
+}
+
+.btn-lg {
+  padding: 0.75rem 1.5rem;
+  font-size: 1.125rem;
+}

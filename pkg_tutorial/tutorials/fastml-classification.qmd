@@ -1,0 +1,156 @@
+---
+title: "Training Classification Models with fastml()"
+format: html
+editor: visual
+---
+
+  # Overview
+
+  The `fastml()` function is the core of the **fastml** package. It automates the process of:
+
+  * data splitting
+* preprocessing (recipes)
+* cross‑validation / resampling
+* hyper‑parameter tuning
+* model fitting for many algorithms and engines
+* performance comparison
+
+In this tutorial we’ll walk through a **classification** workflow from start to finish. A follow‑up tutorial covers regression.
+
+---
+
+  ## 1 · Load Packages and Data
+
+  ```r
+library(fastml)
+library(dplyr)
+
+# Binary classification version of iris
+iris_bin <- iris %>%
+  filter(Species != "setosa") %>%
+  mutate(Species = factor(Species))
+```
+
+Why binary?
+  `fastml()` supports multi‑class too, but binary keeps plots concise for a first demo.
+
+---
+
+  ## 2 · Inspect With `fastexplore()` (optional)
+
+  ```r
+fastexplore(iris_bin, label = "Species", plot = TRUE)
+```
+
+Use the output to spot class imbalance, missing values, or highly‑correlated predictors before training.
+
+---
+
+  ## 3 · Train Many Models in One Shot
+
+  ```r
+set.seed(123)
+result <- fastml(
+  data        = iris_bin,
+  label       = "Species",
+  algorithms  = c("logistic_reg",           # classical baseline
+                  "svm_rbf",                # non‑linear margin
+                  "rand_forest",            # ensemble tree
+                  "xgboost"),               # gradient boosting
+  metric      = "accuracy",                # optimise this
+  resampling_method = "cv",                # 10‑fold CV by default
+  folds       = 10,
+  tune        = TRUE,                        # hyper‑parameter search
+  n_cores     = 4                            # parallel speed‑up
+)
+```
+
+### What just happened?
+
+| Step | Automated task                                                                  |
+  | ---- | ------------------------------------------------------------------------------- |
+  | 1    | Stratified train/test split (80 / 20)                                           |
+  | 2    | Recipe creation: dummy‑encoding, centring, scaling, zero‑variance removal       |
+  | 3    | 10‑fold cross‑validation inside the training fold                               |
+  | 4    | Model‑specific tuning grids (or Bayesian search if `tuning_strategy = "bayes"`) |
+  | 5    | Metrics collected and the best workflow finalised                               |
+
+  ---
+
+  ## 4 · Compare Models
+
+  ```r
+summary(result, plot = TRUE)
+```
+
+* Table of metrics (Accuracy, Kappa, F1, …)
+* Bar‑plot faceted by metric
+* ROC curves (binary) or macro‑ROC (multiclass)
+* Confusion matrix for the best model
+
+> **Tip**  Use `algorithm = c("rand_forest", "svm_rbf")` to zoom in on a subset.
+
+---
+
+  ## 5 · Inspect the Best Model
+
+  ```r
+result$best_model_name          # Which engine won?
+print(result$best_model[[1]])   # Workflow details
+```
+
+### Predictions on New Data
+
+```r
+new_obs <- iris_bin %>% slice_sample(n = 5)
+
+predict(result$best_model[[1]],  new_obs, type = "class")
+predict(result$best_model[[1]],  new_obs, type = "prob")
+```
+
+---
+
+  ## 6 · Model Explainability
+
+  Combine with `fastexplain()` to interpret:
+
+  ```r
+fastexplain(result,
+            type = "importance",     # or "shap", "profiles", "full"
+            vi_iterations = 20,       # more stable importance
+            shap_sample   = 10)       # larger SHAP sample
+```
+
+Outputs include permutation‑based variable importance, SHAP summary, and partial‑dependence profiles.
+
+---
+
+  ## 7 · Advanced Options Cheat‑Sheet
+
+  | Argument            | Purpose                                              | Example                                                                  |
+  | ------------------- | ---------------------------------------------------- | ------------------------------------------------------------------------ |
+  | `recipe`            | Supply a **recipes** object; overrides auto‑recipe   | `recipe(Species ~ ., data = iris_bin) %>% step_normalize(all_numeric())` |
+  | `impute_method`     | Handle NAs — "medianImpute", "mice", "missForest", … | `impute_method = "knnImpute"`                                            |
+  | `algorithm_engines` | Change engines per algorithm                         | `list(rand_forest = "randomForest", svm_rbf = "kernlab")`                |
+  | `tuning_strategy`   | "grid", "bayes" (with `early_stopping`)              | `tuning_strategy = "bayes", tuning_iterations = 25`                      |
+  | `learning_curve`    | Plot performance vs training size                    | `learning_curve = TRUE`                                                  |
+
+  See `?fastml` for the full argument list.
+
+---
+
+  ## 8 · Next Steps
+
+  * **Regression Tutorial** – predicting continuous outcomes.
+* **Advanced Customisation** – stacking, ensembling, and adaptive racing.
+* **Performance at Scale** – parallel & distributed engines (`spark`, `h2o`).
+
+Jump to the next tutorial: [Regression with fastml()](fastml-regression.qmd)
+
+---
+
+  ### Session Info
+
+  ```r
+sessionInfo()
+```
