@@ -1,6 +1,6 @@
 project:
   type: website
-  output-dir: docs/html
+  output-dir: output/html
 
 website:
   title: "fastml"
