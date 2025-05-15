@@ -2,23 +2,52 @@
 % Please edit documentation in R/predict.fastml_model.R
 \name{predict.fastml_model}
 \alias{predict.fastml_model}
-\title{Predict Function for fastml_model}
+\title{Predict method for fastml_model objects}
 \usage{
-\method{predict}{fastml_model}(object, newdata, type = "auto", ...)
+predict.fastml_model(
+  object,
+  newdata,
+  type = "auto",
+  model_name = NULL,
+  verbose = FALSE,
+  postprocess_fn = NULL,
+  ...
+)
 }
 \arguments{
-\item{object}{An object of class \code{fastml_model}.}
+\item{object}{A fitted `fastml_model` object created by the `fastml()` function.}
 
-\item{newdata}{A data frame containing new data for prediction.}
+\item{newdata}{A data frame or tibble containing new predictor data for which to generate predictions.}
 
-\item{type}{Type of prediction. Default is \code{"auto"}, which returns class labels for classification and numeric predictions for regression.
-Other options include \code{"prob"} for class probabilities (classification only).}
+\item{type}{Type of prediction to return. One of `"auto"` (default), `"class"`, `"prob"`, or `"numeric"`.
+- `"auto"`: chooses `"class"` for classification and `"numeric"` for regression.
+- `"prob"`: returns class probabilities (only for classification).
+- `"class"`: returns predicted class labels.
+- `"numeric"`: returns predicted numeric values (for regression).}
 
-\item{...}{Additional arguments (not used).}
+\item{model_name}{(Optional) Name of a specific model to use when `object$best_model` contains multiple models.}
+
+\item{verbose}{Logical; if `TRUE`, prints progress messages showing which models are used during prediction.}
+
+\item{postprocess_fn}{(Optional) A function to apply to the final predictions (e.g., inverse transforms, thresholding).}
+
+\item{...}{Additional arguments (currently unused).}
 }
 \value{
-A vector or data frame of predictions.
+A vector of predictions, or a named list of predictions (if multiple models are used).
+        If `postprocess_fn` is supplied, its output will be returned instead.
 }
 \description{
-Makes predictions on new data using the trained model.
+Generates predictions from a trained `fastml_model` object on new data.
+Supports both single-model and multi-model workflows, and handles classification
+and regression tasks with optional post-processing and verbosity.
+}
+\examples{
+\dontrun{
+  model <- fastml(iris, label = "Species")
+  test_data <- sanitize(iris[1:4])
+  preds <- predict(model, newdata = test_data)
+  probs <- predict(model, newdata = test_data, type = "prob")
+  single_model_preds <- predict(model, newdata = test_data, model_name = "rand_forest (ranger)")
+}
 }
