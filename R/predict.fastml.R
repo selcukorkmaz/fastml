@@ -1,10 +1,10 @@
-#' Predict method for fastml_model objects
+#' Predict method for fastml objects
 #'
-#' Generates predictions from a trained `fastml_model` object on new data.
+#' Generates predictions from a trained `fastml` object on new data.
 #' Supports both single-model and multi-model workflows, and handles classification
 #' and regression tasks with optional post-processing and verbosity.
 #'
-#' @param object A fitted `fastml_model` object created by the `fastml()` function.
+#' @param object A fitted `fastml` object created by the `fastml()` function.
 #' @param newdata A data frame or tibble containing new predictor data for which to generate predictions.
 #' @param type Type of prediction to return. One of `"auto"` (default), `"class"`, `"prob"`, or `"numeric"`.
 #'   - `"auto"`: chooses `"class"` for classification and `"numeric"` for regression.
@@ -28,7 +28,7 @@
 #'   probs <- predict(model, newdata = test_data, type = "prob")
 #'   single_model_preds <- predict(model, newdata = test_data, model_name = "rand_forest (ranger)")
 #' }
-predict.fastml_model <- function(object, newdata, type = "auto", model_name = NULL,
+predict.fastml <- function(object, newdata, type = "auto", model_name = NULL,
                                  verbose = FALSE, postprocess_fn = NULL, ...) {
   # Check if newdata is provided
   if (missing(newdata)) {

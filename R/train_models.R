@@ -218,6 +218,8 @@ train_models <- function(train_data,
 
     # Assume that get_engine() now may return multiple engine names.
 
+    if(n_class > 2 && algo == "logistic_reg") {algo = "multinom_reg"}
+
     engines <- get_engine(algo, get_default_engine(algo))
 
 

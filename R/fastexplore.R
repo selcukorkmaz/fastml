@@ -154,6 +154,13 @@ fastexplore <- function(
       across(where(is.integer), as.numeric)
     )
 
+  # Convert numeric columns with <5 unique values to factor
+  data <- data %>%
+    mutate(across(where(is.numeric) &
+                    where(~ n_distinct(.) < 6),
+                  as.factor))
+
+
   target_var <- data[[label]]
 
 
@@ -243,7 +250,7 @@ fastexplore <- function(
     for (col in factor_cols) {
       x <- data[[col]]
       # Check if all non-NA values match a numeric pattern (digits, decimal, minus sign)
-      if (all(grepl("^[0-9.-]+$", x[!is.na(x)]))) {
+      if (all(grepl("^[0-9.-]+$", x[!is.na(x)])) & length(unique(x)) >= 6) {
         new_x <- suppressWarnings(as.numeric(as.character(x)))
         old_na_count <- sum(is.na(x))
         new_na_count <- sum(is.na(new_x))
@@ -518,13 +525,14 @@ fastexplore <- function(
       }
       # The typical usage is upset(missing_df, sets=names(missing_df)), but for large sets this might be big
       # We'll do a minimal version:
-      if (ncol(missing_df) > 15) {
+      if (ncol(missing_df) > 20) {
         message("Too many columns for a neat UpSetR plot. Consider subsetting.")
       } else {
         tryCatch({
-          upsetPlot <- upset(missing_df, sets = names(missing_df))
+          upsetPlot <- upset(missing_df)
         }, error = function(e) {
           message("Error generating UpSet plot: ", e$message)
+          upsetPlot <<- NULL  # başarısızsa yine de NULL olarak tut
         })
       }
     }else{
@@ -532,17 +540,6 @@ fastexplore <- function(
     }
 
     miss_plot <- vis_miss(data)
-
-    aggr_plot <- aggr(
-      data,
-      col = c('navyblue', 'red'),
-      numbers = TRUE,
-      sortVars = TRUE,
-      labels = names(data),
-      cex.axis = .7,
-      gap = 3,
-      ylab = c("Histogram of missing data", "Pattern")
-    )
 
 
   }
@@ -930,16 +927,7 @@ fastexplore <- function(
       "**Aggregations Plot**",
       "```{r missingness-patterns_aggr}",
       "if (visualize_missing && sum(missing_df) > 0) {",
-      " aggr_plot <- aggr(
-        data,
-        col = c('navyblue', 'red'),
-        numbers = TRUE,
-        sortVars = TRUE,
-        labels = names(data),
-        cex.axis = .7,
-        gap = 3,
-        ylab = c('Histogram of missing data', 'Pattern')
-      )",
+      "     miss_plot <- vis_miss(data)",
       "} else {",
       "  \"No missingness patterns available.\"",
       "}",
@@ -1261,6 +1249,13 @@ fastexplore <- function(
     )
   }
 
+
+  if(save_results){
+
+    message("All fastexplore results saved at: ", results_folder)
+
+  }
+
   # Return the results list invisibly (no console output)
   invisible(results_list)
 }
@@ -1495,120 +1490,4 @@ perform_outlier_detection <- function(data, numeric_cols, outlier_methods = c("i
 }
 
 
-# # Function to create interactive tables for outlier proportions
-# create_outlier_table <- function(outlier_summary, method_name) {
-#   if (!method_name %in% names(outlier_summary)) {
-#     return(NULL)
-#   }
-#
-#   if (method_name %in% c("iqr", "zscore")) {
-#     df <- data.frame(
-#       Column = names(outlier_summary[[method_name]]),
-#       Outlier_Proportion = round(outlier_summary[[method_name]], 3)
-#     )
-#     datatable(
-#       df,
-#       extensions = 'Buttons',
-#       options = list(
-#         pageLength = 10,
-#         dom = 'Bfrtip',
-#         buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
-#         order = list(list(1, 'desc'))
-#       ),
-#       caption = paste("Outlier Proportions (", toupper(method_name), " Method)", sep = "")
-#     ) %>%
-#       formatPercentage('Outlier_Proportion', 1) %>%
-#       formatStyle(
-#         'Outlier_Proportion',
-#         backgroundColor = styleColorBar(range(df$Outlier_Proportion, na.rm = TRUE), 'lightcoral'),
-#         backgroundSize = '98% 88%',
-#         backgroundRepeat = 'no-repeat',
-#         backgroundPosition = 'center'
-#       )
-#   } else if (method_name %in% c("dbscan", "lof")) {
-#     df <- data.frame(
-#       Method = toupper(method_name),
-#       Outlier_Proportion = round(outlier_summary[[method_name]], 3)
-#     )
-#     datatable(
-#       df,
-#       extensions = 'Buttons',
-#       options = list(
-#         dom = 'Bfrtip',
-#         buttons = c('copy', 'csv', 'excel', 'pdf', 'print'),
-#         paging = FALSE,
-#         searching = FALSE
-#       ),
-#       caption = paste("Outlier Proportion (", toupper(method_name), " Method)", sep = "")
-#     ) %>%
-#       formatPercentage('Outlier_Proportion', 1) %>%
-#       formatStyle(
-#         'Outlier_Proportion',
-#         backgroundColor = styleColorBar(range(df$Outlier_Proportion, na.rm = TRUE), 'lightcoral'),
-#         backgroundSize = '98% 88%',
-#         backgroundRepeat = 'no-repeat',
-#         backgroundPosition = 'center'
-#       )
-#   }
-# }
-
-
-# Function to create bar plots for outlier proportions
-# plot_outlier_proportions <- function(outlier_summary) {
-#   plot_list <- list()
-#
-#   # IQR and Z-score methods
-#   for (method in c("iqr", "zscore")) {
-#     if (method %in% names(outlier_summary)) {
-#       df <- data.frame(
-#         Column = names(outlier_summary[[method]]),
-#         Outlier_Proportion = outlier_summary[[method]]
-#       )
-#
-#       p <- ggplot(df, aes(x = reorder(Column, Outlier_Proportion), y = Outlier_Proportion)) +
-#         geom_bar(stat = "identity", fill = "steelblue") +
-#         coord_flip() +
-#         theme_minimal() +
-#         labs(
-#           title = paste("Outlier Proportion by Column (", toupper(method), " Method)", sep = ""),
-#           x = "Column",
-#           y = "Outlier Proportion"
-#         ) +
-#         scale_y_continuous(labels = percent_format(accuracy = 1)) +
-#         geom_text(aes(label = percent(Outlier_Proportion, accuracy = 1)),
-#                   hjust = -0.1, size = 3) +
-#         ylim(0, max(df$Outlier_Proportion, na.rm = TRUE) + 0.05)
-#
-#       plot_list[[method]] <- p
-#     }
-#   }
-#
-#   # DBSCAN and LOF methods
-#   for (method in c("dbscan", "lof")) {
-#     if (method %in% names(outlier_summary)) {
-#       df <- data.frame(
-#         Method = toupper(method),
-#         Outlier_Proportion = outlier_summary[[method]]
-#       )
-#
-#       p <- ggplot(df, aes(x = Method, y = Outlier_Proportion, fill = Method)) +
-#         geom_bar(stat = "identity", width = 0.5) +
-#         theme_minimal() +
-#         labs(
-#           title = paste("Outlier Proportion (", toupper(method), " Method)", sep = ""),
-#           x = "",
-#           y = "Outlier Proportion"
-#         ) +
-#         scale_y_continuous(labels = percent_format(accuracy = 1)) +
-#         geom_text(aes(label = percent(Outlier_Proportion, accuracy = 1)),
-#                   vjust = -0.5, size = 3) +
-#         ylim(0, max(df$Outlier_Proportion, na.rm = TRUE) + 0.05) +
-#         scale_fill_manual(values = c("DBSCAN" = "tomato", "LOF" = "orange"))
-#
-#       plot_list[[method]] <- p
-#     }
-#   }
-#
-#   return(plot_list)
-# }
 

@@ -10,9 +10,12 @@ utils::globalVariables(c("Fraction", "Performance"))
 #' detects the task based on the target variable type and can perform advanced hyperparameter tuning
 #' using various tuning strategies.
 #'
-#' @param data A data frame containing the features and target variable.
+#' @param data A data frame containing the complete dataset. If both `train_data` and `test_data` are `NULL`, `fastml()` will split this into training and testing sets according to `test_size` and `stratify`. Defaults to `NULL`.
+#' @param train_data A data frame pre-split for model training. If provided, `test_data` must also be supplied, and no internal splitting will occur. Defaults to `NULL`.
+#' @param test_data A data frame pre-split for model evaluation. If provided, `train_data` must also be supplied, and no internal splitting will occur. Defaults to `NULL`.
 #' @param label A string specifying the name of the target variable.
 #' @param algorithms A vector of algorithm names to use. Default is \code{"all"} to run all supported algorithms.
+#' @param task Character string specifying model type selection. Use "auto" to let the function detect whether the target is for classification or regression based on the data, or explicitly set to "classification" or "regression".
 #' @param test_size A numeric value between 0 and 1 indicating the proportion of the data to use for testing. Default is \code{0.2}.
 #' @param resampling_method A string specifying the resampling method for model evaluation. Default is \code{"cv"} (cross-validation).
 #'                          Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.
@@ -62,7 +65,7 @@ utils::globalVariables(c("Fraction", "Performance"))
 #' @importFrom mice mice complete
 #' @importFrom missForest missForest
 #' @importFrom purrr flatten
-#' @return An object of class \code{fastml_model} containing the best model, performance metrics, and other information.
+#' @return An object of class \code{fastml} containing the best model, performance metrics, and other information.
 #' @examples
 #' \donttest{
 #' # Example 1: Using the iris dataset for binary classification (excluding 'setosa')
@@ -85,9 +88,12 @@ utils::globalVariables(c("Fraction", "Performance"))
 #'   }
 #'
 #' @export
-fastml <- function(data,
+fastml <- function(data = NULL,
+                   train_data = NULL,
+                   test_data = NULL,
                    label,
                    algorithms = "all",
+                   task = "auto",
                    test_size = 0.2,
                    resampling_method = "cv",
                    folds = ifelse(grepl("cv", resampling_method), 10, 25),
@@ -114,90 +120,93 @@ fastml <- function(data,
                    seed = 123) {
 
   set.seed(seed)
-  if (!(label %in% names(data))) {
-    stop("The specified label does not exist in the data.")
-  }
 
-  if (!is.null(exclude)){
-    if (label %in% exclude){
-      stop("Label variable cannot be excluded from the data: ", paste(label))
+  task <- match.arg(task, c("auto", "classification", "regression"))
+
+  # If explicit train/test provided, ensure both are given
+  if (!is.null(train_data) || !is.null(test_data)) {
+    if (is.null(train_data) || is.null(test_data)) {
+      stop("Both 'train_data' and 'test_data' must be provided together.")
     }
-
-    missing_vars <- setdiff(exclude, colnames(data))
-
-    if (length(missing_vars) > 0) {
-      warning("The following variables are not in the dataset: ", paste(missing_vars, collapse = ", "))
-      exclude = exclude[!exclude %in% missing_vars]
-      if (length(exclude) == 0) {
-        exclude <- NULL
-      }
-    }
-
-    data <- data %>%
-      select(-all_of(exclude))
-  }
-
-  if(!is.null(impute_method) && impute_method == "error" && anyNA(data)){
-
-    stop("The dataset contains missing values, and 'impute_method = \"error\"' was specified.
-        Missing values must be handled before proceeding. Consider removing rows with missing values
-        or using an imputation method such as 'medianImpute', 'knnImpute', 'bagImpute', 'mice', or 'missForest'.")
-
-
-  }
-
-  if(is.null(impute_method) && anyNA(data) && any(c("svm_linear", "svm_rbf", "nearest_neighbor", "naive_Bayes") %in% algorithms)){
-
-    stop(sprintf("The dataset contains missing values, and no imputation method was specified (`impute_method = NULL`).
-        Missing values must be addressed as they are not supported by the following algorithms: %s.
-        Please specify an imputation method (e.g., 'medianImpute', 'knnImpute', 'bagImpute', 'mice',
-        or 'missForest') or remove rows with missing values before proceeding.",
-                 paste(algorithms[algorithms %in% c("svm_linear", "svm_rbf", "nearest_neighbor", "naive_Bayes")], collapse = ", ")))
-
-
-  }
-
-
-  data <- data %>%
-    mutate(
-      across(where(is.character), as.factor),
-      across(where(is.integer), as.numeric)
-    )
-
-  target_var <- data[[label]]
-  label_index <- which(colnames(data) == label)
-
-  # If numeric target has <= 5 unique values, convert to factor
-  if (is.numeric(target_var) && length(unique(target_var)) <= 5) {
-    target_var <- as.factor(target_var)
-    data[[label]] <- as.factor(data[[label]])
-    task <- "classification"
-    warning(sprintf(
-      "The target variable '%s' is numeric with %d unique values. It has been converted to a factor and the task has been set to 'classification'.",
-      label, length(unique(target_var))
-    ))
-  }
-
-  # sanitize function
-  data = sanitize(data)
-
-  label <- colnames(data[label_index])
-
-  if (is.factor(target_var) || is.character(target_var) || is.logical(target_var)) {
-    task <- "classification"
-  } else if (is.numeric(target_var)) {
-    task <- "regression"
+    # use provided splits; require label in both
+    data <- NULL  # skip full-data splitting
   } else {
-    stop("Unable to detect task type. The target variable must be numeric, factor, character, or logical.")
+    # require data for splitting
+    if (is.null(data)) stop("Either 'data' or both 'train_data' and 'test_data' must be provided.")
+  }
+
+
+  # Determine source for target variable
+  source_data <- if (!is.null(data)) data else train_data
+  # Ensure label exists in source
+  if (!(label %in% names(source_data))) {
+    stop("Label variable must exist in the data source.")
+  }
+  target_var <- source_data[[label]]
+
+
+
+  if(task == "auto"){
+    if (is.numeric(target_var) && length(unique(target_var)) <= 5) {
+      # convert to factor in both splits
+      train_data[[label]] <- factor(train_data[[label]])
+      test_data[[label]]  <- factor(test_data[[label]], levels = levels(train_data[[label]]))
+      task <- "classification"
+      warning(sprintf(
+        "The target variable '%s' is numeric with %d unique values. Converted to factor; task set to 'classification'.",
+        label, length(unique(target_var))
+      ))
+    } else if (is.factor(target_var) || is.character(target_var) || is.logical(target_var)) {
+      task <- "classification"
+    } else if (is.numeric(target_var)) {
+      task <- "regression"
+    } else {
+      stop("Unable to detect task type. The target variable must be numeric, factor, character, or logical.")
+    }
+
   }
 
   if(task == "classification"){
     positive_class <- ifelse(event_class == "first",
-                             levels(data[[label]])[1],
-                             levels(data[[label]])[2])
+                             levels(source_data[[label]])[1],
+                             levels(source_data[[label]])[2])
   } else {
     positive_class = NULL
   }
+  # ---------------- END TASK DETECTION ----------------
+
+
+  # If initial data provided, perform exclusion and checks, then split
+  if (!is.null(data)) {
+    if (!(label %in% names(data))) stop("The specified label does not exist in the data.")
+    if (!is.null(exclude)) {
+      if (label %in% exclude) stop("Label variable cannot be excluded: ", label)
+      missing_vars <- setdiff(exclude, colnames(data))
+      if (length(missing_vars) > 0) {
+        warning("Variables not in data: ", paste(missing_vars, collapse = ", "))
+        exclude <- setdiff(exclude, missing_vars)
+      }
+      data <- dplyr::select(data, -dplyr::all_of(exclude))
+    }
+    if (!is.null(impute_method) && impute_method == "error" && anyNA(data)) {
+      stop("Data contains NAs and 'impute_method = \"error\"'. Handle missing values first.")
+    }
+    data <- data %>%
+      dplyr::mutate(
+        dplyr::across(where(is.character), as.factor),
+        dplyr::across(where(is.integer), as.numeric)
+      )
+    data <- sanitize(data)
+    # Split into train/test
+    if (stratify && task == "classification") {
+      split <- rsample::initial_split(data, prop = 1 - test_size, strata = label)
+    } else {
+      split <- rsample::initial_split(data, prop = 1 - test_size)
+    }
+    train_data <- rsample::training(split)
+    test_data  <- rsample::testing(split)
+  }
+
 
   if (is.null(metric)) {
     metric <- if (task == "classification") "accuracy" else "rmse"
@@ -235,14 +244,26 @@ fastml <- function(data,
     }
   }
 
-  if (stratify && task == "classification") {
-    split <- initial_split(data, prop = 1 - test_size, strata = all_of(label))
+
+
+  # Task detection and numeric-to-factor conversion for small numeric targets
+  if (is.numeric(target_var) && length(unique(target_var)) <= 5) {
+    # Convert both train and test labels to factor
+    train_data[[label]] <- factor(train_data[[label]])
+    test_data[[label]]  <- factor(test_data[[label]], levels = levels(train_data[[label]]))
+    task <- "classification"
+    warning(sprintf(
+      "The target variable '%s' is numeric with %d unique values. Converted to factor; task set to 'classification'.",
+      label, length(unique(target_var))
+    ))
+  } else if (is.factor(target_var) || is.character(target_var) || is.logical(target_var)) {
+    task <- "classification"
+  } else if (is.numeric(target_var)) {
+    task <- "regression"
   } else {
-    split <- initial_split(data, prop = 1 - test_size)
+    stop("Unable to detect task type. The target variable must be numeric, factor, character, or logical.")
   }
 
-  train_data <- training(split)
-  test_data <- testing(split)
 
   if(!is.null(impute_method) && impute_method == "remove") {
     if (anyNA(train_data)) {
@@ -651,6 +672,6 @@ fastml <- function(data,
     event_class = event_class,
     engine_names = engine_names
   )
-  class(result) <- "fastml_model"
+  class(result) <- "fastml"
   return(result)
 }

@@ -2,7 +2,7 @@
 % Please edit documentation in R/fastexplain.R
 \name{fastexplain}
 \alias{fastexplain}
-\title{FastExplain the fastml_model (DALEX + SHAP + Permutation-based VI)}
+\title{FastExplain the fastml (DALEX + SHAP + Permutation-based VI)}
 \usage{
 fastexplain(
   object,
@@ -17,7 +17,7 @@ fastexplain(
 )
 }
 \arguments{
-\item{object}{A \code{fastml_model} object.}
+\item{object}{A \code{fastml} object.}
 
 \item{method}{Currently only \code{"dalex"} is supported.}
 
