@@ -5,25 +5,17 @@ utils::globalVariables(c("truth", "residual", "sensitivity", "specificity", "Fal
 #' Provides a concise, user-friendly summary of model performances.
 #' For classification:
 #' - Shows Accuracy, F1 Score, Kappa, Precision, ROC AUC, Sensitivity, Specificity.
-#' - Produces a bar plot of these metrics.
-#' - Shows ROC curves for binary classification using yardstick::roc_curve().
-#' - Displays a confusion matrix and a calibration plot if probabilities are available.
+#' - Displays a confusion matrix.
 #'
 #' For regression:
 #' - Shows RMSE, R-squared, and MAE.
-#' - Produces a bar plot of these metrics.
-#' - Displays residual diagnostics (truth vs predicted, residual distribution).
 #'
 #'
 #' @param object An object of class \code{fastml}.
 #' @param algorithm A vector of algorithm names to display summary. Default is \code{"best"}.
 #' @param sort_metric The metric to sort by. Default uses optimized metric.
-#' @param plot Logical. If TRUE, produce bar plot, yardstick-based ROC curves (for binary classification),
-#'   confusion matrix (classification), smooth calibration plot (if probabilities),
-#'   and residual plots (regression).
-#' @param notes User-defined commentary.
 #' @param ... Additional arguments.
-#' @return Prints summary and plots if requested.
+#' @return Prints summary of fastml models.
 #'
 #' @importFrom dplyr filter select mutate bind_rows group_by summarise n starts_with
 #' @importFrom magrittr %>%
@@ -41,12 +33,18 @@ utils::globalVariables(c("truth", "residual", "sensitivity", "specificity", "Fal
 #' @export
 summary.fastml <- function(object,
                                  algorithm = "best",
+                                 type = c("all", "metrics", "hyperparameters", "confusion_matrix"),
                                  sort_metric = NULL,
-                                 plot = TRUE,
-                                 notes = "",
                                  ...) {
+
   if (!inherits(object, "fastml")) {
     stop("The input must be a 'fastml' object.")
+  }
+
+  # Validate 'type' argument
+  type <- match.arg(type, several.ok = TRUE)
+  if ("all" %in% type) {
+    type <- c("metrics", "hyperparameters", "confusion_matrix")
   }
 
   performance <- object$performance
@@ -168,6 +166,8 @@ summary.fastml <- function(object,
     rmse = "RMSE"
   )
 
+  if ("metrics" %in% type) {
+
   cat("\n===== fastml Model Summary =====\n")
   cat("Task:", task, "\n")
   cat("Number of Models Trained:", model_count, "\n")
@@ -181,7 +181,10 @@ summary.fastml <- function(object,
   best_val <- best_val_df %>%
     pull(!!sym(main_metric)) %>%
     unique()
-  cat("Best Model(s):", paste0(names(best_model_name), " (", best_model_name, ")"), sprintf("(%s: %.7f)", main_metric, best_val), "\n\n")
+  cat("Best Model(s):",
+      paste0(names(best_model_name), " (", best_model_name, ")"),
+      sprintf("(%s: %.7f)", main_metric, as.numeric(best_val)),
+      "\n\n")
 
   cat("Performance Metrics (Sorted by", main_metric,"):\n\n")
 
@@ -264,15 +267,18 @@ summary.fastml <- function(object,
    cat("(*Best model)\n\n")
   }
 
+}
 
-  if(length(algorithm) == 1 && all(algorithm == "best")){
-    cat("Best Model Hyperparameters:\n\n")
+  if ("hypermarameters" %in% type) {
 
-  }else{
+    if(length(algorithm) == 1 && all(algorithm == "best")){
+      cat("Best Model Hyperparameters:\n\n")
 
-    cat("Selected Model Hyperparameters:\n\n")
+    }else{
 
-  }
+      cat("Selected Model Hyperparameters:\n\n")
+
+    }
 
   if(length(desired_models) == 1){
     parsnip_fit <- tryCatch(extract_fit_parsnip(desired_models[[1]]), error = function(e) NULL)
@@ -363,20 +369,10 @@ summary.fastml <- function(object,
   } else {
     cat("No hyperparameters found.\n")
   }
+}
 
+  if ("confusion_matrix" %in% type) {
 
-  if (nzchar(notes)) {
-    cat("\nUser Notes:\n", notes, "\n", sep = "")
-  }
-
-  cat("=================================\n")
-
-
-
-
-  # ============================
-  # 3. Confusion Matrix (classification)
-  # ============================
     if (task == "classification") {
       df_best <- list()
 
@@ -419,7 +415,7 @@ summary.fastml <- function(object,
       cat("\nConfusion matrix is only available for classification tasks.\n\n")
     }
 
-
+  }
 
 
   invisible(object)
