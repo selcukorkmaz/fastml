@@ -808,7 +808,6 @@ get_default_tune_params <- function(algo, train_data, label, engine) {
          NULL)
 }
 
-utils::globalVariables(c("metric", "train_data", "true_labels"))
 #' Process Model and Compute Performance Metrics
 #'
 #' Finalizes a tuning result or utilizes an already fitted workflow to generate predictions on test data and compute performance metrics.
@@ -820,6 +819,8 @@ utils::globalVariables(c("metric", "train_data", "true_labels"))
 #' @param label A character string specifying the name of the outcome variable in \code{test_data}.
 #' @param event_class For classification tasks, a character string specifying which event class to consider as positive (accepted values: \code{"first"} or \code{"second"}).
 #' @param engine A character string specifying the modeling engine used. This parameter affects prediction types and metric computations.
+#' @param train_data A data frame containing the training data used to fit tuned models.
+#' @param metric A character string specifying the metric name used to select the best tuning parameters.
 #'
 #' @return A list with two components:
 #'   \describe{
@@ -832,7 +833,7 @@ utils::globalVariables(c("metric", "train_data", "true_labels"))
 #'     \item Select the best tuning parameters using \code{tune::select_best} (note that the metric used for selection should be defined in the calling environment).
 #'     \item Extract the model specification and preprocessor from \code{model_obj} using \code{workflows::pull_workflow_spec} and \code{workflows::pull_workflow_preprocessor}, respectively.
 #'     \item Finalize the model specification with the selected parameters via \code{tune::finalize_model}.
-#'     \item Rebuild the workflow using \code{workflows::workflow}, \code{workflows::add_recipe}, and \code{workflows::add_model}, and fit the finalized workflow with \code{parsnip::fit} on training data (the variable \code{train_data} is expected to be available in the environment).
+#'     \item Rebuild the workflow using \code{workflows::workflow}, \code{workflows::add_recipe}, and \code{workflows::add_model}, and fit the finalized workflow with \code{parsnip::fit} on the supplied \code{train_data}.
 #'   }
 #'   If \code{model_obj} is already a fitted workflow, it is used directly.
 #'
@@ -852,7 +853,8 @@ utils::globalVariables(c("metric", "train_data", "true_labels"))
 #' @importFrom magrittr %>%
 #'
 #' @export
-process_model <- function(model_obj, model_id, task, test_data, label, event_class, engine) {
+process_model <- function(model_obj, model_id, task, test_data, label, event_class,
+                          engine, train_data, metric) {
   # If the model object is a tuning result, finalize the workflow
   if (inherits(model_obj, "tune_results")) {
     best_params <- tryCatch({
