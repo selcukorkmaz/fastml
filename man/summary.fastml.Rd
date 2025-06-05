@@ -7,9 +7,8 @@
 \method{summary}{fastml}(
   object,
   algorithm = "best",
+  type = c("all", "metrics", "params", "conf_mat"),
   sort_metric = NULL,
-  plot = TRUE,
-  notes = "",
   ...
 )
 }
@@ -18,30 +17,36 @@
 
 \item{algorithm}{A vector of algorithm names to display summary. Default is \code{"best"}.}
 
+\item{type}{Character vector indicating which outputs to produce.
+Options are \code{"all"} (all available outputs),
+\code{"metrics"} (performance metrics),
+\code{"params"} (best hyperparameters), and
+\code{"conf_mat"} (confusion matrix).
+Default is \code{"all"}.}
+
 \item{sort_metric}{The metric to sort by. Default uses optimized metric.}
-
-\item{plot}{Logical. If TRUE, produce bar plot, yardstick-based ROC curves (for binary classification),
-confusion matrix (classification), smooth calibration plot (if probabilities),
-and residual plots (regression).}
-
-\item{notes}{User-defined commentary.}
 
 \item{...}{Additional arguments.}
 }
 \value{
-Prints summary and plots if requested.
+Prints summary of fastml models.
 }
 \description{
-Provides a concise, user-friendly summary of model performances.
-For classification:
-- Shows Accuracy, F1 Score, Kappa, Precision, ROC AUC, Sensitivity, Specificity.
-- Produces a bar plot of these metrics.
-- Shows ROC curves for binary classification using yardstick::roc_curve().
-- Displays a confusion matrix and a calibration plot if probabilities are available.
+Summarizes the results of machine learning models trained using the `fastml` package.
+Depending on the task type (classification or regression), it provides customized output such as
+performance metrics, best hyperparameter settings, and confusion matrices.
+It is designed to be informative and readable, helping users quickly interpret model results.
 }
 \details{
-For regression:
-- Shows RMSE, R-squared, and MAE.
-- Produces a bar plot of these metrics.
-- Displays residual diagnostics (truth vs predicted, residual distribution).
+For classification tasks, the summary includes metrics such as Accuracy, F1 Score, Kappa,
+Precision, ROC AUC, Sensitivity, and Specificity. A confusion matrix is also provided for the best model(s).
+For regression tasks, the summary reports RMSE, R-squared, and MAE.
+
+Users can control the type of output with the `type` argument:
+`metrics` displays model performance metrics.
+`params` shows the best hyperparameter settings.
+`conf_mat` prints confusion matrices (only for classification).
+`all` includes all of the above.
+
+If multiple algorithms are trained, the summary highlights the best model based on the optimized metric.
 }

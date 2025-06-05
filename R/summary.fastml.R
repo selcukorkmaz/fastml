@@ -2,17 +2,34 @@ utils::globalVariables(c("truth", "residual", "sensitivity", "specificity", "Fal
 
 #' Summary Function for fastml (Using yardstick for ROC Curves)
 #'
-#' Provides a concise, user-friendly summary of model performances.
-#' For classification:
-#' - Shows Accuracy, F1 Score, Kappa, Precision, ROC AUC, Sensitivity, Specificity.
-#' - Displays a confusion matrix.
+#' @description
+#' Summarizes the results of machine learning models trained using the `fastml` package.
+#' Depending on the task type (classification or regression), it provides customized output such as
+#' performance metrics, best hyperparameter settings, and confusion matrices.
+#' It is designed to be informative and readable, helping users quickly interpret model results.
+
+#' @details
+#' For classification tasks, the summary includes metrics such as Accuracy, F1 Score, Kappa,
+#' Precision, ROC AUC, Sensitivity, and Specificity. A confusion matrix is also provided for the best model(s).
+#' For regression tasks, the summary reports RMSE, R-squared, and MAE.
 #'
-#' For regression:
-#' - Shows RMSE, R-squared, and MAE.
+#' Users can control the type of output with the `type` argument:
+#' `metrics` displays model performance metrics.
+#' `params` shows the best hyperparameter settings.
+#' `conf_mat` prints confusion matrices (only for classification).
+#' `all` includes all of the above.
+#'
+#' If multiple algorithms are trained, the summary highlights the best model based on the optimized metric.
 #'
 #'
 #' @param object An object of class \code{fastml}.
 #' @param algorithm A vector of algorithm names to display summary. Default is \code{"best"}.
+#' @param type Character vector indicating which outputs to produce.
+#'   Options are \code{"all"} (all available outputs),
+#'   \code{"metrics"} (performance metrics),
+#'   \code{"params"} (best hyperparameters), and
+#'   \code{"conf_mat"} (confusion matrix).
+#'   Default is \code{"all"}.
 #' @param sort_metric The metric to sort by. Default uses optimized metric.
 #' @param ... Additional arguments.
 #' @return Prints summary of fastml models.
@@ -33,7 +50,7 @@ utils::globalVariables(c("truth", "residual", "sensitivity", "specificity", "Fal
 #' @export
 summary.fastml <- function(object,
                                  algorithm = "best",
-                                 type = c("all", "metrics", "hyperparameters", "confusion_matrix"),
+                                 type = c("all", "metrics", "params", "conf_mat"),
                                  sort_metric = NULL,
                                  ...) {
 
@@ -44,7 +61,7 @@ summary.fastml <- function(object,
   # Validate 'type' argument
   type <- match.arg(type, several.ok = TRUE)
   if ("all" %in% type) {
-    type <- c("metrics", "hyperparameters", "confusion_matrix")
+    type <- c("metrics", "params", "conf_mat")
   }
 
   performance <- object$performance
@@ -166,29 +183,14 @@ summary.fastml <- function(object,
     rmse = "RMSE"
   )
 
-  if ("metrics" %in% type) {
 
-  cat("\n===== fastml Model Summary =====\n")
-  cat("Task:", task, "\n")
-  cat("Number of Models Trained:", model_count, "\n")
 
   # Filter rows where the Model is in best_model_name and its Engine equals best_model_name[Model]
   best_val_df <- performance_wide %>%
     filter(Model %in% names(best_model_name)) %>%
     filter(mapply(function(m, e) e == best_model_name[[m]], Model, Engine))
 
-  # If you just want the unique metric values:
-  best_val <- best_val_df %>%
-    pull(!!sym(main_metric)) %>%
-    unique()
-  cat("Best Model(s):",
-      paste0(names(best_model_name), " (", best_model_name, ")"),
-      sprintf("(%s: %.7f)", main_metric, as.numeric(best_val)),
-      "\n\n")
 
-  cat("Performance Metrics (Sorted by", main_metric,"):\n\n")
-
-  metrics_to_print <- c("Model", "Engine", desired_metrics)
 
   best_model_idx <- get_best_model_idx(performance_wide, optimized_metric)
 
@@ -220,6 +222,25 @@ summary.fastml <- function(object,
   }
 
   desired_model_name <- names(desired_models)
+
+  if ("metrics" %in% type) {
+
+  cat("\n===== fastml Model Summary =====\n")
+  cat("Task:", task, "\n")
+  cat("Number of Models Trained:", model_count, "\n")
+
+  # If you just want the unique metric values:
+  best_val <- best_val_df %>%
+    pull(!!sym(main_metric)) %>%
+    unique()
+  cat("Best Model(s):",
+      paste0(names(best_model_name), " (", best_model_name, ")"),
+      sprintf("(%s: %.7f)", main_metric, as.numeric(best_val)),
+      "\n\n")
+
+  cat("Performance Metrics (Sorted by", main_metric,"):\n\n")
+
+  metrics_to_print <- c("Model", "Engine", desired_metrics)
 
   for (m in desired_metrics) {
     performance_wide[[m]] <- format(performance_wide[[m]], digits = 7, nsmall = 7)
@@ -269,109 +290,109 @@ summary.fastml <- function(object,
 
 }
 
-  if ("hypermarameters" %in% type) {
+  if ("params" %in% type) {
 
     if(length(algorithm) == 1 && all(algorithm == "best")){
-      cat("Best Model Hyperparameters:\n\n")
+      cat("Best Model hyperparameters:\n\n")
 
     }else{
 
-      cat("Selected Model Hyperparameters:\n\n")
+      cat("Selected Model hyperparameters:\n\n")
 
     }
-
-  if(length(desired_models) == 1){
-    parsnip_fit <- tryCatch(extract_fit_parsnip(desired_models[[1]]), error = function(e) NULL)
-    nms_parsnip_fit <- names(parsnip_fit)
-    nms_parsnip_spec <- names(parsnip_fit$spec)
-  } else {
-    parsnip_fit <- tryCatch(lapply(desired_models, extract_fit_parsnip), error = function(e) NULL)
-    nms_parsnip_fit <- unique(unlist(lapply(parsnip_fit, names)))
-    nms_parsnip_spec <- unique(unlist(lapply(lapply(parsnip_fit, function(model) model$spec), names)))
-  }
-
-  if (is.null(parsnip_fit)) {
-    cat("Could not extract final fitted model details.\n")
-  } else if ("spec" %in% nms_parsnip_fit && "args" %in% nms_parsnip_spec) {
 
     if(length(desired_models) == 1){
-      params <- parsnip_fit$spec$args
+      parsnip_fit <- tryCatch(extract_fit_parsnip(desired_models[[1]]), error = function(e) NULL)
+      nms_parsnip_fit <- names(parsnip_fit)
+      nms_parsnip_spec <- names(parsnip_fit$spec)
     } else {
-      params <- lapply(parsnip_fit, function(model) model$spec$args)
+      parsnip_fit <- tryCatch(lapply(desired_models, extract_fit_parsnip), error = function(e) NULL)
+      nms_parsnip_fit <- unique(unlist(lapply(parsnip_fit, names)))
+      nms_parsnip_spec <- unique(unlist(lapply(lapply(parsnip_fit, function(model) model$spec), names)))
     }
 
-    if (length(params) > 0) {
-      cleaned_params_list <- list()  # Initialize here to prevent missing object error
+    if (is.null(parsnip_fit)) {
+      cat("Could not extract final fitted model details.\n")
+    } else if ("spec" %in% nms_parsnip_fit && "args" %in% nms_parsnip_spec) {
 
       if(length(desired_models) == 1){
-        cleaned_params <- list()
-        for (pname in names(params)) {
-          val <- params[[pname]]
-          if (inherits(val, "quosure")) {
-            val <- tryCatch(eval(get_expr(val), envir = get_env(val)), error = function(e) val)
-          }
-          cleaned_params[[pname]] <- val
-        }
-        cleaned_params_list[[desired_model_name]] <- cleaned_params  # Store in the list to ensure availability
+        params <- parsnip_fit$spec$args
       } else {
-        # Process each model's parameters
-        for (model_name in names(params)) {
-          model_params <- params[[model_name]]
-          cleaned_params <- list()
-
-          for (pname in names(model_params)) {
-            val <- model_params[[pname]]
-
-            if (inherits(val, "quosure")) {
-              val <- tryCatch(
-                eval(rlang::get_expr(val), envir = rlang::get_env(val)),
-                error = function(e) val # Retain quosure if evaluation fails
-              )
-            }
-
-            cleaned_params[[pname]] <- val
-          }
-          cleaned_params_list[[model_name]] <- cleaned_params
-        }
+        params <- lapply(parsnip_fit, function(model) model$spec$args)
       }
 
-      if (length(cleaned_params_list) == 0) {
-        cat("No hyperparameters found.\n")
-      } else {
-        for (model_name in names(cleaned_params_list)) {
-          cat("Model:", model_name, "\n")
+      if (length(params) > 0) {
+        cleaned_params_list <- list()  # Initialize here to prevent missing object error
 
-          cleaned_params <- cleaned_params_list[[model_name]]
-
-          for (pname in names(cleaned_params)) {
-            # val <- cleaned_params[[pname]]
-            #
-            # if (is.numeric(val)) val <- as.character(val)
-            #
-            # cat("  ", pname, ": ", val, "\n", sep = "")
-
-            val <- cleaned_params[[pname]]
-            if (rlang::is_quosure(val)) {
-              val <- rlang::quo_text(val)
-            } else if (is.numeric(val)) {
-              val <- as.character(val)
+        if(length(desired_models) == 1){
+          cleaned_params <- list()
+          for (pname in names(params)) {
+            val <- params[[pname]]
+            if (inherits(val, "quosure")) {
+              val <- tryCatch(eval(get_expr(val), envir = get_env(val)), error = function(e) val)
             }
-            cat("  ", pname, ": ", val, "\n", sep = "")
-
+            cleaned_params[[pname]] <- val
           }
+          cleaned_params_list[[desired_model_name]] <- cleaned_params  # Store in the list to ensure availability
+        } else {
+          # Process each model's parameters
+          for (model_name in names(params)) {
+            model_params <- params[[model_name]]
+            cleaned_params <- list()
 
-          cat("\n")
+            for (pname in names(model_params)) {
+              val <- model_params[[pname]]
+
+              if (inherits(val, "quosure")) {
+                val <- tryCatch(
+                  eval(rlang::get_expr(val), envir = rlang::get_env(val)),
+                  error = function(e) val # Retain quosure if evaluation fails
+                )
+              }
+
+              cleaned_params[[pname]] <- val
+            }
+            cleaned_params_list[[model_name]] <- cleaned_params
+          }
         }
+
+        if (length(cleaned_params_list) == 0) {
+          cat("No hyperparameters found.\n")
+        } else {
+          for (model_name in names(cleaned_params_list)) {
+            cat("Model:", model_name, "\n")
+
+            cleaned_params <- cleaned_params_list[[model_name]]
+
+            for (pname in names(cleaned_params)) {
+              # val <- cleaned_params[[pname]]
+              #
+              # if (is.numeric(val)) val <- as.character(val)
+              #
+              # cat("  ", pname, ": ", val, "\n", sep = "")
+
+              val <- cleaned_params[[pname]]
+              if (rlang::is_quosure(val)) {
+                val <- rlang::quo_text(val)
+              } else if (is.numeric(val)) {
+                val <- as.character(val)
+              }
+              cat("  ", pname, ": ", val, "\n", sep = "")
+
+            }
+
+            cat("\n")
+          }
+        }
+      } else {
+        cat("No hyperparameters found.\n")
       }
     } else {
       cat("No hyperparameters found.\n")
     }
-  } else {
-    cat("No hyperparameters found.\n")
   }
-}
 
-  if ("confusion_matrix" %in% type) {
+  if ("conf_mat" %in% type) {
 
     if (task == "classification") {
       df_best <- list()
