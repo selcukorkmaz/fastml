@@ -397,14 +397,16 @@ summary.fastml <- function(object,
     if (task == "classification") {
       df_best <- list()
 
-      for (model in names(best_model_name)) {
-        engine <- best_model_name[model]
-        name_combined <- paste(model, engine, sep = "_")
+      for (i in seq_along(best_model_name)) {
+        model_name <- names(best_model_name)[i]
+        engine     <- best_model_name[i]
+        name_combined <- sprintf("%s (%s)", model_name, engine)
 
-        if (!is.null(predictions_list[[model]]) && !is.null(predictions_list[[model]][[engine]])) {
-          df_best[[name_combined]] <- predictions_list[[model]][[engine]]
+        if (!is.null(predictions_list[[model_name]]) &&
+            !is.null(predictions_list[[model_name]][[engine]])) {
+          df_best[[name_combined]] <- predictions_list[[model_name]][[engine]]
         } else {
-          cat("\nNo predictions found for", model, "with engine", engine, "\n")
+          cat("No predictions found for", model_name, "with engine", engine, "\n")
         }
       }
 
