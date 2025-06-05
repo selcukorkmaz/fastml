@@ -4,7 +4,8 @@
 \alias{process_model}
 \title{Process Model and Compute Performance Metrics}
 \usage{
-process_model(model_obj, model_id, task, test_data, label, event_class, engine)
+process_model(model_obj, model_id, task, test_data, label, event_class, engine,
+  train_data, metric)
 }
 \arguments{
 \item{model_obj}{A model object, which can be either a tuning result (an object inheriting from \code{"tune_results"}) or an already fitted workflow.}
@@ -20,6 +21,10 @@ process_model(model_obj, model_id, task, test_data, label, event_class, engine)
 \item{event_class}{For classification tasks, a character string specifying which event class to consider as positive (accepted values: \code{"first"} or \code{"second"}).}
 
 \item{engine}{A character string specifying the modeling engine used. This parameter affects prediction types and metric computations.}
+
+\item{train_data}{Training data frame used when finalizing tuned models.}
+
+\item{metric}{Metric name used to select the best tuning parameters.}
 }
 \value{
 A list with two components:
@@ -37,7 +42,7 @@ The function first checks if \code{model_obj} is a tuning result. If so, it atte
     \item Select the best tuning parameters using \code{tune::select_best} (note that the metric used for selection should be defined in the calling environment).
     \item Extract the model specification and preprocessor from \code{model_obj} using \code{workflows::pull_workflow_spec} and \code{workflows::pull_workflow_preprocessor}, respectively.
     \item Finalize the model specification with the selected parameters via \code{tune::finalize_model}.
-    \item Rebuild the workflow using \code{workflows::workflow}, \code{workflows::add_recipe}, and \code{workflows::add_model}, and fit the finalized workflow with \code{parsnip::fit} on training data (the variable \code{train_data} is expected to be available in the environment).
+    \item Rebuild the workflow using \code{workflows::workflow}, \code{workflows::add_recipe}, and \code{workflows::add_model}, and fit the finalized workflow with \code{parsnip::fit} on the provided \code{train_data}.
   }
   If \code{model_obj} is already a fitted workflow, it is used directly.
 

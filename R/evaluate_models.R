@@ -53,7 +53,8 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
         model_obj <- models[[algo]][[eng]]
         result <- process_model(model_obj, model_id = paste(algo, eng, sep = "_"),
                                 task = task, test_data = test_data, label = label,
-                                event_class = event_class, engine = eng)
+                                event_class = event_class, engine = eng,
+                                train_data = train_data, metric = metric)
         if (!is.null(result)) {
           performance[[algo]][[eng]] <- result$performance
           predictions_list[[algo]][[eng]] <- result$predictions
@@ -65,7 +66,8 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
       result <- process_model(models[[algo]], model_id = algo,
                               task = task, test_data = test_data,
                               label = label, event_class = event_class,
-                              engine = eng)
+                              engine = eng, train_data = train_data,
+                              metric = metric)
       if (!is.null(result)) {
         performance[[algo]] <- result$performance
         predictions_list[[algo]] <- result$predictions

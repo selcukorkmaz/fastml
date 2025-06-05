@@ -193,6 +193,22 @@ test_that("evaluate_models works with a single workflow", {
   expect_true("log_reg" %in% names(eval_res$performance))
 })
 
+test_that("process_model works without global variables", {
+  rec <- recipes::recipe(Species ~ ., data = iris)
+  spec <- parsnip::logistic_reg() %>% parsnip::set_engine("glm")
+  wf <- workflows::workflow() %>%
+    workflows::add_model(spec) %>%
+    workflows::add_recipe(rec)
+  fitted_wf <- parsnip::fit(wf, data = iris)
+
+  res <- process_model(fitted_wf, model_id = "log_reg", task = "classification",
+                       test_data = iris, label = "Species",
+                       event_class = "second", engine = "glm",
+                       train_data = iris, metric = "accuracy")
+  expect_s3_class(res$performance, "tbl_df")
+  expect_equal(nrow(res$predictions), nrow(iris))
+})
+
 # test_that("regression model successful.", {
 #   expect_no_error({
 #     fastml(
