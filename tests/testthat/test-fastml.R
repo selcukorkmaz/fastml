@@ -179,6 +179,20 @@ test_that("stop if recipe is not correctly specified.", {
   })
 })
 
+test_that("evaluate_models works with a single workflow", {
+  rec <- recipes::recipe(Species ~ ., data = iris)
+  spec <- parsnip::logistic_reg() %>% parsnip::set_engine("glm")
+  wf <- workflows::workflow() %>%
+    workflows::add_model(spec) %>%
+    workflows::add_recipe(rec)
+  fitted_wf <- parsnip::fit(wf, data = iris)
+  models <- list(log_reg = fitted_wf)
+  eval_res <- evaluate_models(models, iris, iris,
+                              label = "Species", task = "classification",
+                              metric = "accuracy", event_class = "second")
+  expect_true("log_reg" %in% names(eval_res$performance))
+})
+
 # test_that("regression model successful.", {
 #   expect_no_error({
 #     fastml(

@@ -32,6 +32,8 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
     }
   }
 
+  # Determine engine names for each algorithm
+  engine_names <- get_engine_names(models)
   # Initialize performance and predictions lists
   performance <- list()
   predictions_list <- list()
@@ -59,7 +61,11 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
       }
     } else {
       # Otherwise, assume a single model (not nested)
-      result <- process_model(models[[algo]], algo)
+      eng <- if (!is.null(engine_names[[algo]])) engine_names[[algo]][1] else NA
+      result <- process_model(models[[algo]], model_id = algo,
+                              task = task, test_data = test_data,
+                              label = label, event_class = event_class,
+                              engine = eng)
       if (!is.null(result)) {
         performance[[algo]] <- result$performance
         predictions_list[[algo]] <- result$predictions
