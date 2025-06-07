@@ -5,61 +5,35 @@
 \title{Plot Methods for \code{fastml} Objects}
 \usage{
 \method{plot}{fastml}(
-  object,
+  x,
   algorithm = "best",
   type = c("all", "bar", "roc", "confusion", "calibration", "residual"),
   ...
 )
 }
 \arguments{
-\item{object}{A \code{fastml} object (output of \code{\link{fastml}()}).}
+\item{x}{A \code{fastml} object (output of \code{\link{fastml}()}).}
 
 \item{algorithm}{Character vector specifying which algorithm(s) to include when
-generating certain plots (e.g., ROC curves). Defaults to \code{"best"}.
-If \code{"best"}, the function will use all algorithms in \code{object$best_model_name}.
-Otherwise specify one or more model names exactly as they appear in \code{object$models}.}
+generating certain plots (e.g., ROC curves). Defaults to \code{"best"}.}
 
 \item{type}{Character vector indicating which plot(s) to produce. Options are:
 \describe{
   \item{\code{"bar"}}{Bar plot of performance metrics across all models/engines.}
   \item{\code{"roc"}}{ROC curve(s) for binary classification models.}
-  \item{\code{"confusion"}}{Confusion matrix for the best model(s) (classification only).}
-  \item{\code{"calibration"}}{Calibration plot for the best model(s) (classification only).}
-  \item{\code{"residual"}}{Residual diagnostics for the best model (regression only).}
-  \item{\code{"all"}}{Produce all available plots for the task.}
-}
-Default is \code{"all"}.}
+  \item{\code{"confusion"}}{Confusion matrix for the best model(s).}
+  \item{\code{"calibration"}}{Calibration plot for the best model(s).}
+  \item{\code{"residual"}}{Residual diagnostics for the best model.}
+  \item{\code{"all"}}{Produce all available plots.}
+}}
 
 \item{...}{Additional arguments (currently unused).}
 }
-\value{
-Invisibly returns the original \code{fastml} object.
-}
 \description{
 \code{plot.fastml} produces visual diagnostics for a trained \code{fastml} object.
-Users can specify which plots to generate via the \code{type} argument.
 }
 \details{
-When \code{type = "all"}, \code{plot.fastml} will produce:
-\itemize{
-  \item A bar plot showing all requested performance metrics (e.g., accuracy, RMSE).
-  \item ROC curves (if \code{task == "classification"} and probability predictions are available).
-  \item Confusion matrix for the best model(s) (classification only).
-  \item Calibration plot for the best model(s) (classification only, if \code{probably} is installed).
-  \item Residual diagnostics (scatter and histogram) for the best model (regression only).
-}
-
-If specific types are requested (e.g., \code{type = c("bar", "roc")}), only those plots will be produced.
-}
-\examples{
-\dontrun{
-  # Assume 'fm' is a trained fastml object
-  plot(fm, type = c("bar", "roc"))
-  plot(fm, type = "confusion")
-  plot(fm, type = "residual")
-}
-
-}
-\seealso{
-\link{fastml}, \link{summary.fastml}
+When \code{type = "all"}, \code{plot.fastml} will produce a bar plot of metrics,
+ROC curves (classification), confusion matrix, calibration plot, and residual
+diagnostics (regression).  If you specify a subset of types, only those will be drawn.
 }

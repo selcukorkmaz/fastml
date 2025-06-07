@@ -196,7 +196,7 @@ fastml <- function(data = NULL,
         dplyr::across(where(is.character), as.factor),
         dplyr::across(where(is.integer), as.numeric)
       )
-    data <- sanitize(data)
+
     # Split into train/test
     if (stratify && task == "classification") {
       split <- rsample::initial_split(data, prop = 1 - test_size, strata = label)

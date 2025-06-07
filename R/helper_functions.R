@@ -850,6 +850,7 @@ get_default_tune_params <- function(algo, train_data, label, engine) {
 #' @importFrom yardstick metric_set accuracy kap sens spec precision f_meas roc_auc rmse rsq mae
 #' @importFrom tibble tibble
 #' @importFrom rlang sym
+#' @importFrom stats predict
 #' @importFrom magrittr %>%
 #'
 #' @export
@@ -884,9 +885,12 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
 
     pred_class <- predict(final_model, new_data = test_data, type = "class")$.pred_class
 
-    if(engine != "LiblineaR"){
-     pred_prob <- predict(final_model, new_data = test_data, type = "prob")
+
+    if (!is.null(engine) && !is.na(engine) && engine != "LiblineaR") {
+      pred_prob <- predict(final_model, new_data = test_data, type = "prob")
     }
+
+
 
     if(nrow(test_data) != length(pred_class)) {
       stop('The dataset has missing values. To handle this, set impute_method = "remove" to delete rows with missing values,
@@ -899,7 +903,7 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       dplyr::select(truth = !!rlang::sym(label)) %>%
       dplyr::mutate(estimate = pred_class) %>%
       {
-        if (engine != "LiblineaR") {
+        if (!is.null(engine) && !is.na(engine) && engine != "LiblineaR") {
           dplyr::bind_cols(., pred_prob)
         } else {
           .
@@ -937,7 +941,7 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       )
       perf_class <- metrics_class(data_metrics, truth = truth, estimate = estimate, event_level = event_class)
 
-      if(engine != "LiblineaR"){
+      if (!is.null(engine) && !is.na(engine) && engine != "LiblineaR") {
         # Compute ROC AUC using the probability column for the positive class
         roc_auc_value <- yardstick::roc_auc(
           data_metrics,
@@ -975,14 +979,18 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         estimator = "macro"
       )
 
-      prob_cols <- names(pred_prob)
-      perf_roc_auc <- yardstick::roc_auc(
-        data_metrics,
-        truth = truth,
-        !!!rlang::syms(prob_cols),
-        estimator = "macro_weighted"
-      )
-      perf <- dplyr::bind_rows(perf_class, perf_roc_auc)
+      if (!is.null(engine) && !is.na(engine) && engine != "LiblineaR") {
+        prob_cols <- names(pred_prob)
+        perf_roc_auc <- yardstick::roc_auc(
+          data_metrics,
+          truth = truth,
+          !!!rlang::syms(prob_cols),
+          estimator = "macro_weighted"
+        )
+        perf <- dplyr::bind_rows(perf_class, perf_roc_auc)
+      } else {
+        perf <- perf_class
+      }
     }
   } else {
     # Regression task

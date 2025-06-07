@@ -47,6 +47,7 @@
 #' @importFrom DALEX explain model_parts loss_root_mean_square loss_cross_entropy model_profile predict_parts
 #' @importFrom ggplot2 labs
 #' @importFrom patchwork wrap_plots
+#' @importFrom stats predict
 #'
 #' @return Prints DALEX explanations: variable importance table & plot, model profiles (if any), and SHAP table & summary plot.
 #' @export

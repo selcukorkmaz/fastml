@@ -17,23 +17,6 @@ test_that("'label' is not available in the data", {
   })
 })
 
-test_that("special characters in column names are removed", {
-  tmp <- iris %>%
-    rename(
-      "Sepal.Length*[/" = Sepal.Length
-    )
-
-  # Train models with Bayesian optimization
-  expect_true({
-    model <- fastml(
-      data = tmp,
-      label = "Species",
-      algorithms = c("rand_forest")
-    )
-
-    "sepal_length" %in% colnames(model$processed_train_data)
-  })
-})
 
 
 test_that("model fails if reponse variable is not of supported type", {
@@ -209,46 +192,46 @@ test_that("process_model works without global variables", {
   expect_equal(nrow(res$predictions), nrow(iris))
 })
 
-# test_that("regression model successful.", {
-#   expect_no_error({
-#     fastml(
-#       data = iris[,-5],
-#       label = "Sepal.Length",
-#       algorithms = c("linear_reg")
-#     )
-#   })
-# })
+test_that("regression model successful.", {
+  res <- fastml(
+    data = iris[, -5],
+    label = "Sepal.Length",
+    algorithms = c("linear_reg")
+  )
+  expect_s3_class(res, "fastml")
+})
 
-# test_that("multicore tasks successful.", {
-#   expect_no_error({
-#     fastml(
-#       data = iris[,-5],
-#       label = "Sepal.Length",
-#       algorithms = c("linear_reg"),
-#       n_cores = 2
-#     )
-#   })
-# })
 
-# test_that("stop if unsupported metric is selected.", {
-#   expect_error({
-#     fastml(
-#       data = iris[,-5],
-#       label = "Sepal.Length",
-#       algorithms = c("linear_reg"),
-#       n_cores = 2,
-#       metric = "unkown"
-#     )
-#   })
-#
-#   expect_no_error({
-#     fastml(
-#       data = iris[,-5],
-#       label = "Sepal.Length",
-#       algorithms = c("linear_reg"),
-#       n_cores = 2,
-#       metric = "rmse"
-#     )
-#   })
-# })
+
+test_that("multicore tasks successful.", {
+  res <- fastml(
+    data = iris[, -5],
+    label = "Sepal.Length",
+    algorithms = c("linear_reg"),
+    n_cores = 2
+  )
+  expect_s3_class(res, "fastml")
+})
+
+test_that("stop if unsupported metric is selected.", {
+  expect_error({
+    fastml(
+      data = iris[,-5],
+      label = "Sepal.Length",
+      algorithms = c("linear_reg"),
+      n_cores = 2,
+      metric = "unkown"
+    )
+  })
+
+  expect_no_error({
+    fastml(
+      data = iris[,-5],
+      label = "Sepal.Length",
+      algorithms = c("linear_reg"),
+      n_cores = 2,
+      metric = "rmse"
+    )
+  })
+})
 

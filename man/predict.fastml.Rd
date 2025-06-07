@@ -4,7 +4,7 @@
 \alias{predict.fastml}
 \title{Predict method for fastml objects}
 \usage{
-predict.fastml(
+\method{predict}{fastml}(
   object,
   newdata,
   type = "auto",

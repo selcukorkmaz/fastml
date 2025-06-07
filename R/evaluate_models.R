@@ -62,7 +62,13 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
       }
     } else {
       # Otherwise, assume a single model (not nested)
-      eng <- if (!is.null(engine_names[[algo]])) engine_names[[algo]][1] else NA
+      eng <- if (!is.null(engine_names[[algo]])) {
+        engine_names[[algo]][1]
+      } else if (inherits(models[[algo]], "workflow")) {
+        workflows::extract_fit_parsnip(models[[algo]])$spec$engine
+      } else {
+        NA
+      }
       result <- process_model(models[[algo]], model_id = algo,
                               task = task, test_data = test_data,
                               label = label, event_class = event_class,
