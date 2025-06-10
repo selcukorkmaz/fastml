@@ -1,4 +1,4 @@
-#' FastExplain the fastml_model (DALEX + SHAP + Permutation-based VI)
+#' FastExplain the fastml (DALEX + SHAP + Permutation-based VI)
 #'
 #' Provides model explainability using DALEX. This function:
 #' \itemize{
@@ -28,7 +28,7 @@
 #'
 #'  }
 #'
-#' @param object A \code{fastml_model} object.
+#' @param object A \code{fastml} object.
 #' @param method Currently only \code{"dalex"} is supported.
 #' @param features Character vector of feature names for partial dependence (model profiles). Default NULL.
 #' @param grid_size Number of grid points for partial dependence. Default 20.
@@ -47,6 +47,7 @@
 #' @importFrom DALEX explain model_parts loss_root_mean_square loss_cross_entropy model_profile predict_parts
 #' @importFrom ggplot2 labs
 #' @importFrom patchwork wrap_plots
+#' @importFrom stats predict
 #'
 #' @return Prints DALEX explanations: variable importance table & plot, model profiles (if any), and SHAP table & summary plot.
 #' @export
@@ -60,8 +61,8 @@ fastexplain <- function(object,
                           loss_function = NULL,
                           ...) {
 
-  if (!inherits(object, "fastml_model")) {
-    stop("The input must be a 'fastml_model' object.")
+  if (!inherits(object, "fastml")) {
+    stop("The input must be a 'fastml' object.")
   }
 
   if (method != "dalex") {

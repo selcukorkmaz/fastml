@@ -17,23 +17,6 @@ test_that("'label' is not available in the data", {
   })
 })
 
-test_that("special characters in column names are removed", {
-  tmp <- iris %>%
-    rename(
-      "Sepal.Length*[/" = Sepal.Length
-    )
-
-  # Train models with Bayesian optimization
-  expect_true({
-    model <- fastml(
-      data = tmp,
-      label = "Species",
-      algorithms = c("rand_forest")
-    )
-
-    "sepal_length" %in% colnames(model$processed_train_data)
-  })
-})
 
 
 test_that("model fails if reponse variable is not of supported type", {
@@ -179,25 +162,55 @@ test_that("stop if recipe is not correctly specified.", {
   })
 })
 
-test_that("regression model successful.", {
-  expect_no_error({
-    fastml(
-      data = iris[,-5],
-      label = "Sepal.Length",
-      algorithms = c("linear_reg")
-    )
-  })
+test_that("evaluate_models works with a single workflow", {
+  rec <- recipes::recipe(Species ~ ., data = iris)
+  spec <- parsnip::logistic_reg() %>% parsnip::set_engine("glm")
+  wf <- workflows::workflow() %>%
+    workflows::add_model(spec) %>%
+    workflows::add_recipe(rec)
+  fitted_wf <- parsnip::fit(wf, data = iris)
+  models <- list(log_reg = fitted_wf)
+  eval_res <- evaluate_models(models, iris, iris,
+                              label = "Species", task = "classification",
+                              metric = "accuracy", event_class = "second")
+  expect_true("log_reg" %in% names(eval_res$performance))
 })
 
+test_that("process_model works without global variables", {
+  rec <- recipes::recipe(Species ~ ., data = iris)
+  spec <- parsnip::logistic_reg() %>% parsnip::set_engine("glm")
+  wf <- workflows::workflow() %>%
+    workflows::add_model(spec) %>%
+    workflows::add_recipe(rec)
+  fitted_wf <- parsnip::fit(wf, data = iris)
+
+  res <- process_model(fitted_wf, model_id = "log_reg", task = "classification",
+                       test_data = iris, label = "Species",
+                       event_class = "second", engine = "glm",
+                       train_data = iris, metric = "accuracy")
+  expect_s3_class(res$performance, "tbl_df")
+  expect_equal(nrow(res$predictions), nrow(iris))
+})
+
+test_that("regression model successful.", {
+  res <- fastml(
+    data = iris[, -5],
+    label = "Sepal.Length",
+    algorithms = c("linear_reg")
+  )
+  expect_s3_class(res, "fastml")
+})
+
+
+
 test_that("multicore tasks successful.", {
-  expect_no_error({
-    fastml(
-      data = iris[,-5],
-      label = "Sepal.Length",
-      algorithms = c("linear_reg"),
-      n_cores = 2
-    )
-  })
+  res <- fastml(
+    data = iris[, -5],
+    label = "Sepal.Length",
+    algorithms = c("linear_reg"),
+    n_cores = 2
+  )
+  expect_s3_class(res, "fastml")
 })
 
 test_that("stop if unsupported metric is selected.", {

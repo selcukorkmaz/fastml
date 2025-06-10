@@ -32,6 +32,8 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
     }
   }
 
+  # Determine engine names for each algorithm
+  engine_names <- get_engine_names(models)
   # Initialize performance and predictions lists
   performance <- list()
   predictions_list <- list()
@@ -51,7 +53,8 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
         model_obj <- models[[algo]][[eng]]
         result <- process_model(model_obj, model_id = paste(algo, eng, sep = "_"),
                                 task = task, test_data = test_data, label = label,
-                                event_class = event_class, engine = eng)
+                                event_class = event_class, engine = eng,
+                                train_data = train_data, metric = metric)
         if (!is.null(result)) {
           performance[[algo]][[eng]] <- result$performance
           predictions_list[[algo]][[eng]] <- result$predictions
@@ -59,7 +62,18 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
       }
     } else {
       # Otherwise, assume a single model (not nested)
-      result <- process_model(models[[algo]], algo)
+      eng <- if (!is.null(engine_names[[algo]])) {
+        engine_names[[algo]][1]
+      } else if (inherits(models[[algo]], "workflow")) {
+        workflows::extract_fit_parsnip(models[[algo]])$spec$engine
+      } else {
+        NA
+      }
+      result <- process_model(models[[algo]], model_id = algo,
+                              task = task, test_data = test_data,
+                              label = label, event_class = event_class,
+                              engine = eng, train_data = train_data,
+                              metric = metric)
       if (!is.null(result)) {
         performance[[algo]] <- result$performance
         predictions_list[[algo]] <- result$predictions

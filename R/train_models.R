@@ -22,7 +22,7 @@
 #' @param adaptive Logical indicating whether to use adaptive/racing methods.
 #' @param algorithm_engines A named list specifying the engine to use for each algorithm.
 #' @importFrom magrittr %>%
-#' @importFrom dplyr filter mutate select if_else
+#' @importFrom dplyr filter mutate select if_else starts_with
 #' @importFrom tibble tibble
 #' @importFrom rlang sym
 #' @importFrom dials range_set value_set grid_regular grid_latin_hypercube finalize
@@ -217,6 +217,8 @@ train_models <- function(train_data,
     set.seed(seed)
 
     # Assume that get_engine() now may return multiple engine names.
+
+    if(n_class > 2 && algo == "logistic_reg") {algo = "multinom_reg"}
 
     engines <- get_engine(algo, get_default_engine(algo))
 

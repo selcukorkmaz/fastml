@@ -1,8 +1,7 @@
 Package: fastml
 Type: Package
 Title: Fast Machine Learning Model Training and Evaluation
-Version: 0.5.0
-Date: 2025-02-25
+Version: 0.6.1
 Authors@R: c(person("Selcuk", "Korkmaz", email="selcukorkmaz@gmail.com", role=c("aut", "cre"),
                     comment = c(ORCID = "0000-0003-4632-6850")), 
              person("Dincer", "Goksuluk", email="dincer.goksuluk@gmail.com", role="aut",
@@ -12,8 +11,10 @@ Authors@R: c(person("Selcuk", "Korkmaz", email="selcukorkmaz@gmail.com", role=c(
 Description: Streamlines the training, evaluation, and comparison of multiple machine learning models with minimal code by providing 
             comprehensive data preprocessing and support for a wide range of algorithms with hyperparameter tuning. 
             It offers performance metrics and visualization tools to facilitate efficient and effective machine learning workflows.
-License: GPL (>= 2)
 Encoding: UTF-8
+License: MIT + file LICENSE
+URL: https://github.com/selcukorkmaz/fastml
+BugReports: https://github.com/selcukorkmaz/fastml/issues
 LazyData: true
 Imports:
     recipes,

@@ -5,9 +5,12 @@
 \title{Fast Machine Learning Function}
 \usage{
 fastml(
-  data,
+  data = NULL,
+  train_data = NULL,
+  test_data = NULL,
   label,
   algorithms = "all",
+  task = "auto",
   test_size = 0.2,
   resampling_method = "cv",
   folds = ifelse(grepl("cv", resampling_method), 10, 25),
@@ -35,11 +38,17 @@ fastml(
 )
 }
 \arguments{
-\item{data}{A data frame containing the features and target variable.}
+\item{data}{A data frame containing the complete dataset. If both `train_data` and `test_data` are `NULL`, `fastml()` will split this into training and testing sets according to `test_size` and `stratify`. Defaults to `NULL`.}
+
+\item{train_data}{A data frame pre-split for model training. If provided, `test_data` must also be supplied, and no internal splitting will occur. Defaults to `NULL`.}
+
+\item{test_data}{A data frame pre-split for model evaluation. If provided, `train_data` must also be supplied, and no internal splitting will occur. Defaults to `NULL`.}
 
 \item{label}{A string specifying the name of the target variable.}
 
 \item{algorithms}{A vector of algorithm names to use. Default is \code{"all"} to run all supported algorithms.}
+
+\item{task}{Character string specifying model type selection. Use "auto" to let the function detect whether the target is for classification or regression based on the data, or explicitly set to "classification" or "regression".}
 
 \item{test_size}{A numeric value between 0 and 1 indicating the proportion of the data to use for testing. Default is \code{0.2}.}
 
@@ -103,7 +112,7 @@ Default is \code{"error"}.}
 \item{seed}{An integer value specifying the random seed for reproducibility.}
 }
 \value{
-An object of class \code{fastml_model} containing the best model, performance metrics, and other information.
+An object of class \code{fastml} containing the best model, performance metrics, and other information.
 }
 \description{
 Trains and evaluates multiple classification or regression models automatically detecting the task based on the target variable type.
@@ -126,7 +135,8 @@ iris$Species <- factor(iris$Species)
 model <- fastml(
   data = iris,
   label = "Species",
-  algorithms = c("rand_forest", "xgboost", "svm_rbf")
+  algorithms = c("rand_forest", "xgboost", "svm_rbf"), algorithm_engines = c(
+  list(rand_forest = c("ranger","aorsf", "partykit", "randomForest")))
 )
 
 # View model summary
