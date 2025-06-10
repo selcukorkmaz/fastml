@@ -25,145 +25,114 @@
 #'
 #' @examples
 #' \dontrun{
+#'   set.seed(123)
 #'   model <- fastml(iris, label = "Species")
-#'   test_data <- sanitize(iris[1:4])
+#'   test_data <- iris[sample(1:150, 20),-5]
+#'
+#'   ## Best model(s) predictions
 #'   preds <- predict(model, newdata = test_data)
+#'
+#'   ## Predicted class probabilities using best model(s)
 #'   probs <- predict(model, newdata = test_data, type = "prob")
+#'
+#'   ## Prediction from a specific model by name
 #'   single_model_preds <- predict(model, newdata = test_data, model_name = "rand_forest (ranger)")
+#'
 #' }
-predict.fastml <- function(object, newdata, type = "auto", model_name = NULL,
-                                 verbose = FALSE, postprocess_fn = NULL, ...) {
-  # Check if newdata is provided
+predict.fastml <- function(object, newdata,
+                           type = "auto",
+                           model_name = NULL,
+                           verbose = FALSE,
+                           postprocess_fn = NULL,
+                           ...) {
+  # 1. input checks & drop label from newdata -----------------------------
   if (missing(newdata)) {
-    stop("Please provide new data for prediction.")
+    stop("Please provide newdata for prediction.")
+  }
+  lbl <- object$label
+  if (is.null(lbl)) {
+    stop("Label name is missing from the model object.")
+  }
+  if (lbl %in% names(newdata)) {
+    newdata[[lbl]] <- NULL
   }
 
-  # Retrieve the label name from the model object
-  label <- object$label
-
-  # Ensure the label is not NULL
-  if (is.null(label)) {
-    stop("The label name is missing from the model object. Please check the training process.")
+  # 2. preprocessing via recipe -------------------------------------------
+  if (is.null(object$preprocessor)) {
+    stop("No preprocessing recipe found in fastml object.")
   }
-
-  # Remove label from newdata if present
-  if (label %in% names(newdata)) {
-    newdata[[label]] <- NULL
-  }
-
-  # Apply preprocessing to newdata using the recipe
-  if (!is.null(object$preprocessor)) {
-    newdata_processed <- bake(object$preprocessor, new_data = newdata)
-  } else {
-    stop("Preprocessing recipe is missing from the model object.")
-  }
-
-  # Optional: validate features after preprocessing
+  new_proc <- bake(object$preprocessor, new_data = newdata)
   if (!is.null(object$feature_names)) {
-    expected_vars <- object$feature_names
-    missing_vars <- setdiff(expected_vars, names(newdata_processed))
-    if (length(missing_vars) > 0) {
-      stop("The following variables are missing from new data after preprocessing: ",
-           paste(missing_vars, collapse = ", "))
+    miss <- setdiff(object$feature_names, names(new_proc))
+    if (length(miss)) {
+      stop("Missing features after preprocessing: ", paste(miss, collapse = ", "))
     }
   }
 
-  # Use the best model(s) for prediction
-  best_model <- object$best_model
+  # 3. pick prediction type ------------------------------------------------
+  predict_type <- switch(type,
+                         auto = if (object$task == "classification") "class" else "numeric",
+                         prob = {
+                           if (object$task != "classification") {
+                             warning("Probabilities only for classification; using numeric.")
+                             "numeric"
+                           } else "prob"
+                         },
+                         type
+  )
 
-  # Determine prediction type
-  if (type == "auto") {
-    if (object$task == "classification") {
-      predict_type <- "class"
-    } else {
-      predict_type <- "numeric"
+  # 4. choose which workflows to use ---------------------------------------
+  if (!is.null(model_name)) {
+    # user wants a specific model → look in object$models
+    all_mods <- object$models
+    if (!is.list(all_mods) ||
+        !all(sapply(all_mods, inherits, "workflow"))) {
+      stop("No valid `models` slot in fastml object.")
     }
-  } else if (type == "prob") {
-    if (object$task != "classification") {
-      warning("Probability output not supported for regression tasks. Using numeric predictions instead.")
-      predict_type <- "numeric"
-    } else {
-      predict_type <- "prob"
+    bad <- setdiff(model_name, names(all_mods))
+    if (length(bad)) {
+      stop("Requested model_name not found: ", paste(bad, collapse = ", "))
     }
+    to_predict <- all_mods[model_name]
   } else {
-    predict_type <- type
+    # default → best_model slot
+    bm <- object$best_model
+    if (inherits(bm, "workflow")) {
+      to_predict <- list(bm)
+      names(to_predict) <- if (!is.null(names(bm))) names(bm) else "best_model"
+    } else if (is.list(bm) && all(sapply(bm, inherits, "workflow"))) {
+      to_predict <- bm
+    } else {
+      stop("No valid `best_model` found in fastml object.")
+    }
   }
 
-  # Case 1: Single model
-  if (inherits(best_model, "workflow")) {
-    preds <- predict(best_model, new_data = newdata_processed, type = predict_type)
-
-    # Extract useful columns
-    if (is.data.frame(preds) || is_tibble(preds)) {
-      if (predict_type == "class") {
-        preds <- preds$.pred_class
-      } else if (predict_type == "numeric") {
-        preds <- preds$.pred
-      }
+  # 5. run predictions ------------------------------------------------------
+  preds <- lapply(names(to_predict), function(nm) {
+    wf <- to_predict[[nm]]
+    if (verbose) message("Predicting with: ", nm)
+    p <- predict(wf, new_data = new_proc, type = predict_type, ...)
+    # pull out the vector (or keep full prob‐tibble)
+    if (is.data.frame(p) || tibble::is_tibble(p)) {
+      p <- switch(predict_type,
+                  class   = p$.pred_class,
+                  numeric = p$.pred,
+                  prob    = p
+      )
     }
-
-    # Optional post-processing
-    if (!is.null(postprocess_fn) && is.function(postprocess_fn)) {
-      preds <- postprocess_fn(preds)
+    if (!is.null(postprocess_fn)) {
+      p <- postprocess_fn(p)
     }
+    p
+  })
+  names(preds) <- names(to_predict)
 
-    return(preds)
+  # 6. return simple vs. list ---------------------------------------------
+  if (length(preds) == 1) {
+    return(preds[[1]])
   }
-
-  # Case 2: List of models
-  if (is.list(best_model) && all(sapply(best_model, inherits, "workflow"))) {
-
-    # Allow selection of one specific model by name
-    if (!is.null(model_name)) {
-      if (!model_name %in% names(best_model)) {
-        stop("Requested model name not found in best_model.")
-      }
-      best_model <- best_model[[model_name]]
-      preds <- predict(best_model, new_data = newdata_processed, type = predict_type)
-
-      if (is.data.frame(preds) || is_tibble(preds)) {
-        if (predict_type == "class") {
-          preds <- preds$.pred_class
-        } else if (predict_type == "numeric") {
-          preds <- preds$.pred
-        }
-      }
-
-      if (!is.null(postprocess_fn) && is.function(postprocess_fn)) {
-        preds <- postprocess_fn(preds)
-      }
-
-      return(preds)
-    }
-
-    # Otherwise, loop through all models
-    predictions <- lapply(names(best_model), function(name) {
-      model <- best_model[[name]]
-      if (isTRUE(verbose)) {
-        message("Generating predictions using model: ", name)
-      }
-      preds <- predict(model, new_data = newdata_processed, type = predict_type)
-
-      if (is.data.frame(preds) || is_tibble(preds)) {
-        if (predict_type == "class") {
-          preds <- preds$.pred_class
-        } else if (predict_type == "numeric") {
-          preds <- preds$.pred
-        }
-      }
-
-      if (!is.null(postprocess_fn) && is.function(postprocess_fn)) {
-        preds <- postprocess_fn(preds)
-      }
-
-      return(preds)
-    })
-
-    names(predictions) <- names(best_model)
-    class(predictions) <- "fastml_prediction"
-    return(predictions)
-  }
-
-  stop("Unsupported model structure in 'best_model'.")
+  class(preds) <- "fastml_prediction"
+  preds
 }
+
 

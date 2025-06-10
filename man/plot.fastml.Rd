@@ -37,3 +37,33 @@ When \code{type = "all"}, \code{plot.fastml} will produce a bar plot of metrics,
 ROC curves (classification), confusion matrix, calibration plot, and residual
 diagnostics (regression).  If you specify a subset of types, only those will be drawn.
 }
+\examples{
+  ## Create a binary classification dataset from iris
+  data(iris)
+  iris <- iris[iris$Species != "setosa",]
+  iris$Species <- factor(iris$Species)
+
+  ## Fit fastml model on binary classification task
+  model <- fastml(data = iris, label = "Species", algorithms = c("rand_forest", "svm_rbf"))
+
+  ## 1. Plot all available diagnostics
+  plot(model, type = "all")
+
+  ## 2. Bar plot of performance metrics
+  plot(model, type = "bar")
+
+  ## 3. ROC curves (only for classification models)
+  plot(model, type = "roc")
+
+  ## 4. Calibration plot (requires 'probably' package)
+  plot(model, type = "calibration")
+
+  ## 5. ROC curves for specific algorithm(s) only
+  plot(model, type = "roc", algorithm = "rand_forest")
+
+  ## 6. Residual diagnostics (only available for regression tasks)
+  model <- fastml(data = mtcars, label = "mpg", algorithms = c("linear_reg", "xgboost"))
+  plot(model, type = "residual")
+
+
+}

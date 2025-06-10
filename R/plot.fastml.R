@@ -18,6 +18,36 @@ utils::globalVariables(c("Model", "Value", "Measure"))
 #'   }
 #' @param ... Additional arguments (currently unused).
 #'
+#' @examples
+#' \donttest{
+#'   ## Create a binary classification dataset from iris
+#'   data(iris)
+#'   iris <- iris[iris$Species != "setosa",]
+#'   iris$Species <- factor(iris$Species)
+#'
+#'   ## Fit fastml model on binary classification task
+#'   model <- fastml(data = iris, label = "Species", algorithms = c("rand_forest", "svm_rbf"))
+#'
+#'   ## 1. Plot all available diagnostics
+#'   plot(model, type = "all")
+#'
+#'   ## 2. Bar plot of performance metrics
+#'   plot(model, type = "bar")
+#'
+#'   ## 3. ROC curves (only for classification models)
+#'   plot(model, type = "roc")
+#'
+#'   ## 4. Calibration plot (requires 'probably' package)
+#'   plot(model, type = "calibration")
+#'
+#'   ## 5. ROC curves for specific algorithm(s) only
+#'   plot(model, type = "roc", algorithm = "rand_forest")
+#'
+#'   ## 6. Residual diagnostics (only available for regression tasks)
+#'   model <- fastml(data = mtcars, label = "mpg", algorithms = c("linear_reg", "xgboost"))
+#'   plot(model, type = "residual")
+#'}
+#'
 #' @details
 #' When \code{type = "all"}, \code{plot.fastml} will produce a bar plot of metrics,
 #' ROC curves (classification), confusion matrix, calibration plot, and residual
@@ -25,14 +55,14 @@ utils::globalVariables(c("Model", "Value", "Measure"))
 #'
 #' @method plot fastml
 #' @importFrom graphics plot
+#' @importFrom pROC multiclass.roc
 #' @export
 plot.fastml <- function(x,
                         algorithm = "best",
                         type = c("all", "bar", "roc", "confusion", "calibration", "residual"),
                         ...) {
-  x <- object
 
-  if (!inherits(object, "fastml")) {
+  if (!inherits(x, "fastml")) {
     stop("The input must be a 'fastml' object.")
   }
 
@@ -42,13 +72,13 @@ plot.fastml <- function(x,
     type <- c("bar", "roc", "confusion", "calibration", "residual")
   }
 
-  performance      <- object$performance
-  predictions_list <- object$predictions
-  task             <- object$task
-  best_model_name  <- object$best_model_name
-  optimized_metric <- object$metric
-  positive_class   <- object$positive_class
-  engine_names     <- object$engine_names
+  performance      <- x$performance
+  predictions_list <- x$predictions
+  task             <- x$task
+  best_model_name  <- x$best_model_name
+  optimized_metric <- x$metric
+  positive_class   <- x$positive_class
+  engine_names     <- x$engine_names
 
   # Rebuild performance_wide (same logic as in summary.fastml)
   metrics_list <- lapply(names(performance), function(model_name) {
@@ -386,7 +416,7 @@ plot.fastml <- function(x,
               model_predictions,
               truth    = truth,
               estimate = !!rlang::sym(pred_col),
-              event_level = object$event_class
+              event_level = x$event_class
             ) +
               ggplot2::labs(title = paste("Calibration Plot for", model_name))
             print(p_cal)
@@ -448,5 +478,5 @@ plot.fastml <- function(x,
     }
   }
 
-  invisible(object)
+  invisible(x)
 }
