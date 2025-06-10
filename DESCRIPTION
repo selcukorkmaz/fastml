@@ -13,7 +13,7 @@ Description: Streamlines the training, evaluation, and comparison of multiple ma
             It offers performance metrics and visualization tools to facilitate efficient and effective machine learning workflows.
 Encoding: UTF-8
 License: MIT + file LICENSE
-URL: https://selcukorkmaz.github.io/mvn-tutorial/, https://github.com/selcukorkmaz/fastml
+URL: https://github.com/selcukorkmaz/fastml
 BugReports: https://github.com/selcukorkmaz/fastml/issues
 LazyData: true
 Imports:
