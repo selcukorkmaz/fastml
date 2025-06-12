@@ -38,6 +38,7 @@ ROC curves (classification), confusion matrix, calibration plot, and residual
 diagnostics (regression).  If you specify a subset of types, only those will be drawn.
 }
 \examples{
+\donttest{
   ## Create a binary classification dataset from iris
   data(iris)
   iris <- iris[iris$Species != "setosa",]
@@ -64,6 +65,6 @@ diagnostics (regression).  If you specify a subset of types, only those will be 
   ## 6. Residual diagnostics (only available for regression tasks)
   model <- fastml(data = mtcars, label = "mpg", algorithms = c("linear_reg", "xgboost"))
   plot(model, type = "residual")
-
+}
 
 }
