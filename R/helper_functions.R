@@ -910,7 +910,7 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         }
       }
 
-    if(any(grepl("^\\.pred_p", names(data_metrics)))){
+    if(all(grepl("^\\.pred_p", names(data_metrics)[3:4]))){
 
       pred_name = ".pred_p"
     }else{

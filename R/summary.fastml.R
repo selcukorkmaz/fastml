@@ -238,7 +238,7 @@ summary.fastml <- function(object,
       sprintf("(%s: %.7f)", main_metric, as.numeric(best_val)),
       "\n\n")
 
-  cat("Performance Metrics (Sorted by", main_metric,"):\n\n")
+  cat("Performance Metrics (Sorted by ", main_metric,"):\n\n", sep = "")
 
   metrics_to_print <- c("Model", "Engine", desired_metrics)
 
