@@ -11,7 +11,6 @@ utils::globalVariables(c("Model", "Value", "Measure"))
 #'   \describe{
 #'     \item{\code{"bar"}}{Bar plot of performance metrics across all models/engines.}
 #'     \item{\code{"roc"}}{ROC curve(s) for binary classification models.}
-#'     \item{\code{"confusion"}}{Confusion matrix for the best model(s).}
 #'     \item{\code{"calibration"}}{Calibration plot for the best model(s).}
 #'     \item{\code{"residual"}}{Residual diagnostics for the best model.}
 #'     \item{\code{"all"}}{Produce all available plots.}
@@ -50,8 +49,8 @@ utils::globalVariables(c("Model", "Value", "Measure"))
 #'
 #' @details
 #' When \code{type = "all"}, \code{plot.fastml} will produce a bar plot of metrics,
-#' ROC curves (classification), confusion matrix, calibration plot, and residual
-#' diagnostics (regression).  If you specify a subset of types, only those will be drawn.
+#' ROC curves (classification), calibration plot, and residual diagnostics (regression).
+#' If you specify a subset of types, only those will be drawn.
 #'
 #' @method plot fastml
 #' @importFrom graphics plot
@@ -59,7 +58,7 @@ utils::globalVariables(c("Model", "Value", "Measure"))
 #' @export
 plot.fastml <- function(x,
                         algorithm = "best",
-                        type = c("all", "bar", "roc", "confusion", "calibration", "residual"),
+                        type = c("all", "bar", "roc", "calibration", "residual"),
                         ...) {
 
   if (!inherits(x, "fastml")) {
@@ -69,7 +68,7 @@ plot.fastml <- function(x,
   # Validate 'type' argument
   type <- match.arg(type, several.ok = TRUE)
   if ("all" %in% type) {
-    type <- c("bar", "roc", "confusion", "calibration", "residual")
+    type <- c("bar", "roc", "calibration", "residual")
   }
 
   performance      <- x$performance
@@ -292,49 +291,39 @@ plot.fastml <- function(x,
         dfs_roc$Engine <- as.factor(dfs_roc$Engine)
 
         # We'll compute ROC curves for each unique combination of Model and Engine.
-        roc_list <- list()
-
-
         pred_col <- paste0(".pred_", positive_class)
 
-
-
-        # Get the unique combinations by splitting the compound key back into Model and Engine
-        groups <- unique(dfs_roc[, c("Model", "Engine")])
-        for (i in seq_len(nrow(groups))) {
-          mod <- as.character(groups$Model[i])
-          eng <- as.character(groups$Engine[i])
-          data_model <- subset(dfs_roc, Model == mod & Engine == eng)
-
-          # Compute the ROC curve (using pROC::roc)
-          if(length(levels(data_model$truth)) > 2){
-            roc_obj <- multiclass.roc(response = data_model$truth,
-                                      predictor = data_model[[pred_col]],
-                                      direction = "auto",
-                                      quiet = TRUE)
-          }else {
-            roc_obj <- roc(response = data_model$truth,
-                           predictor = data_model[[pred_col]],
-                           direction = "auto",
-                           quiet = TRUE)
-          }
-          # Use a combined label for the ROC list
-          key <- paste(mod, eng, sep = " - ")
-          roc_list[[key]] <- roc_obj
-        }
-
-        # Compute AUC values for each model/engine combination
-        auc_values <- sapply(roc_list, function(x) auc(x))
-
-        # Sort keys by AUC in descending order
-        sorted_keys <- auc_values[order(names(auc_values))] #names(sort(auc_values, decreasing = TRUE))
-
-        # Create a data frame for ROC curves by combining the ROC objects
-
-        if(length(levels(dfs_roc$truth)) != 2){
+        if (length(levels(dfs_roc$truth)) != 2) {
           cat("\nROC curves are only generated for binary classification tasks.\n\n")
-        }else{
+        } else if (!pred_col %in% colnames(dfs_roc)) {
+          cat("\nProbability column for the positive class not found; cannot compute ROC curves.\n\n")
+        } else {
+          roc_list <- list()
 
+          # Get the unique combinations by splitting the compound key back into Model and Engine
+          groups <- unique(dfs_roc[, c("Model", "Engine")])
+          for (i in seq_len(nrow(groups))) {
+            mod <- as.character(groups$Model[i])
+            eng <- as.character(groups$Engine[i])
+            data_model <- subset(dfs_roc, Model == mod & Engine == eng)
+            data_model <- data_model[!is.na(data_model[[pred_col]]), ]
+
+            roc_obj <- pROC::roc(response = data_model$truth,
+                                predictor = data_model[[pred_col]],
+                                direction = "auto",
+                                quiet = TRUE)
+
+            key <- paste(mod, eng, sep = " - ")
+            roc_list[[key]] <- roc_obj
+          }
+
+          # Compute AUC values for each model/engine combination
+          auc_values <- sapply(roc_list, function(x) pROC::auc(x))
+
+          # Sort keys by AUC in alphabetical order of names
+          sorted_keys <- auc_values[order(names(auc_values))]
+
+          # Create a data frame for ROC curves by combining the ROC objects
           roc_data <- data.frame()
           for (key in names(sorted_keys)) {
             roc_obj <- roc_list[[key]]

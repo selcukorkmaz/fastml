@@ -7,7 +7,7 @@
 \method{plot}{fastml}(
   x,
   algorithm = "best",
-  type = c("all", "bar", "roc", "confusion", "calibration", "residual"),
+  type = c("all", "bar", "roc", "calibration", "residual"),
   ...
 )
 }
@@ -21,7 +21,6 @@ generating certain plots (e.g., ROC curves). Defaults to \code{"best"}.}
 \describe{
   \item{\code{"bar"}}{Bar plot of performance metrics across all models/engines.}
   \item{\code{"roc"}}{ROC curve(s) for binary classification models.}
-  \item{\code{"confusion"}}{Confusion matrix for the best model(s).}
   \item{\code{"calibration"}}{Calibration plot for the best model(s).}
   \item{\code{"residual"}}{Residual diagnostics for the best model.}
   \item{\code{"all"}}{Produce all available plots.}
@@ -34,8 +33,8 @@ generating certain plots (e.g., ROC curves). Defaults to \code{"best"}.}
 }
 \details{
 When \code{type = "all"}, \code{plot.fastml} will produce a bar plot of metrics,
-ROC curves (classification), confusion matrix, calibration plot, and residual
-diagnostics (regression).  If you specify a subset of types, only those will be drawn.
+ROC curves (classification), calibration plot, and residual diagnostics (regression).
+If you specify a subset of types, only those will be drawn.
 }
 \examples{
 \donttest{
