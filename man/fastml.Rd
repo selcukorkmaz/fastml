@@ -106,7 +106,7 @@ Default is \code{"error"}.}
 
 \item{early_stopping}{Logical indicating whether to use early stopping in Bayesian tuning methods (if supported). Default is \code{FALSE}.}
 
-\item{adaptive}{Logical indicating whether to use adaptive/racing methods for tuning. Default is \code{FALSE}.}
+\item{adaptive}{Logical indicating whether to use adaptive/racing methods for tuning. If \code{tuning_strategy = "bayes"}, this option is ignored with a warning. Default is \code{FALSE}.}
 
 \item{learning_curve}{Logical. If TRUE, generate learning curves (performance vs. training size).}
 

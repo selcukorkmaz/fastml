@@ -58,6 +58,11 @@ train_models <- function(train_data,
 
   set.seed(seed)
 
+  if (tuning_strategy == "bayes" && adaptive) {
+    warning("'adaptive' is not supported with Bayesian tuning. Setting adaptive = FALSE.")
+    adaptive <- FALSE
+  }
+
   if (task == "classification") {
 
     if(is.null(summaryFunction)){
