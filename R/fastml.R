@@ -60,6 +60,8 @@ utils::globalVariables(c("Fraction", "Performance"))
 #' @param adaptive Logical indicating whether to use adaptive/racing methods for tuning. Default is \code{FALSE}.
 #' @param learning_curve Logical. If TRUE, generate learning curves (performance vs. training size).
 #' @param seed An integer value specifying the random seed for reproducibility.
+#' @param verbose Logical; if TRUE, prints progress messages during the training
+#'   and evaluation process.
 #' @importFrom magrittr %>%
 #' @importFrom rsample initial_split training testing
 #' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake all_numeric_predictors all_predictors all_nominal_predictors all_outcomes step_zv
@@ -132,7 +134,8 @@ fastml <- function(data = NULL,
                    early_stopping = FALSE,
                    adaptive = FALSE,
                    learning_curve = FALSE,
-                   seed = 123) {
+                   seed = 123,
+                   verbose = FALSE) {
 
   set.seed(seed)
 
@@ -213,6 +216,7 @@ fastml <- function(data = NULL,
         dplyr::across(where(is.integer), as.numeric)
       )
 
+    if (verbose) message("Splitting data into training and test sets...")
     # Split into train/test
     if (stratify && task == "classification") {
       split <- rsample::initial_split(data, prop = 1 - test_size, strata = label)
@@ -415,6 +419,7 @@ fastml <- function(data = NULL,
   # Build or use recipe if user hasn't provided it
   ########################################################################
   if (is.null(recipe)) {
+    if (verbose) message("Creating preprocessing recipe...")
     # Build a default recipe, possibly skipping recipe-based imputation if advanced used
     recipe <- recipe(as.formula(paste(label, "~ .")), data = train_data)
 
@@ -484,6 +489,8 @@ fastml <- function(data = NULL,
     }
   }
 
+  if (verbose) message("Training models: ", paste(algorithms, collapse = ", "))
+
   models <- train_models(
     train_data = train_data,
     label = label,
@@ -513,6 +520,7 @@ fastml <- function(data = NULL,
     stop("No models were successfully trained.")
   }
 
+  if (verbose) message("Evaluating models...")
   eval_output <- evaluate_models(models, train_data, test_data, label, task, metric, event_class)
   performance <- eval_output$performance
   predictions <- eval_output$predictions
@@ -577,7 +585,13 @@ fastml <- function(data = NULL,
   best_model_name <- sapply(best_model_components, function(comp) comp$engine)
   names(best_model_name) <- sapply(best_model_components, function(comp) comp$algo)
 
+  if (verbose) {
+    msg <- paste(names(best_model_name), "(", best_model_name, ")", collapse = ", ")
+    message("Best model selected: ", msg)
+  }
 
+
+  if (verbose) message("Preparing preprocessing recipe for downstream use...")
   # Now store processed training data for explainability:
   trained_recipe <- prep(recipe, training = train_data, retain = TRUE)
   processed_train_data <- bake(trained_recipe, new_data = NULL)
@@ -588,6 +602,7 @@ fastml <- function(data = NULL,
 
     # Helper function to run the learning curve step for a given fraction
     run_curve <- function(fraction) {
+      if (verbose) message(sprintf("Learning curve: using %.0f%% of training data", fraction * 100))
       set.seed(seed)
 
       # Select training subset based on the fraction value
@@ -689,5 +704,6 @@ fastml <- function(data = NULL,
     engine_names = engine_names
   )
   class(result) <- "fastml"
+  if (verbose) message("Training complete.")
   return(result)
 }
