@@ -22,7 +22,8 @@
 #'   \code{"grid"}, \code{"bayes"}, or \code{"none"}. Adaptive methods may be
 #'   used with \code{"grid"}. If \code{"none"} is selected, the workflow is fitted
 #'   directly without tuning.
-#' @param tuning_iterations Number of iterations for iterative tuning methods.
+#' @param tuning_iterations Number of iterations for Bayesian tuning. Ignored
+#'   when \code{tuning_strategy} is not \code{"bayes"}.
 #' @param early_stopping Logical for early stopping in Bayesian tuning.
 #' @param adaptive Logical indicating whether to use adaptive/racing methods.
 #' @param algorithm_engines A named list specifying the engine to use for each algorithm.

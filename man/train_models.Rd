@@ -54,7 +54,7 @@ train_models(
 
 \item{tuning_strategy}{A string specifying the tuning strategy. Must be one of \code{"grid"}, \code{"bayes"}, or \code{"none"}. Adaptive methods may be used with \code{"grid"}. If set to \code{"none"}, the workflow is fitted directly without tuning.}
 
-\item{tuning_iterations}{Number of iterations for iterative tuning methods.}
+\item{tuning_iterations}{Number of iterations for Bayesian tuning. Ignored when \code{tuning_strategy} is not \code{"bayes"}.}
 
 \item{early_stopping}{Logical for early stopping in Bayesian tuning.}
 
