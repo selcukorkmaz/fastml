@@ -270,6 +270,10 @@ train_models <- function(train_data,
       }else{
 
       perform_tuning <- !all(vapply(engine_tune_params, is.null, logical(1))) && !is.null(resamples)
+
+      if (tuning_strategy == "none") {
+        perform_tuning <- FALSE
+      }
       }
 
        # For other algorithms, use a switch that uses the current engine

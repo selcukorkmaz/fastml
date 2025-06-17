@@ -52,7 +52,7 @@ train_models(
 
 \item{use_default_tuning}{Logical indicating whether to use default tuning grids when \code{tune_params} is \code{NULL}.}
 
-\item{tuning_strategy}{A string specifying the tuning strategy ("grid", "bayes", or "none"), possibly with adaptive methods.}
+\item{tuning_strategy}{A string specifying the tuning strategy ("grid", "bayes", or "none"), possibly with adaptive methods. If set to \code{"none"}, the workflow is fitted directly without tuning.}
 
 \item{tuning_iterations}{Number of iterations for iterative tuning methods.}
 

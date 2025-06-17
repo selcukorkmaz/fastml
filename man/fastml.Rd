@@ -99,7 +99,7 @@ Default is \code{"error"}.}
 
 \item{use_default_tuning}{Logical indicating whether to use default tuning grids when \code{tune_params} is \code{NULL}. Default is \code{FALSE}.}
 
-\item{tuning_strategy}{A string specifying the tuning strategy. Options might include \code{"grid"}, \code{"bayes"}, or \code{"none"}. Default is \code{"grid"}.}
+\item{tuning_strategy}{A string specifying the tuning strategy. Options might include \code{"grid"}, \code{"bayes"}, or \code{"none"}. If \code{"none"} is used, the workflow is fitted directly without tuning. Default is \code{"grid"}.}
 
 \item{tuning_iterations}{Number of tuning iterations (applicable for Bayesian or other iterative search methods). Default is \code{10}.}
 
