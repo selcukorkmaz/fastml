@@ -235,3 +235,44 @@ test_that("stop if unsupported metric is selected.", {
   })
 })
 
+test_that("invalid tuning_strategy triggers error", {
+  expect_error(
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("rand_forest"),
+      tuning_strategy = "invalid"
+    ),
+    "should be one of"
+  )
+})
+
+test_that("grid tuning executes successfully", {
+  res <- fastml(
+    data = iris,
+    label = "Species",
+    algorithms = c("rand_forest"),
+    use_default_tuning = TRUE,
+    tuning_strategy = "grid",
+    resampling_method = "cv",
+    folds = 2
+  )
+  expect_s3_class(res, "fastml")
+  expect_true(length(res$models) > 0)
+})
+
+test_that("Bayesian tuning executes successfully", {
+  res <- fastml(
+    data = iris,
+    label = "Species",
+    algorithms = c("rand_forest"),
+    use_default_tuning = TRUE,
+    tuning_strategy = "bayes",
+    tuning_iterations = 2,
+    resampling_method = "cv",
+    folds = 2
+  )
+  expect_s3_class(res, "fastml")
+  expect_true(length(res$models) > 0)
+})
+

@@ -52,9 +52,9 @@ train_models(
 
 \item{use_default_tuning}{Logical; if \code{TRUE} and \code{tune_params} is \code{NULL}, tuning is performed using default grids. Tuning also occurs when custom \code{tune_params} are supplied. When \code{FALSE} and no custom parameters are given, the model is fitted once with default settings. Default is \code{FALSE}.}
 
-\item{tuning_strategy}{A string specifying the tuning strategy ("grid", "bayes", or "none"), possibly with adaptive methods. If set to \code{"none"}, the workflow is fitted directly without tuning.}
+\item{tuning_strategy}{A string specifying the tuning strategy. Must be one of \code{"grid"}, \code{"bayes"}, or \code{"none"}. Adaptive methods may be used with \code{"grid"}. If set to \code{"none"}, the workflow is fitted directly without tuning.}
 
-\item{tuning_iterations}{Number of iterations for iterative tuning methods.}
+\item{tuning_iterations}{Number of iterations for Bayesian tuning. Ignored when \code{tuning_strategy} is not \code{"bayes"}.}
 
 \item{early_stopping}{Logical for early stopping in Bayesian tuning.}
 
