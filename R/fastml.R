@@ -49,7 +49,8 @@ utils::globalVariables(c("Fraction", "Performance"))
 #' @param scaling_methods Vector of scaling methods to apply. Default is \code{c("center", "scale")}.
 #' @param summaryFunction A custom summary function for model evaluation. Default is \code{NULL}.
 #' @param use_default_tuning Logical; if \code{TRUE} and \code{tune_params} is \code{NULL}, tuning is performed using default grids. Tuning also occurs when custom \code{tune_params} are supplied. When \code{FALSE} and no custom parameters are given, models are fitted once with default settings. Default is \code{FALSE}.
-#' @param tuning_strategy A string specifying the tuning strategy. Options might include \code{"grid"}, \code{"bayes"}, or \code{"none"}. Default is \code{"grid"}.
+#' @param tuning_strategy A string specifying the tuning strategy. Must be one of
+#'   \code{"grid"}, \code{"bayes"}, or \code{"none"}. Default is \code{"grid"}.
 #' @param tuning_iterations Number of tuning iterations (applicable for Bayesian or other iterative search methods). Default is \code{10}.
 #' @param early_stopping Logical indicating whether to use early stopping in Bayesian tuning methods (if supported). Default is \code{FALSE}.
 #' @param adaptive Logical indicating whether to use adaptive/racing methods for tuning. Default is \code{FALSE}.
@@ -132,6 +133,7 @@ fastml <- function(data = NULL,
   set.seed(seed)
 
   task <- match.arg(task, c("auto", "classification", "regression"))
+  tuning_strategy <- match.arg(tuning_strategy, c("grid", "bayes", "none"))
 
   # If explicit train/test provided, ensure both are given
   if (!is.null(train_data) || !is.null(test_data)) {
