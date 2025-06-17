@@ -53,16 +53,23 @@ define_lightgbm_spec <- function(task, train_data, label, tuning = FALSE, engine
   # - num_threads = 0 instructs lightgbm to use all available cores.
   # - seed and deterministic aid in reproducibility.
   model_spec <- model_spec %>%
-    set_mode(task) %>%
-    set_engine(engine,
-               counts        = TRUE,
-               bagging_freq  = 1,
-               verbose       = -1,
-               num_threads   = 0,
-               seed          = 123,
-               deterministic = TRUE,
-               early_stop    = if (early_stopping) 10 else NULL,
-               validation    = if (early_stopping) 0.1 else NULL)
+    set_mode(task)
+
+  engine_args <- list(
+    counts        = TRUE,
+    bagging_freq  = 1,
+    verbose       = -1,
+    num_threads   = 0,
+    seed          = 123,
+    deterministic = TRUE
+  )
+
+  if (early_stopping) {
+    engine_args$early_stop <- 10
+    engine_args$validation <- 0.1
+  }
+
+  model_spec <- do.call(set_engine, c(list(object = model_spec, engine = engine), engine_args))
 
   list(model_spec = model_spec)
 }
@@ -90,11 +97,7 @@ define_xgboost_spec <- function(task, train_data, label, tuning = FALSE, engine 
       min_n = tune(),
       loss_reduction = tune(),
       sample_size = tune()
-    ) %>%
-      set_mode(task) %>%
-      set_engine(engine,
-                 early_stop = if (early_stopping) 10 else NULL,
-                 validation = if (early_stopping) 0.1 else NULL)
+    )
   } else {
     model_spec <- boost_tree(
       trees = defaults$trees,
@@ -104,12 +107,19 @@ define_xgboost_spec <- function(task, train_data, label, tuning = FALSE, engine 
       min_n = defaults$min_n,
       loss_reduction = defaults$loss_reduction,
       sample_size = defaults$sample_size
-    ) %>%
-      set_mode(task) %>%
-      set_engine(engine,
-                 early_stop = if (early_stopping) 10 else NULL,
-                 validation = if (early_stopping) 0.1 else NULL)
+    )
   }
+
+  model_spec <- model_spec %>%
+    set_mode(task)
+
+  engine_args <- list()
+  if (early_stopping) {
+    engine_args$early_stop <- 10
+    engine_args$validation <- 0.1
+  }
+
+  model_spec <- do.call(set_engine, c(list(object = model_spec, engine = engine), engine_args))
   list(model_spec = model_spec)
 }
 
