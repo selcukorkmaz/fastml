@@ -34,7 +34,8 @@ fastml(
   early_stopping = FALSE,
   adaptive = FALSE,
   learning_curve = FALSE,
-  seed = 123
+  seed = 123,
+  verbose = FALSE
 )
 }
 \arguments{
@@ -111,6 +112,8 @@ Default is \code{"error"}.}
 \item{learning_curve}{Logical. If TRUE, generate learning curves (performance vs. training size).}
 
 \item{seed}{An integer value specifying the random seed for reproducibility.}
+
+\item{verbose}{Logical; if TRUE, prints progress messages during the training and evaluation process.}
 }
 \value{
 An object of class \code{fastml} containing the best model, performance metrics, and other information.
