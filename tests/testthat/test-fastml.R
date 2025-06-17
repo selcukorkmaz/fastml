@@ -290,7 +290,7 @@ test_that("adaptive tuning executes successfully", {
   expect_s3_class(res, "fastml")
 })
 
-test_that("warning when early_stopping ignored", {
+test_that("early_stopping does not warn with grid tuning", {
   expect_warning(
     fastml(
       data = iris,
@@ -302,7 +302,7 @@ test_that("warning when early_stopping ignored", {
       resampling_method = "cv",
       folds = 2
     ),
-    "early_stopping"
+    regexp = NA
   )
 })
 

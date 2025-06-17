@@ -46,7 +46,13 @@ utils::globalVariables(c("Fraction", "Performance"))
 #'   Default is \code{"error"}.
 #' @param impute_custom_function A function that takes a data.frame as input and returns an imputed data.frame. Used only if \code{impute_method = "custom"}.
 #' @param encode_categoricals Logical indicating whether to encode categorical variables. Default is \code{TRUE}.
-#' @param scaling_methods Vector of scaling methods to apply. Default is \code{c("center", "scale")}.
+#' @param scaling_methods Vector of scaling methods to apply. Default is \code{c("center", "scale")}. 
+#' @param balance_method Method to handle class imbalance. One of \code{"none"},
+#'   \code{"upsample"}, or \code{"downsample"}. Applied to the training set for
+#'   classification tasks. Default is \code{"none"}.
+#' @param resamples Optional rsample object providing custom resampling splits.
+#'   If supplied, \code{resampling_method}, \code{folds}, and \code{repeats} are
+#'   ignored.
 #' @param summaryFunction A custom summary function for model evaluation. Default is \code{NULL}.
 #' @param use_default_tuning Logical; if \code{TRUE} and \code{tune_params} is \code{NULL}, tuning is performed using default grids. Tuning also occurs when custom \code{tune_params} are supplied. When \code{FALSE} and no custom parameters are given, models are fitted once with default settings. Default is \code{FALSE}.
 #' @param tuning_strategy A string specifying the tuning strategy. Must be one of
@@ -66,6 +72,7 @@ utils::globalVariables(c("Fraction", "Performance"))
 #' @importFrom rsample initial_split training testing
 #' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake all_numeric_predictors all_predictors all_nominal_predictors all_outcomes step_zv
 #' @importFrom dplyr filter pull rename_with mutate across where select all_of
+#' @importFrom rlang sym
 #' @importFrom stats as.formula complete.cases
 #' @importFrom doFuture registerDoFuture
 #' @importFrom future plan multisession sequential
@@ -127,6 +134,8 @@ fastml <- function(data = NULL,
                    impute_custom_function = NULL,
                    encode_categoricals = TRUE,
                    scaling_methods = c("center", "scale"),
+                   balance_method = c("none", "upsample", "downsample"),
+                   resamples = NULL,
                    summaryFunction = NULL,
                    use_default_tuning = FALSE,
                    tuning_strategy = "grid",
@@ -141,6 +150,7 @@ fastml <- function(data = NULL,
 
   task <- match.arg(task, c("auto", "classification", "regression"))
   tuning_strategy <- match.arg(tuning_strategy, c("grid", "bayes", "none"))
+  balance_method <- match.arg(balance_method)
 
   # If explicit train/test provided, ensure both are given
   if (!is.null(train_data) || !is.null(test_data)) {
@@ -225,6 +235,24 @@ fastml <- function(data = NULL,
     }
     train_data <- rsample::training(split)
     test_data  <- rsample::testing(split)
+  }
+
+  if (task == "classification" && balance_method != "none") {
+    label_sym <- rlang::sym(label)
+    class_counts <- table(train_data[[label]])
+    if (balance_method == "upsample") {
+      max_n <- max(class_counts)
+      train_data <- train_data %>%
+        dplyr::group_by(!!label_sym) %>%
+        dplyr::sample_n(max_n, replace = TRUE) %>%
+        dplyr::ungroup()
+    } else if (balance_method == "downsample") {
+      min_n <- min(class_counts)
+      train_data <- train_data %>%
+        dplyr::group_by(!!label_sym) %>%
+        dplyr::sample_n(min_n, replace = FALSE) %>%
+        dplyr::ungroup()
+    }
   }
 
 
@@ -499,6 +527,7 @@ fastml <- function(data = NULL,
     resampling_method = resampling_method,
     folds = folds,
     repeats = repeats,
+    resamples = resamples,
     tune_params = tune_params,
     metric = metric,
     summaryFunction = summaryFunction,
@@ -623,10 +652,11 @@ fastml <- function(data = NULL,
         label = label,
         task = task,
         algorithms = algorithms,
-        resampling_method = resampling_method,
-        folds = folds,
-        repeats = repeats,
-        tune_params = tune_params,
+       resampling_method = resampling_method,
+       folds = folds,
+       repeats = repeats,
+       resamples = resamples,
+       tune_params = tune_params,
         metric = metric,
         summaryFunction = summaryFunction,
         seed = seed,
