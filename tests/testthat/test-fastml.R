@@ -336,3 +336,61 @@ test_that("invalid tuning_iterations triggers error", {
   )
 })
 
+test_that("tuning_iterations ignored for non-bayesian strategies", {
+  expect_no_error(
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("rand_forest"),
+      use_default_tuning = TRUE,
+      tuning_strategy = "grid",
+      tuning_iterations = 0,
+      resampling_method = "cv",
+      folds = 2
+    )
+  )
+  expect_no_error(
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("rand_forest"),
+      tuning_strategy = "none",
+      tuning_iterations = -1,
+      resampling_method = "none"
+    )
+  )
+})
+
+test_that("adaptive ignored with bayesian tuning", {
+  expect_warning(
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("rand_forest"),
+      use_default_tuning = TRUE,
+      tuning_strategy = "bayes",
+      adaptive = TRUE,
+      tuning_iterations = 1,
+      resampling_method = "cv",
+      folds = 2
+    ),
+    "adaptive"
+  )
+})
+
+test_that("warning when tune_params ignored with no tuning", {
+  tune <- list(rand_forest = list(ranger = list(mtry = c(1, 2))))
+  expect_warning(
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("rand_forest"),
+      tune_params = tune,
+      tuning_strategy = "none",
+      use_default_tuning = TRUE,
+      resampling_method = "none"
+    ),
+    "tune_params"
+  )
+})
+

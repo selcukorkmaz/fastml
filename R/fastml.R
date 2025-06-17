@@ -51,8 +51,11 @@ utils::globalVariables(c("Fraction", "Performance"))
 #' @param use_default_tuning Logical; if \code{TRUE} and \code{tune_params} is \code{NULL}, tuning is performed using default grids. Tuning also occurs when custom \code{tune_params} are supplied. When \code{FALSE} and no custom parameters are given, models are fitted once with default settings. Default is \code{FALSE}.
 #' @param tuning_strategy A string specifying the tuning strategy. Must be one of
 #'   \code{"grid"}, \code{"bayes"}, or \code{"none"}. Default is \code{"grid"}.
+#'   If custom \code{tune_params} are provided while \code{tuning_strategy = "none"},
+#'   they will be ignored with a warning.
 #' @param tuning_iterations Number of iterations for Bayesian tuning. Ignored when
-#'   \code{tuning_strategy} is not \code{"bayes"}. Default is \code{10}.
+#'   \code{tuning_strategy} is not \code{"bayes"}. Validation of this argument only
+#'   occurs for the Bayesian strategy. Default is \code{10}.
 #' @param early_stopping Logical indicating whether to use early stopping in Bayesian tuning methods (if supported). Default is \code{FALSE}.
 #' @param adaptive Logical indicating whether to use adaptive/racing methods for tuning. Default is \code{FALSE}.
 #' @param learning_curve Logical. If TRUE, generate learning curves (performance vs. training size).
