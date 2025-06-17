@@ -58,7 +58,7 @@ train_models(
 
 \item{early_stopping}{Logical for early stopping in Bayesian tuning.}
 
-\item{adaptive}{Logical indicating whether to use adaptive/racing methods.}
+\item{adaptive}{Logical indicating whether to use adaptive/racing methods. If \code{tuning_strategy = "bayes"}, this option is ignored with a warning.}
 
 \item{algorithm_engines}{A named list specifying the engine to use for each algorithm.}
 }
