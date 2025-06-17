@@ -97,10 +97,10 @@ get_default_params <- function(algo, task, num_predictors = NULL, engine = NULL)
            sample_size = 0.5
          ),
          # 5. XGBoost
-         "xgboost" = list(
-           tree_depth = 6L,
-           trees = 15L,
-           learn_rate = -1,
+        "xgboost" = list(
+          tree_depth = 6L,
+          trees = 15L,
+          learn_rate = 0.1,
            mtry =  if (!is.null(num_predictors)) max(1, floor(sqrt(num_predictors))) else 2,
            min_n =  2,
            loss_reduction = 0.0,
@@ -108,10 +108,10 @@ get_default_params <- function(algo, task, num_predictors = NULL, engine = NULL)
            stop_iter =  Inf
          ),
          # 6. LightGBM
-         "lightgbm" = list(
-           trees = 100,
-           tree_depth = 3,
-           learn_rate = -1,
+        "lightgbm" = list(
+          trees = 100,
+          tree_depth = 3,
+          learn_rate = 0.1,
            loss_reduction = 0,
            min_n = 5,
            sample_size = 0.5,
