@@ -100,9 +100,9 @@ Default is \code{"error"}.}
 
 
 
-\item{tuning_strategy}{A string specifying the tuning strategy. Must be one of \code{"grid"}, \code{"bayes"}, or \code{"none"}. If \code{"none"} is used, the workflow is fitted directly without tuning. Default is \code{"grid"}.}
+\item{tuning_strategy}{A string specifying the tuning strategy. Must be one of \code{"grid"}, \code{"bayes"}, or \code{"none"}. If \code{"none"} is used, the workflow is fitted directly without tuning. If custom \code{tune\_params} are provided in this mode, they will be ignored with a warning. Default is \code{"grid"}.}
 
-\item{tuning_iterations}{Number of iterations for Bayesian tuning. Ignored when \code{tuning_strategy} is not \code{"bayes"}. Default is \code{10}.}
+\item{tuning_iterations}{Number of iterations for Bayesian tuning. Ignored when \code{tuning_strategy} is not \code{"bayes"}. Validation of this argument only occurs for the Bayesian strategy. Default is \code{10}.}
 
 \item{early_stopping}{Logical indicating whether to use early stopping in Bayesian tuning methods (if supported). Default is \code{FALSE}.}
 

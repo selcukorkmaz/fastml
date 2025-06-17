@@ -22,8 +22,11 @@
 #'   \code{"grid"}, \code{"bayes"}, or \code{"none"}. Adaptive methods may be
 #'   used with \code{"grid"}. If \code{"none"} is selected, the workflow is fitted
 #'   directly without tuning.
+#'   If custom \code{tune_params} are supplied with \code{tuning_strategy = "none"},
+#'   they will be ignored with a warning.
 #' @param tuning_iterations Number of iterations for Bayesian tuning. Ignored
-#'   when \code{tuning_strategy} is not \code{"bayes"}.
+#'   when \code{tuning_strategy} is not \code{"bayes"}; validation occurs only
+#'   for the Bayesian strategy.
 #' @param early_stopping Logical for early stopping in Bayesian tuning.
 #' @param adaptive Logical indicating whether to use adaptive/racing methods.
 #' @param algorithm_engines A named list specifying the engine to use for each algorithm.
@@ -69,9 +72,15 @@ train_models <- function(train_data,
     adaptive <- FALSE
   }
 
-  if (!is.numeric(tuning_iterations) || length(tuning_iterations) != 1 ||
-      tuning_iterations <= 0 || tuning_iterations != as.integer(tuning_iterations)) {
-    stop("'tuning_iterations' must be a positive integer")
+  if (tuning_strategy == "none" && !is.null(tune_params)) {
+    warning("'tune_params' are ignored when 'tuning_strategy' is 'none'")
+  }
+
+  if (tuning_strategy == "bayes") {
+    if (!is.numeric(tuning_iterations) || length(tuning_iterations) != 1 ||
+        tuning_iterations <= 0 || tuning_iterations != as.integer(tuning_iterations)) {
+      stop("'tuning_iterations' must be a positive integer")
+    }
   }
 
   if (early_stopping && tuning_strategy != "bayes") {
