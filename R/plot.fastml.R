@@ -276,7 +276,7 @@ plot.fastml <- function(x,
 
         dfs_standardized <- lapply(dfs, function(df) {
           # Check if any column starts with ".pred_p"
-          if (any(grepl("^\\.pred_p", names(df)))) {
+          if (all(grepl("^\\.pred_p", names(df)))) {
             df <- df %>%
               rename_with(~ sub("^\\.pred_p", ".pred_", .x), starts_with(".pred_p"))
           }
@@ -295,7 +295,7 @@ plot.fastml <- function(x,
 
         if (length(levels(dfs_roc$truth)) != 2) {
           cat("\nROC curves are only generated for binary classification tasks.\n\n")
-        } else if (!pred_col %in% colnames(dfs_roc)) {
+        } else if (!(pred_col %in% colnames(dfs_roc))) {
           cat("\nProbability column for the positive class not found; cannot compute ROC curves.\n\n")
         } else {
           roc_list <- list()
