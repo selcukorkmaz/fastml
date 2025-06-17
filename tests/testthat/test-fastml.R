@@ -276,3 +276,63 @@ test_that("Bayesian tuning executes successfully", {
   expect_true(length(res$models) > 0)
 })
 
+test_that("adaptive tuning executes successfully", {
+  res <- fastml(
+    data = iris,
+    label = "Species",
+    algorithms = c("rand_forest"),
+    use_default_tuning = TRUE,
+    tuning_strategy = "grid",
+    adaptive = TRUE,
+    resampling_method = "cv",
+    folds = 2
+  )
+  expect_s3_class(res, "fastml")
+})
+
+test_that("warning when early_stopping ignored", {
+  expect_warning(
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("rand_forest"),
+      use_default_tuning = TRUE,
+      tuning_strategy = "grid",
+      early_stopping = TRUE,
+      resampling_method = "cv",
+      folds = 2
+    ),
+    "early_stopping"
+  )
+})
+
+test_that("early stopping with bayesian tuning works", {
+  res <- fastml(
+    data = iris,
+    label = "Species",
+    algorithms = c("rand_forest"),
+    use_default_tuning = TRUE,
+    tuning_strategy = "bayes",
+    tuning_iterations = 2,
+    early_stopping = TRUE,
+    resampling_method = "cv",
+    folds = 2
+  )
+  expect_s3_class(res, "fastml")
+})
+
+test_that("invalid tuning_iterations triggers error", {
+  expect_error(
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("rand_forest"),
+      tuning_strategy = "bayes",
+      tuning_iterations = 0,
+      resampling_method = "cv",
+      folds = 2
+    ),
+    "tuning_iterations"
+  )
+})
+

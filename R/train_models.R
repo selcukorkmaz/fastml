@@ -69,6 +69,15 @@ train_models <- function(train_data,
     adaptive <- FALSE
   }
 
+  if (!is.numeric(tuning_iterations) || length(tuning_iterations) != 1 ||
+      tuning_iterations <= 0 || tuning_iterations != as.integer(tuning_iterations)) {
+    stop("'tuning_iterations' must be a positive integer")
+  }
+
+  if (early_stopping && tuning_strategy != "bayes") {
+    warning("'early_stopping' is ignored when tuning_strategy is not 'bayes'")
+  }
+
   if (task == "classification") {
 
     if(is.null(summaryFunction)){
@@ -155,6 +164,10 @@ train_models <- function(train_data,
     stop("Unsupported resampling method.")
   }
 
+  if (use_default_tuning && is.null(resamples)) {
+    warning("Tuning is skipped because resampling is disabled")
+  }
+
   models <- list()
 
   # A helper function to choose the engine for an algorithm
@@ -218,8 +231,7 @@ train_models <- function(train_data,
         param_obj %>% dials::range_set(c(new_lb, new_ub))
       })
 
-      params_model <- params_model %>%
-        dplyr::mutate(object = if_else(id == param_name, list(updated_obj), object))
+      params_model$object[params_model$id == param_name] <- list(updated_obj)
     }
     return(params_model)
   }
