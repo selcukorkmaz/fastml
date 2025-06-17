@@ -17,7 +17,7 @@
 #' @param summaryFunction A custom summary function for model evaluation. Default is \code{NULL}.
 #' @param seed An integer value specifying the random seed for reproducibility.
 #' @param recipe A recipe object for preprocessing.
-#' @param use_default_tuning Logical indicating whether to use default tuning grids when \code{tune_params} is \code{NULL}.
+#' @param use_default_tuning Logical; if \code{TRUE} and \code{tune_params} is \code{NULL}, tuning is performed using default grids. Tuning also occurs when custom \code{tune_params} are supplied. When \code{FALSE} and no custom parameters are given, the model is fitted once with default settings.
 #' @param tuning_strategy A string specifying the tuning strategy ("grid", "bayes", or "none"), possibly with adaptive methods.
 #' @param tuning_iterations Number of iterations for iterative tuning methods.
 #' @param early_stopping Logical for early stopping in Bayesian tuning.
@@ -264,16 +264,14 @@ train_models <- function(train_data,
         }
       }
 
-      if(algo == "logistic_reg" && engine %in% c("glm", "gee" ,"glmer" , "stan" , "stan_glmer")){
-
-        perform_tuning = FALSE
-      }else{
-
-      perform_tuning <- !all(vapply(engine_tune_params, is.null, logical(1))) && !is.null(resamples)
-
-      if (tuning_strategy == "none") {
+      if (algo == "logistic_reg" && engine %in% c("glm", "gee", "glmer", "stan", "stan_glmer")) {
         perform_tuning <- FALSE
-      }
+      } else {
+        has_custom <- !is.null(user_params)
+        perform_tuning <- (use_default_tuning || has_custom) && !is.null(resamples)
+        if (tuning_strategy == "none") {
+          perform_tuning <- FALSE
+        }
       }
 
        # For other algorithms, use a switch that uses the current engine

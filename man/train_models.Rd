@@ -50,7 +50,7 @@ train_models(
 
 \item{recipe}{A recipe object for preprocessing.}
 
-\item{use_default_tuning}{Logical indicating whether to use default tuning grids when \code{tune_params} is \code{NULL}.}
+\item{use_default_tuning}{Logical; if \code{TRUE} and \code{tune_params} is \code{NULL}, tuning is performed using default grids. Tuning also occurs when custom \code{tune_params} are supplied. When \code{FALSE} and no custom parameters are given, the model is fitted once with default settings. Default is \code{FALSE}.}
 
 \item{tuning_strategy}{A string specifying the tuning strategy ("grid", "bayes", or "none"), possibly with adaptive methods. If set to \code{"none"}, the workflow is fitted directly without tuning.}
 
