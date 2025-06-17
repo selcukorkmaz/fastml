@@ -239,7 +239,7 @@ get_default_params <- function(algo, task, num_predictors = NULL, engine = NULL)
          # 11. SVM Radial
          "svm_rbf" = list(
            cost = 1,
-           rbf_sigma = c(-5, -1)
+           rbf_sigma = 0.1
          ),
          # 12. nearest_neighbor
          "nearest_neighbor" = list(
