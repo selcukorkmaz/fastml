@@ -100,7 +100,7 @@ Default is \code{"error"}.}
 
 
 
-\item{tuning_strategy}{A string specifying the tuning strategy. Options might include \code{"grid"}, \code{"bayes"}, or \code{"none"}. If \code{"none"} is used, the workflow is fitted directly without tuning. Default is \code{"grid"}.}
+\item{tuning_strategy}{A string specifying the tuning strategy. Must be one of \code{"grid"}, \code{"bayes"}, or \code{"none"}. If \code{"none"} is used, the workflow is fitted directly without tuning. Default is \code{"grid"}.}
 
 \item{tuning_iterations}{Number of tuning iterations (applicable for Bayesian or other iterative search methods). Default is \code{10}.}
 

@@ -235,3 +235,15 @@ test_that("stop if unsupported metric is selected.", {
   })
 })
 
+test_that("invalid tuning_strategy triggers error", {
+  expect_error(
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("rand_forest"),
+      tuning_strategy = "invalid"
+    ),
+    "should be one of"
+  )
+})
+

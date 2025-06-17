@@ -18,7 +18,10 @@
 #' @param seed An integer value specifying the random seed for reproducibility.
 #' @param recipe A recipe object for preprocessing.
 #' @param use_default_tuning Logical; if \code{TRUE} and \code{tune_params} is \code{NULL}, tuning is performed using default grids. Tuning also occurs when custom \code{tune_params} are supplied. When \code{FALSE} and no custom parameters are given, the model is fitted once with default settings.
-#' @param tuning_strategy A string specifying the tuning strategy ("grid", "bayes", or "none"), possibly with adaptive methods.
+#' @param tuning_strategy A string specifying the tuning strategy. Must be one of
+#'   \code{"grid"}, \code{"bayes"}, or \code{"none"}. Adaptive methods may be
+#'   used with \code{"grid"}. If \code{"none"} is selected, the workflow is fitted
+#'   directly without tuning.
 #' @param tuning_iterations Number of iterations for iterative tuning methods.
 #' @param early_stopping Logical for early stopping in Bayesian tuning.
 #' @param adaptive Logical indicating whether to use adaptive/racing methods.
@@ -57,6 +60,8 @@ train_models <- function(train_data,
                          algorithm_engines = NULL) {
 
   set.seed(seed)
+
+  tuning_strategy <- match.arg(tuning_strategy, c("grid", "bayes", "none"))
 
   if (tuning_strategy == "bayes" && adaptive) {
     warning("'adaptive' is not supported with Bayesian tuning. Setting adaptive = FALSE.")
