@@ -268,13 +268,13 @@ get_default_params <- function(algo, task, num_predictors = NULL, engine = NULL)
            if (engine %in% c("nnet")) {
              list(
                hidden_units = 5L,
-               penalty      = -1,
+               penalty      = 0.1,
                epochs       = 100L
              )
            } else if (engine %in% c("brulee")) {
              list(
                hidden_units = 3L,
-               penalty      = -1,
+               penalty      = 0.1,
                epochs       = 100L,
                activation   = "relu",
                # mixture      = 0.0,
@@ -293,7 +293,7 @@ get_default_params <- function(algo, task, num_predictors = NULL, engine = NULL)
            } else if (engine %in% c("keras")) {
              list(
                hidden_units = 5L,
-               penalty      = -1,
+               penalty      = 0.1,
                dropout      = 0.0,
                epochs       = 20L,
                activation   = "softmax"
@@ -306,7 +306,7 @@ get_default_params <- function(algo, task, num_predictors = NULL, engine = NULL)
          # 15. Deep Learning (keras)
          "deep_learning" = list(
            hidden_units = 10,
-           penalty = -1,
+           penalty = 0.1,
            epochs = 50
          ),
          # 16. discrim_linear
@@ -480,14 +480,14 @@ get_default_tune_params <- function(algo, train_data, label, engine) {
          # 14. Neural Network (nnet)
          "mlp" = list(
            hidden_units = c(1, 5),  # Reduced upper limit
-           penalty = c(-5, -1),  # log scale
+           penalty = c(1e-05, 0.1),
            epochs = c(100, 150)  # Reduced upper limit
          ),
 
          # 15. Deep Learning (keras)
          "deep_learning" = list(
            hidden_units = c(10, 30),  # Reduced upper limit
-           penalty = c(-5, -1),  # log scale
+           penalty = c(1e-05, 0.1),
            epochs = c(50, 100)  # Reduced upper limit
          ),
 
