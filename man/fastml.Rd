@@ -96,8 +96,9 @@ Default is \code{"error"}.}
 \item{scaling_methods}{Vector of scaling methods to apply. Default is \code{c("center", "scale")}.}
 
 \item{summaryFunction}{A custom summary function for model evaluation. Default is \code{NULL}.}
+\item{use_default_tuning}{Logical; if \code{TRUE} and \code{tune_params} is \code{NULL}, tuning is performed using default grids. Tuning also occurs when custom \code{tune_params} are supplied. When \code{FALSE} and no custom parameters are given, models are fitted once with default settings. Default is \code{FALSE}.}
 
-\item{use_default_tuning}{Logical indicating whether to use default tuning grids when \code{tune_params} is \code{NULL}. Default is \code{FALSE}.}
+
 
 \item{tuning_strategy}{A string specifying the tuning strategy. Options might include \code{"grid"}, \code{"bayes"}, or \code{"none"}. If \code{"none"} is used, the workflow is fitted directly without tuning. Default is \code{"grid"}.}
 
