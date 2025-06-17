@@ -40,7 +40,7 @@ train_models(
 
 \item{repeats}{Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").}
 
-\item{tune_params}{List of hyperparameter tuning ranges.}
+\item{tune_params}{A named list of tuning ranges for each algorithm and engine pair, e.g. \code{list(rand\_forest = list(ranger = list(mtry = c(1, 3))))}.}
 
 \item{metric}{The performance metric to optimize.}
 
