@@ -1,276 +1,3 @@
-#' Get Available Methods
-#'
-#' Returns a character vector of algorithm names available for either classification or regression tasks.
-#'
-#' @param type A character string specifying the type of task. Must be either \code{"classification"} or \code{"regression"}. Defaults to \code{c("classification", "regression")} and uses \code{\link[base]{match.arg}} to select one.
-#' @param ... Additional arguments (currently not used).
-#'
-#' @return A character vector containing the names of the available algorithms for the specified task type.
-#'
-#' @details Depending on the specified \code{type}, the function returns a different set of algorithm names:
-#' \itemize{
-#'   \item For \code{"classification"}, it returns algorithms such as \code{"logistic_reg"}, \code{"multinom_reg"}, \code{"decision_tree"}, \code{"C5_rules"}, \code{"rand_forest"}, \code{"xgboost"}, \code{"lightgbm"}, \code{"svm_linear"}, \code{"svm_rbf"}, \code{"nearest_neighbor"}, \code{"naive_Bayes"}, \code{"mlp"}, \code{"discrim_linear"}, \code{"discrim_quad"}, and \code{"bag_tree"}.
-#'   \item For \code{"regression"}, it returns algorithms such as \code{"linear_reg"}, \code{"ridge_regression"}, \code{"lasso_regression"}, \code{"elastic_net"}, \code{"decision_tree"}, \code{"rand_forest"}, \code{"xgboost"}, \code{"lightgbm"}, \code{"svm_linear"}, \code{"svm_rbf"}, \code{"nearest_neighbor"}, \code{"mlp"}, \code{"pls"}, and \code{"bayes_glm"}.
-#' }
-#'
-#' @export
-availableMethods <- function(type = c("classification", "regression"), ...){
-    type <- match.arg(type)
-
-    algorithms <- if (type == "classification"){
-      c(
-        "logistic_reg",
-        "multinom_reg",
-        "decision_tree",
-        "C5_rules",
-        "rand_forest",
-        "xgboost",
-        "lightgbm",
-        "svm_linear",
-        "svm_rbf",
-        "nearest_neighbor",
-        "naive_Bayes",
-        "mlp",
-        "discrim_linear",
-        "discrim_quad",
-        "bag_tree"
-      )
-    } else {
-      c(
-        "linear_reg",
-        "ridge_regression",
-        "lasso_regression",
-        "elastic_net",
-        "decision_tree",
-        "rand_forest",
-        "xgboost",
-        "lightgbm",
-        "svm_linear",
-        "svm_rbf",
-        "nearest_neighbor",
-        "mlp",
-        "pls",
-        "bayes_glm"
-      )
-    }
-
-    return(algorithms)
-  }
-
-#' Get Default Engine
-#'
-#' Returns the default engine corresponding to the specified algorithm.
-#'
-#' @param algo A character string specifying the name of the algorithm. The value should match one of the supported algorithm names.
-#'
-#' @return A character string containing the default engine name associated with the provided algorithm.
-#'
-#' @details The function uses a \code{switch} statement to select the default engine based on the given algorithm. If the provided algorithm does not have a defined default engine, the function terminates with an error.
-#'
-#'
-#' @export
-get_default_engine <- function(algo) {
-  switch(algo,
-         "lightgbm" = "lightgbm",
-         "xgboost" = "xgboost",
-         "C5_rules" = "C5.0",
-         "rand_forest" = "ranger",
-         "ranger" = "ranger",
-         "logistic_reg" = "glm",
-         "multinom_reg" = "nnet",
-         "decision_tree" = "rpart",
-         "svm_linear" = "kernlab",
-         "svm_rbf" = "kernlab",
-         "nearest_neighbor" = "kknn",
-         "naive_Bayes" = "klaR",
-         "mlp" = "nnet",
-         "discrim_linear" = "MASS",
-         "discrim_quad" = "MASS",
-         "bag_tree" = "rpart",
-         "elastic_net" = "glmnet",
-         "bayes_glm" = "stan",
-         "pls" = "mixOmics",
-         "linear_reg" = "lm",
-         "ridge_regression" = "glmnet",
-         "lasso_regression" = "glmnet",
-         "deep_learning" = "keras",
-         stop("No default engine defined for algorithm: ", algo)
-  )
-}
-
-
-#' Get Engine Names from Model Workflows
-#'
-#' Extracts and returns a list of unique engine names from a list of model workflows.
-#'
-#' @param models A list where each element is a list of model workflows. Each workflow is expected to contain a fitted model that can be processed with \code{tune::extract_fit_parsnip}.
-#'
-#' @return A list of character vectors. Each vector contains the unique engine names extracted from the corresponding element of \code{models}.
-#'
-#' @details The function applies \code{tune::extract_fit_parsnip} to each model workflow to extract the fitted model object. It then retrieves the engine name from the model specification (\code{spec$engine}). If the extraction fails, \code{NA_character_} is returned for that workflow. Finally, the function removes any duplicate engine names using \code{unique}.
-#'
-#' @importFrom tune extract_fit_parsnip
-#'
-#' @export
-get_engine_names <- function(models) {
-  lapply(models, function(model_list) {
-    # Extract engine names from each workflow
-    engines <- sapply(model_list, function(mod) {
-      fit_obj <- tryCatch(
-        extract_fit_parsnip(mod),
-        error = function(e) NULL
-      )
-      if (!is.null(fit_obj)) {
-        fit_obj$spec$engine
-      } else {
-        NA_character_
-      }
-    })
-    # Remove names and duplicate entries
-    unique(unname(engines))
-  })
-}
-
-#' Get Model Engine Names
-#'
-#' Extracts and returns a named vector mapping algorithm names to engine names from a nested list of model workflows.
-#'
-#' @param models A nested list of model workflows. Each inner list should contain model objects from which a fitted model can be extracted using \code{tune::extract_fit_parsnip}.
-#'
-#' @return A named character vector where the names correspond to algorithm names (e.g., \code{"rand_forest"}, \code{"logistic_reg"}) and the values correspond to the associated engine names (e.g., \code{"ranger"}, \code{"glm"}).
-#'
-#' @details The function iterates over a nested list of model workflows and, for each workflow, attempts to extract the fitted model object using \code{tune::extract_fit_parsnip}. If successful, it retrieves the algorithm name from the first element of the class attribute of the model specification and the engine name from the specification. The results are combined into a named vector.
-#'
-#' @importFrom tune extract_fit_parsnip
-#' @importFrom stats setNames
-#'
-#' @export
-get_model_engine_names <- function(models) {
-  result <- c()
-  for(model_list in models) {
-    for(mod in model_list) {
-      fit_obj <- tryCatch(
-        extract_fit_parsnip(mod),
-        error = function(e) NULL
-      )
-      if (!is.null(fit_obj)) {
-        algo   <- class(fit_obj$spec)[1]   # e.g., "rand_forest" or "logistic_reg"
-        engine <- fit_obj$spec$engine       # e.g., "ranger", "randomForest", "glm"
-        result <- c(result, setNames(engine, algo))
-      }
-    }
-  }
-  result
-}
-
-#' Get Best Model Names
-#'
-#' Extracts and returns the best engine names from a named list of model workflows.
-#'
-#' @param models A named list where each element corresponds to an algorithm and contains a list of model workflows.
-#'   Each workflow should be compatible with \code{tune::extract_fit_parsnip}.
-#'
-#' @return A named character vector. The names of the vector correspond to the algorithm names, and the values represent the chosen best engine name for that algorithm.
-#'
-#' @details For each algorithm, the function extracts the engine names from the model workflows using \code{tune::extract_fit_parsnip}.
-#'   It then chooses \code{"randomForest"} if it is available; otherwise, it selects the first non-\code{NA} engine.
-#'   If no engine names can be extracted for an algorithm, \code{NA_character_} is returned.
-#'
-#' @importFrom tune extract_fit_parsnip
-#'
-#' @export
-get_best_model_names <- function(models) {
-  bests <- sapply(names(models), function(algo) {
-    model_list <- models[[algo]]
-    engines <- sapply(model_list, function(mod) {
-      fit_obj <- tryCatch(
-        extract_fit_parsnip(mod),
-        error = function(e) NULL
-      )
-      if (!is.null(fit_obj)) {
-        fit_obj$spec$engine
-      } else {
-        NA_character_
-      }
-    })
-    # Choose "randomForest" if available; otherwise, take the first non-NA engine.
-    if ("randomForest" %in% engines) {
-      "randomForest"
-    } else {
-      non_na_engines <- engines[!is.na(engines)]
-      if (length(non_na_engines) > 0) non_na_engines[1] else NA_character_
-    }
-  })
-
-  bests
-}
-
-#' Get Best Workflows
-#'
-#' Extracts the best workflows from a nested list of model workflows based on the provided best model names.
-#'
-#' @param models A nested list of model workflows. Each element should correspond to an algorithm and contain sublists keyed by engine names.
-#' @param best_model_name A named character vector where the names represent algorithm names and the values represent the chosen best engine for each algorithm.
-#'
-#' @return A named list of workflows corresponding to the best engine for each algorithm. Each list element is named in the format \code{"algorithm (engine)"}.
-#'
-#' @details The function iterates over each element in \code{best_model_name} and attempts to extract the corresponding workflow from \code{models} using the specified engine. If the workflow for an algorithm-engine pair is not found, a warning is issued and \code{NULL} is returned for that entry.
-#'
-#' @export
-get_best_workflows <- function(models, best_model_name) {
-  # For each element in best_model_name, extract the corresponding workflow
-  best_list <- lapply(seq_along(best_model_name), function(i) {
-    algo   <- names(best_model_name)[i]  # e.g., "rand_forest"
-    engine <- best_model_name[i]         # e.g., "ranger" or "randomForest"
-    if (!is.null(models[[algo]]) && !is.null(models[[algo]][[engine]])) {
-      models[[algo]][[engine]]
-    } else {
-      warning(paste("No workflow found for", algo, "with engine", engine))
-      NULL
-    }
-  })
-
-  # Name each element in the output using a combined label (e.g., "rand_forest (ranger)")
-  names(best_list) <- paste0(names(best_model_name), " (", best_model_name, ")")
-  best_list
-}
-
-#' Flatten and Rename Models
-#'
-#' Flattens a nested list of models and renames the elements by combining the outer and inner list names.
-#'
-#' @param models A nested list of models. The outer list should have names. If an inner element is a named list, the names will be combined with the outer name in the format \code{"outer_name (inner_name)"}.
-#'
-#' @return A flattened list with each element renamed according to its original outer and inner list names.
-#'
-#' @details The function iterates over each element of the outer list. For each element, if it is a list with names, the function concatenates the outer list name and the inner names using \code{paste0} and \code{setNames}. If an element is not a list or does not have names, it is included in the result without modification.
-#'
-#' @importFrom stats setNames
-#'
-#' @export
-flatten_and_rename_models <- function(models) {
-  # Initialize an empty list to store the flattened results
-  flattened <- list()
-
-  # Loop over each element in the outer list
-  for (outer_name in names(models)) {
-    inner <- models[[outer_name]]
-
-    # If the inner element is a list with names, then combine names
-    if (is.list(inner) && !is.null(names(inner))) {
-      # Create new names by combining outer and inner names
-      new_names <- paste0(outer_name, " (", names(inner), ")")
-      # Set the names and append to the flattened list
-      flattened <- c(flattened, setNames(inner, new_names))
-    } else {
-      # If the outer element is not a list (or not named), keep it as is
-      flattened[[outer_name]] <- inner
-    }
-  }
-
-  return(flattened)
-}
-
 #' Get Default Parameters for an Algorithm
 #'
 #' Returns a list of default tuning parameters for the specified algorithm based on the task type, number of predictors, and engine.
@@ -370,10 +97,10 @@ get_default_params <- function(algo, task, num_predictors = NULL, engine = NULL)
            sample_size = 0.5
          ),
          # 5. XGBoost
-         "xgboost" = list(
-           tree_depth = 6L,
-           trees = 15L,
-           learn_rate = -1,
+        "xgboost" = list(
+          tree_depth = 6L,
+          trees = 15L,
+          learn_rate = 0.1,
            mtry =  if (!is.null(num_predictors)) max(1, floor(sqrt(num_predictors))) else 2,
            min_n =  2,
            loss_reduction = 0.0,
@@ -381,10 +108,10 @@ get_default_params <- function(algo, task, num_predictors = NULL, engine = NULL)
            stop_iter =  Inf
          ),
          # 6. LightGBM
-         "lightgbm" = list(
-           trees = 100,
-           tree_depth = 3,
-           learn_rate = -1,
+        "lightgbm" = list(
+          trees = 100,
+          tree_depth = 3,
+          learn_rate = 0.1,
            loss_reduction = 0,
            min_n = 5,
            sample_size = 0.5,
@@ -512,7 +239,7 @@ get_default_params <- function(algo, task, num_predictors = NULL, engine = NULL)
          # 11. SVM Radial
          "svm_rbf" = list(
            cost = 1,
-           rbf_sigma = c(-5, -1)
+           rbf_sigma = 0.1
          ),
          # 12. nearest_neighbor
          "nearest_neighbor" = list(
@@ -541,13 +268,13 @@ get_default_params <- function(algo, task, num_predictors = NULL, engine = NULL)
            if (engine %in% c("nnet")) {
              list(
                hidden_units = 5L,
-               penalty      = -1,
+               penalty      = 0.1,
                epochs       = 100L
              )
            } else if (engine %in% c("brulee")) {
              list(
                hidden_units = 3L,
-               penalty      = -1,
+               penalty      = 0.1,
                epochs       = 100L,
                activation   = "relu",
                # mixture      = 0.0,
@@ -566,7 +293,7 @@ get_default_params <- function(algo, task, num_predictors = NULL, engine = NULL)
            } else if (engine %in% c("keras")) {
              list(
                hidden_units = 5L,
-               penalty      = -1,
+               penalty      = 0.1,
                dropout      = 0.0,
                epochs       = 20L,
                activation   = "softmax"
@@ -579,7 +306,7 @@ get_default_params <- function(algo, task, num_predictors = NULL, engine = NULL)
          # 15. Deep Learning (keras)
          "deep_learning" = list(
            hidden_units = 10,
-           penalty = -1,
+           penalty = 0.1,
            epochs = 50
          ),
          # 16. discrim_linear
@@ -683,7 +410,7 @@ get_default_tune_params <- function(algo, train_data, label, engine) {
 
            if (engine %in% c("glm", "gee", "glmer", "stan", "stan_glmer")) {
              list(penalty = NULL, mixture = NULL)
-           } else if (engine %in% c("brulee", "glmnet", "h20", "LiblineaR", "spark")) {
+           } else if (engine %in% c("brulee", "glmnet", "h2o", "LiblineaR", "spark")) {
              list(penalty = c(-5, 0), mixture = c(0, 1))
            } else if (engine %in% c("keras")) {
              list(penalty = c(-5, 0), mixture = NULL)
@@ -753,14 +480,14 @@ get_default_tune_params <- function(algo, train_data, label, engine) {
          # 14. Neural Network (nnet)
          "mlp" = list(
            hidden_units = c(1, 5),  # Reduced upper limit
-           penalty = c(-5, -1),  # log scale
+           penalty = c(1e-05, 0.1),
            epochs = c(100, 150)  # Reduced upper limit
          ),
 
          # 15. Deep Learning (keras)
          "deep_learning" = list(
            hidden_units = c(10, 30),  # Reduced upper limit
-           penalty = c(-5, -1),  # log scale
+           penalty = c(1e-05, 0.1),
            epochs = c(50, 100)  # Reduced upper limit
          ),
 
@@ -854,200 +581,3 @@ get_default_tune_params <- function(algo, train_data, label, engine) {
 #' @importFrom magrittr %>%
 #'
 #' @export
-process_model <- function(model_obj, model_id, task, test_data, label, event_class,
-                          engine, train_data, metric) {
-  # If the model object is a tuning result, finalize the workflow
-  if (inherits(model_obj, "tune_results")) {
-    best_params <- tryCatch({
-      tune::select_best(model_obj, metric = metric)
-    }, error = function(e) {
-      warning(paste("Could not select best parameters for model", model_id, ":", e$message))
-      return(NULL)
-    })
-    if (is.null(best_params)) return(NULL)
-
-    model_spec <- workflows::pull_workflow_spec(model_obj)
-    model_recipe <- workflows::pull_workflow_preprocessor(model_obj)
-
-    final_model_spec <- tune::finalize_model(model_spec, best_params)
-    final_workflow <- workflows::workflow() %>%
-      workflows::add_recipe(model_recipe) %>%
-      workflows::add_model(final_model_spec)
-
-    final_model <- parsnip::fit(final_workflow, data = train_data)
-  } else {
-    # Otherwise, assume the model is already a fitted workflow
-    final_model <- model_obj
-  }
-
-  # Make predictions and compute performance metrics
-  if (task == "classification") {
-
-    pred_class <- predict(final_model, new_data = test_data, type = "class")$.pred_class
-
-
-    if (!is.null(engine) && !is.na(engine) && engine != "LiblineaR") {
-      pred_prob <- predict(final_model, new_data = test_data, type = "prob")
-    }
-
-
-
-    if(nrow(test_data) != length(pred_class)) {
-      stop('The dataset has missing values. To handle this, set impute_method = "remove" to delete rows with missing values,
-             or use an imputation method such as "medianImpute" to fill missing values with the column median, "knnImpute" to
-             estimate missing values using k-Nearest Neighbors, "bagImpute" to apply bagging for imputation, "mice" to use
-             Multiple Imputation by Chained Equations, or "missForest" to use random forests for imputation.')
-    }
-
-    data_metrics <- test_data %>%
-      dplyr::select(truth = !!rlang::sym(label)) %>%
-      dplyr::mutate(estimate = pred_class) %>%
-      {
-        if (!is.null(engine) && !is.na(engine) && engine != "LiblineaR") {
-          dplyr::bind_cols(., pred_prob)
-        } else {
-          .
-        }
-      }
-
-    if(any(grepl("^\\.pred_p", names(data_metrics)))){
-
-      pred_name = ".pred_p"
-    }else{
-
-      pred_name = ".pred_"
-    }
-
-    num_classes <- length(unique(data_metrics$truth))
-
-    if (num_classes == 2) {
-      # Determine the positive class based on event_class parameter
-      if(event_class == "first"){
-        positive_class <- levels(data_metrics$truth)[1]
-      } else if(event_class == "second"){
-        positive_class <- levels(data_metrics$truth)[2]
-      } else {
-        stop("Invalid event_class argument. It should be either 'first' or 'second'.")
-      }
-
-      # Compute standard classification metrics
-      metrics_class <- yardstick::metric_set(
-        yardstick::accuracy,
-        yardstick::kap,
-        yardstick::sens,
-        yardstick::spec,
-        yardstick::precision,
-        yardstick::f_meas
-      )
-      perf_class <- metrics_class(data_metrics, truth = truth, estimate = estimate, event_level = event_class)
-
-      if (!is.null(engine) && !is.na(engine) && engine != "LiblineaR") {
-        # Compute ROC AUC using the probability column for the positive class
-        roc_auc_value <- yardstick::roc_auc(
-          data_metrics,
-          truth = truth,
-          !!rlang::sym(paste0(pred_name, positive_class)),
-          event_level = "second"
-        )
-        if(roc_auc_value$.estimate < 0.50) {
-          roc_auc_value <- yardstick::roc_auc(
-            data_metrics,
-            truth = truth,
-            !!rlang::sym(paste0(pred_name, positive_class)),
-            event_level = "first"
-          )
-        }
-        perf <- dplyr::bind_rows(perf_class, roc_auc_value)
-      }else{
-
-        perf <- perf_class
-      }
-    }else {
-      # Multiclass classification (using macro averaging)
-      metrics_class <- yardstick::metric_set(
-        yardstick::accuracy,
-        yardstick::kap,
-        yardstick::sens,
-        yardstick::spec,
-        yardstick::precision,
-        yardstick::f_meas
-      )
-      perf_class <- metrics_class(
-        data_metrics,
-        truth = truth,
-        estimate = estimate,
-        estimator = "macro"
-      )
-
-      if (!is.null(engine) && !is.na(engine) && engine != "LiblineaR") {
-        prob_cols <- names(pred_prob)
-        perf_roc_auc <- yardstick::roc_auc(
-          data_metrics,
-          truth = truth,
-          !!!rlang::syms(prob_cols),
-          estimator = "macro_weighted"
-        )
-        perf <- dplyr::bind_rows(perf_class, perf_roc_auc)
-      } else {
-        perf <- perf_class
-      }
-    }
-  } else {
-    # Regression task
-    predictions <- predict(final_model, new_data = test_data)
-    pred <- predictions$.pred
-    data_metrics <- tibble::tibble(truth = test_data[[label]], estimate = pred)
-    metrics_set <- yardstick::metric_set(yardstick::rmse, yardstick::rsq, yardstick::mae)
-    perf <- metrics_set(data_metrics, truth = truth, estimate = estimate)
-  }
-
-  return(list(performance = perf, predictions = data_metrics))
-}
-
-#' Get Best Model Indices by Metric and Group
-#'
-#' Identifies and returns the indices of rows in a data frame where the specified metric reaches the overall maximum within groups defined by one or more columns.
-#'
-#' @param df A data frame containing model performance metrics and grouping columns.
-#' @param metric A character string specifying the name of the metric column in \code{df}. The metric values are converted to numeric for comparison.
-#' @param group_cols A character vector of column names used for grouping. Defaults to \code{c("Model", "Engine")}.
-#'
-#' @return A numeric vector of row indices in \code{df} corresponding to groups whose maximum metric equals the overall best metric value.
-#'
-#' @details The function converts the metric values to numeric and creates a combined grouping factor using the specified \code{group_cols}. It then computes the maximum metric value within each group and determines the overall best metric value across the entire data frame. Finally, it returns the indices of rows belonging to groups that achieve this overall maximum.
-#'
-#' @importFrom stats ave
-#'
-#' @export
-#'
-get_best_model_idx <- function(df, metric, group_cols = c("Model", "Engine")) {
-  # Convert the metric to numeric in case it's not already
-  metric_values <- as.numeric(as.character(df[[metric]]))
-
-  # Create a combined grouping factor from the specified columns
-  group_values <- interaction(df[, group_cols], drop = TRUE)
-
-  # Compute the maximum metric for each group
-  if(metric %in% c("rmse", "mae")){
-
-    group_val <- ave(metric_values, group_values, FUN = min)
-    overall_val <- min(metric_values)
-
-
-  }else{
-
-    group_val <- ave(metric_values, group_values, FUN = max)
-    overall_val <- max(metric_values)
-
-
-  }
-
-
-  # Identify groups whose maximum equals the overall maximum
-  best_groups <- unique(group_values[group_val == overall_val])
-
-  # Return indices where the group is one of the best groups
-  idx <- which(group_values %in% best_groups)
-  return(idx)
-}
-

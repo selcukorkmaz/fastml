@@ -235,3 +235,162 @@ test_that("stop if unsupported metric is selected.", {
   })
 })
 
+test_that("invalid tuning_strategy triggers error", {
+  expect_error(
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("rand_forest"),
+      tuning_strategy = "invalid"
+    ),
+    "should be one of"
+  )
+})
+
+test_that("grid tuning executes successfully", {
+  res <- fastml(
+    data = iris,
+    label = "Species",
+    algorithms = c("rand_forest"),
+    use_default_tuning = TRUE,
+    tuning_strategy = "grid",
+    resampling_method = "cv",
+    folds = 2
+  )
+  expect_s3_class(res, "fastml")
+  expect_true(length(res$models) > 0)
+})
+
+test_that("Bayesian tuning executes successfully", {
+  res <- fastml(
+    data = iris,
+    label = "Species",
+    algorithms = c("rand_forest"),
+    use_default_tuning = TRUE,
+    tuning_strategy = "bayes",
+    tuning_iterations = 2,
+    resampling_method = "cv",
+    folds = 2
+  )
+  expect_s3_class(res, "fastml")
+  expect_true(length(res$models) > 0)
+})
+
+test_that("adaptive tuning executes successfully", {
+  res <- fastml(
+    data = iris,
+    label = "Species",
+    algorithms = c("rand_forest"),
+    use_default_tuning = TRUE,
+    tuning_strategy = "grid",
+    adaptive = TRUE,
+    resampling_method = "cv",
+    folds = 2
+  )
+  expect_s3_class(res, "fastml")
+})
+
+test_that("early_stopping does not warn with grid tuning", {
+  expect_warning(
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("rand_forest"),
+      use_default_tuning = TRUE,
+      tuning_strategy = "grid",
+      early_stopping = TRUE,
+      resampling_method = "cv",
+      folds = 2
+    ),
+    regexp = NA
+  )
+})
+
+test_that("early stopping with bayesian tuning works", {
+  res <- fastml(
+    data = iris,
+    label = "Species",
+    algorithms = c("rand_forest"),
+    use_default_tuning = TRUE,
+    tuning_strategy = "bayes",
+    tuning_iterations = 2,
+    early_stopping = TRUE,
+    resampling_method = "cv",
+    folds = 2
+  )
+  expect_s3_class(res, "fastml")
+})
+
+test_that("invalid tuning_iterations triggers error", {
+  expect_error(
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("rand_forest"),
+      tuning_strategy = "bayes",
+      tuning_iterations = 0,
+      resampling_method = "cv",
+      folds = 2
+    ),
+    "tuning_iterations"
+  )
+})
+
+test_that("tuning_iterations ignored for non-bayesian strategies", {
+  expect_no_error(
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("rand_forest"),
+      use_default_tuning = TRUE,
+      tuning_strategy = "grid",
+      tuning_iterations = 0,
+      resampling_method = "cv",
+      folds = 2
+    )
+  )
+  expect_no_error(
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("rand_forest"),
+      tuning_strategy = "none",
+      tuning_iterations = -1,
+      resampling_method = "none"
+    )
+  )
+})
+
+test_that("adaptive ignored with bayesian tuning", {
+  expect_warning(
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("rand_forest"),
+      use_default_tuning = TRUE,
+      tuning_strategy = "bayes",
+      adaptive = TRUE,
+      tuning_iterations = 1,
+      resampling_method = "cv",
+      folds = 2
+    ),
+    "adaptive"
+  )
+})
+
+test_that("warning when tune_params ignored with no tuning", {
+  tune <- list(rand_forest = list(ranger = list(mtry = c(1, 2))))
+  expect_warning(
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("rand_forest"),
+      tune_params = tune,
+      tuning_strategy = "none",
+      use_default_tuning = TRUE,
+      resampling_method = "none"
+    ),
+    "tune_params"
+  )
+})
+

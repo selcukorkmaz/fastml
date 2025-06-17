@@ -39,8 +39,9 @@ train_models(
 \item{folds}{Number of folds for cross-validation.}
 
 \item{repeats}{Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").}
+\item{resamples}{Optional rsample object defining custom resampling splits.}
 
-\item{tune_params}{List of hyperparameter tuning ranges.}
+\item{tune_params}{A named list of tuning ranges for each algorithm and engine pair, e.g. \code{list(rand\_forest = list(ranger = list(mtry = c(1, 3))))}.}
 
 \item{metric}{The performance metric to optimize.}
 
@@ -50,15 +51,15 @@ train_models(
 
 \item{recipe}{A recipe object for preprocessing.}
 
-\item{use_default_tuning}{Logical indicating whether to use default tuning grids when \code{tune_params} is \code{NULL}.}
+\item{use_default_tuning}{Logical; if \code{TRUE} and \code{tune_params} is \code{NULL}, tuning is performed using default grids. Tuning also occurs when custom \code{tune_params} are supplied. When \code{FALSE} and no custom parameters are given, the model is fitted once with default settings. Default is \code{FALSE}.}
 
-\item{tuning_strategy}{A string specifying the tuning strategy ("grid", "bayes", or "none"), possibly with adaptive methods.}
+\item{tuning_strategy}{A string specifying the tuning strategy. Must be one of \code{"grid"}, \code{"bayes"}, or \code{"none"}. Adaptive methods may be used with \code{"grid"}. If set to \code{"none"}, the workflow is fitted directly without tuning. If custom \code{tune\_params} are supplied when \code{tuning\_strategy = "none"}, they will be ignored with a warning.}
 
-\item{tuning_iterations}{Number of iterations for iterative tuning methods.}
+\item{tuning_iterations}{Number of iterations for Bayesian tuning. Ignored when \code{tuning_strategy} is not \code{"bayes"}. Validation of this argument occurs only for the Bayesian strategy.}
 
-\item{early_stopping}{Logical for early stopping in Bayesian tuning.}
+\item{early_stopping}{Logical enabling early stopping when supported by the underlying engine.}
 
-\item{adaptive}{Logical indicating whether to use adaptive/racing methods.}
+\item{adaptive}{Logical indicating whether to use adaptive/racing methods. If \code{tuning_strategy = "bayes"}, this option is ignored with a warning.}
 
 \item{algorithm_engines}{A named list specifying the engine to use for each algorithm.}
 }
