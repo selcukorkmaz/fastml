@@ -586,7 +586,7 @@ fastml <- function(data = NULL,
   names(best_model_name) <- sapply(best_model_components, function(comp) comp$algo)
 
   if (verbose) {
-    msg <- paste(names(best_model_name), "(", best_model_name, ")", collapse = ", ")
+    msg <- paste0(names(best_model_name), " (", best_model_name, ")", collapse = ", ")
     message("Best model selected: ", msg)
   }
 
