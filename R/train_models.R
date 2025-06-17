@@ -10,7 +10,9 @@
 #' @param resampling_method Resampling method for cross-validation (e.g., "cv", "repeatedcv", "boot", "none").
 #' @param folds Number of folds for cross-validation.
 #' @param repeats Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").
-#' @param tune_params List of hyperparameter tuning ranges.
+#' @param tune_params A named list of tuning ranges. For each algorithm, supply a
+#'   list of engine-specific parameter values, e.g.
+#'   \code{list(rand_forest = list(ranger = list(mtry = c(1, 3)))).}
 #' @param metric The performance metric to optimize.
 #' @param summaryFunction A custom summary function for model evaluation. Default is \code{NULL}.
 #' @param seed An integer value specifying the random seed for reproducibility.
@@ -229,14 +231,37 @@ train_models <- function(train_data,
     # Loop over each engine provided
     for (engine in engines) {
 
-      # Get the tuning parameters for this engine.
+      # Get default parameters for this engine
       if (use_default_tuning) {
-        engine_tune_params <- get_default_tune_params(algo,
-                                                      train_data,
-                                                      label,
-                                                      engine)
+        defaults <- get_default_tune_params(
+          algo,
+          train_data,
+          label,
+          engine
+        )
       } else {
-        engine_tune_params <- get_default_params(algo, task, num_predictors = ncol(train_data %>% dplyr::select(-!!sym(label))), engine = engine)
+        defaults <- get_default_params(
+          algo,
+          task,
+          num_predictors = ncol(train_data %>% dplyr::select(-!!sym(label))),
+          engine = engine
+        )
+      }
+
+      # User supplied tuning parameters for this algorithm/engine
+      user_params <- NULL
+      if (!is.null(tune_params) &&
+          !is.null(tune_params[[algo]]) &&
+          !is.null(tune_params[[algo]][[engine]])) {
+        user_params <- tune_params[[algo]][[engine]]
+      }
+
+      # Merge defaults with user parameters
+      engine_tune_params <- if (is.null(defaults)) list() else defaults
+      if (!is.null(user_params)) {
+        for (nm in names(user_params)) {
+          engine_tune_params[[nm]] <- user_params[[nm]]
+        }
       }
 
       if(algo == "logistic_reg" && engine %in% c("glm", "gee" ,"glmer" , "stan" , "stan_glmer")){

@@ -24,7 +24,9 @@ utils::globalVariables(c("Fraction", "Performance"))
 #' @param event_class A single string. Either "first" or "second" to specify which level of truth to consider as the "event". Default is "first".
 #' @param exclude A character vector specifying the names of the columns to be excluded from the training process.
 #' @param recipe A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.
-#' @param tune_params A list specifying hyperparameter tuning ranges. Default is \code{NULL}.
+#' @param tune_params A named list of tuning ranges for each algorithm and engine
+#'   pair. Example: \code{list(rand_forest = list(ranger = list(mtry = c(1, 3))))}
+#'   will override the defaults for the ranger engine. Default is \code{NULL}.
 #' @param metric The performance metric to optimize during training.
 #' @param algorithm_engines A named list specifying the engine to use for each algorithm.
 #' @param n_cores An integer specifying the number of CPU cores to use for parallel processing. Default is \code{1}.
@@ -73,12 +75,20 @@ utils::globalVariables(c("Fraction", "Performance"))
 #' iris <- iris[iris$Species != "setosa", ]  # Binary classification
 #' iris$Species <- factor(iris$Species)
 #'
-#' # Train models
+#' # Define a custom tuning grid for the ranger engine
+#' tune <- list(
+#'   rand_forest = list(
+#'     ranger = list(mtry = c(1, 3))
+#'   )
+#' )
+#'
+#' # Train models with custom tuning
 #' model <- fastml(
 #'   data = iris,
 #'   label = "Species",
-#'   algorithms = c("rand_forest", "xgboost", "svm_rbf"), algorithm_engines = c(
-#'   list(rand_forest = c("ranger","aorsf", "partykit", "randomForest")))
+#'   algorithms = "rand_forest",
+#'   tune_params = tune,
+#'   use_default_tuning = TRUE
 #' )
 #'
 #' # View model summary

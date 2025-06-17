@@ -65,7 +65,7 @@ Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.}
 
 \item{recipe}{A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.}
 
-\item{tune_params}{A list specifying hyperparameter tuning ranges. Default is \code{NULL}.}
+\item{tune_params}{A named list of tuning ranges for each algorithm and engine pair. Example: \code{list(rand\_forest = list(ranger = list(mtry = c(1, 3))))}. Default is \code{NULL}.}
 
 \item{metric}{The performance metric to optimize during training.}
 
@@ -131,12 +131,20 @@ data(iris)
 iris <- iris[iris$Species != "setosa", ]  # Binary classification
 iris$Species <- factor(iris$Species)
 
-# Train models
+# Define a custom tuning grid for the ranger engine
+tune <- list(
+  rand_forest = list(
+    ranger = list(mtry = c(1, 3))
+  )
+)
+
+# Train models with custom tuning
 model <- fastml(
   data = iris,
   label = "Species",
-  algorithms = c("rand_forest", "xgboost", "svm_rbf"), algorithm_engines = c(
-  list(rand_forest = c("ranger","aorsf", "partykit", "randomForest")))
+  algorithms = "rand_forest",
+  tune_params = tune,
+  use_default_tuning = TRUE
 )
 
 # View model summary
