@@ -683,7 +683,7 @@ get_default_tune_params <- function(algo, train_data, label, engine) {
 
            if (engine %in% c("glm", "gee", "glmer", "stan", "stan_glmer")) {
              list(penalty = NULL, mixture = NULL)
-           } else if (engine %in% c("brulee", "glmnet", "h20", "LiblineaR", "spark")) {
+           } else if (engine %in% c("brulee", "glmnet", "h2o", "LiblineaR", "spark")) {
              list(penalty = c(-5, 0), mixture = c(0, 1))
            } else if (engine %in% c("keras")) {
              list(penalty = c(-5, 0), mixture = NULL)
