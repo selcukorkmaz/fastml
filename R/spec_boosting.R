@@ -1,13 +1,15 @@
 #' Define LightGBM Model Specification
 #'
 #' @inheritParams define_rand_forest_spec
+#' @param early_stopping Logical. If TRUE, early stopping parameters are passed
+#'   to the engine.
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip boost_tree set_mode set_engine
 #' @importFrom dplyr select all_of
 #' @importFrom tune tune
 #' @import bonsai
 #' @noRd
-define_lightgbm_spec <- function(task, train_data, label, tuning = FALSE, engine = "lightgbm") {
+define_lightgbm_spec <- function(task, train_data, label, tuning = FALSE, engine = "lightgbm", early_stopping = FALSE) {
   # Ensure the lightgbm package is installed.
   if (!requireNamespace("lightgbm", quietly = TRUE)) {
     stop("The 'lightgbm' package is required but is not installed.")
@@ -58,7 +60,9 @@ define_lightgbm_spec <- function(task, train_data, label, tuning = FALSE, engine
                verbose       = -1,
                num_threads   = 0,
                seed          = 123,
-               deterministic = TRUE)
+               deterministic = TRUE,
+               early_stop    = if (early_stopping) 10 else NULL,
+               validation    = if (early_stopping) 0.1 else NULL)
 
   list(model_spec = model_spec)
 }
@@ -66,12 +70,14 @@ define_lightgbm_spec <- function(task, train_data, label, tuning = FALSE, engine
 #' Define XGBoost Model Specification
 #'
 #' @inheritParams define_rand_forest_spec
+#' @param early_stopping Logical. If TRUE, early stopping parameters are passed
+#'   to the engine.
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip boost_tree set_mode set_engine
 #' @importFrom dplyr select all_of
 #' @importFrom tune tune
 #' @noRd
-define_xgboost_spec <- function(task, train_data, label, tuning = FALSE, engine = "xgboost") {
+define_xgboost_spec <- function(task, train_data, label, tuning = FALSE, engine = "xgboost", early_stopping = FALSE) {
   num_predictors <- ncol(train_data %>% dplyr::select(-dplyr::all_of(label)))
   defaults <- get_default_params("xgboost", num_predictors)
 
@@ -86,7 +92,9 @@ define_xgboost_spec <- function(task, train_data, label, tuning = FALSE, engine 
       sample_size = tune()
     ) %>%
       set_mode(task) %>%
-      set_engine(engine)
+      set_engine(engine,
+                 early_stop = if (early_stopping) 10 else NULL,
+                 validation = if (early_stopping) 0.1 else NULL)
   } else {
     model_spec <- boost_tree(
       trees = defaults$trees,
@@ -98,7 +106,9 @@ define_xgboost_spec <- function(task, train_data, label, tuning = FALSE, engine 
       sample_size = defaults$sample_size
     ) %>%
       set_mode(task) %>%
-      set_engine(engine)
+      set_engine(engine,
+                 early_stop = if (early_stopping) 10 else NULL,
+                 validation = if (early_stopping) 0.1 else NULL)
   }
   list(model_spec = model_spec)
 }

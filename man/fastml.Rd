@@ -95,6 +95,8 @@ Default is \code{"error"}.}
 \item{encode_categoricals}{Logical indicating whether to encode categorical variables. Default is \code{TRUE}.}
 
 \item{scaling_methods}{Vector of scaling methods to apply. Default is \code{c("center", "scale")}.}
+\item{balance_method}{Method to handle class imbalance. One of \code{"none"}, \code{"upsample"}, or \code{"downsample"}. Default is \code{"none"}.}
+\item{resamples}{Optional rsample object with custom resampling splits. Overrides \code{resampling_method}, \code{folds}, and \code{repeats}.}
 
 \item{summaryFunction}{A custom summary function for model evaluation. Default is \code{NULL}.}
 \item{use_default_tuning}{Logical; if \code{TRUE} and \code{tune_params} is \code{NULL}, tuning is performed using default grids. Tuning also occurs when custom \code{tune_params} are supplied. When \code{FALSE} and no custom parameters are given, models are fitted once with default settings. Default is \code{FALSE}.}
@@ -105,7 +107,7 @@ Default is \code{"error"}.}
 
 \item{tuning_iterations}{Number of iterations for Bayesian tuning. Ignored when \code{tuning_strategy} is not \code{"bayes"}. Validation of this argument only occurs for the Bayesian strategy. Default is \code{10}.}
 
-\item{early_stopping}{Logical indicating whether to use early stopping in Bayesian tuning methods (if supported). Default is \code{FALSE}.}
+\item{early_stopping}{Logical enabling engine-level early stopping when supported. Default is \code{FALSE}.}
 
 \item{adaptive}{Logical indicating whether to use adaptive/racing methods for tuning. If \code{tuning_strategy = "bayes"}, this option is ignored with a warning. Default is \code{FALSE}.}
 

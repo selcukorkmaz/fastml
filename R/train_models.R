@@ -10,6 +10,8 @@
 #' @param resampling_method Resampling method for cross-validation (e.g., "cv", "repeatedcv", "boot", "none").
 #' @param folds Number of folds for cross-validation.
 #' @param repeats Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").
+#' @param resamples Optional rsample object. If provided, custom resampling splits
+#'   will be used instead of those created internally.
 #' @param tune_params A named list of tuning ranges. For each algorithm, supply a
 #'   list of engine-specific parameter values, e.g.
 #'   \code{list(rand_forest = list(ranger = list(mtry = c(1, 3)))).}
@@ -51,6 +53,7 @@ train_models <- function(train_data,
                          resampling_method,
                          folds,
                          repeats,
+                         resamples = NULL,
                          tune_params,
                          metric,
                          summaryFunction = NULL,
@@ -84,7 +87,7 @@ train_models <- function(train_data,
   }
 
   if (early_stopping && tuning_strategy != "bayes") {
-    warning("'early_stopping' is ignored when tuning_strategy is not 'bayes'")
+    message("Engine-level early stopping will be applied when supported")
   }
 
   if (task == "classification") {
@@ -122,7 +125,11 @@ train_models <- function(train_data,
     metrics <- metric_set(rmse, rsq, mae)
   }
 
-  if (resampling_method == "cv") {
+  if (!is.null(resamples)) {
+    if (!inherits(resamples, "rset")) {
+      stop("'resamples' must be an 'rset' object")
+    }
+  } else if (resampling_method == "cv") {
     if (nrow(train_data) < folds) {
       stop(
         sprintf(
@@ -345,14 +352,16 @@ train_models <- function(train_data,
                                                    train_data,
                                                    label,
                                                    tuning = perform_tuning,
-                                                   engine = engine)
+                                                   engine = engine,
+                                                   early_stopping = early_stopping)
                              },
                              "lightgbm" = {
                                define_lightgbm_spec(task,
                                                     train_data,
                                                     label,
                                                     tuning = perform_tuning,
-                                                    engine = engine)
+                                                    engine = engine,
+                                                    early_stopping = early_stopping)
                              },
                              "decision_tree" = {
                                define_decision_tree_spec(task,
