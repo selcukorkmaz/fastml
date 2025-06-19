@@ -177,9 +177,6 @@ fastml <- function(data = NULL,
 
   if(task == "auto"){
     if (is.numeric(target_var) && length(unique(target_var)) <= 5) {
-      # convert to factor in both splits
-      train_data[[label]] <- factor(train_data[[label]])
-      test_data[[label]]  <- factor(test_data[[label]], levels = levels(train_data[[label]]))
       task <- "classification"
       warning(sprintf(
         "The target variable '%s' is numeric with %d unique values. Converted to factor; task set to 'classification'.",
@@ -195,13 +192,8 @@ fastml <- function(data = NULL,
 
   }
 
-  if(task == "classification"){
-    positive_class <- ifelse(event_class == "first",
-                             levels(source_data[[label]])[1],
-                             levels(source_data[[label]])[2])
-  } else {
-    positive_class = NULL
-  }
+  # determine positive_class after data split when factor levels are available
+  positive_class <- NULL
   # ---------------- END TASK DETECTION ----------------
 
 
@@ -337,9 +329,15 @@ fastml <- function(data = NULL,
   if (task == "classification") {
     train_data[[label]] <- as.factor(train_data[[label]])
     test_data[[label]] <- factor(test_data[[label]], levels = levels(train_data[[label]]))
+    if (length(levels(train_data[[label]])) >= 2) {
+      positive_class <- ifelse(event_class == "first",
+                               levels(train_data[[label]])[1],
+                               levels(train_data[[label]])[2])
+    }
   } else {
     train_data[[label]] <- as.numeric(train_data[[label]])
     test_data[[label]] <- as.numeric(test_data[[label]])
+    positive_class <- NULL
   }
 
   ###############################################################################
