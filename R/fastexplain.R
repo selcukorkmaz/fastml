@@ -1,6 +1,6 @@
-#' FastExplain the fastml (DALEX + SHAP + Permutation-based VI)
+#' Explain a fastml model using various techniques
 #'
-#' Provides model explainability using DALEX. This function:
+#' Provides model explainability. When `method = "dalex"` this function:
 #' \itemize{
 #'   \item Creates a DALEX explainer.
 #'   \item Computes permutation-based variable importance with boxplots showing variability, displays the table and plot.
@@ -29,8 +29,12 @@
 #'  }
 #'
 #' @param object A \code{fastml} object.
-#' @param method Currently only \code{"dalex"} is supported.
+#' @param method Character string specifying the explanation method.
+#'   Supported values are \code{"dalex"}, \code{"lime"}, \code{"ice"},
+#'   \code{"ale"}, \code{"surrogate"}, \code{"interaction"}, and
+#'   \code{"counterfactual"}. Defaults to \code{"dalex"}.
 #' @param features Character vector of feature names for partial dependence (model profiles). Default NULL.
+#' @param observation A single observation for counterfactual explanations. Default NULL.
 #' @param grid_size Number of grid points for partial dependence. Default 20.
 #' @param shap_sample Integer number of observations from processed training data to compute SHAP values for. Default 5.
 #' @param vi_iterations Integer. Number of permutations for variable importance (B). Default 10.
@@ -40,7 +44,7 @@
 #'     \item If \code{NULL} and task = 'classification', defaults to \code{DALEX::loss_cross_entropy}.
 #'     \item If \code{NULL} and task = 'regression', defaults to \code{DALEX::loss_root_mean_square}.
 #'   }
-#' @param ... Additional arguments (not currently used).
+#' @param ... Additional arguments passed to the underlying helper functions.
 #'
 #' @importFrom dplyr select
 #' @importFrom tune extract_fit_parsnip
@@ -54,6 +58,7 @@
 fastexplain <- function(object,
                           method = "dalex",
                           features = NULL,
+                          observation = NULL,
                           grid_size = 20,
                           shap_sample = 5,
                           vi_iterations = 10,
@@ -65,8 +70,28 @@ fastexplain <- function(object,
     stop("The input must be a 'fastml' object.")
   }
 
-  if (method != "dalex") {
-    stop("Only 'dalex' method is supported in this version.")
+  method <- tolower(method)
+
+  if (method == "lime") {
+    return(explain_lime(object, ...))
+  } else if (method == "ice") {
+    return(plot_ice(object, features = features, ...))
+  } else if (method == "ale") {
+    if (is.null(features) || length(features) == 0) {
+      stop("'features' must contain a feature name for ALE explanations.")
+    }
+    return(explain_ale(object, feature = features[1], ...))
+  } else if (method == "surrogate") {
+    return(surrogate_tree(object, ...))
+  } else if (method == "interaction") {
+    return(interaction_strength(object, ...))
+  } else if (method == "counterfactual") {
+    if (is.null(observation)) {
+      stop("'observation' must be provided for counterfactual explanations.")
+    }
+    return(counterfactual_explain(object, observation, ...))
+  } else if (method != "dalex") {
+    stop("Unknown explanation method.")
   }
 
   best_model <- object$best_model
