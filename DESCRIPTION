@@ -80,5 +80,9 @@ Suggests:
     lightgbm,
     rstanarm,
     mixOmics,
+    lime,
+    pdp,
+    iml,
+    ceterisParibus,
 RoxygenNote: 7.3.2
 Config/testthat/edition: 3
