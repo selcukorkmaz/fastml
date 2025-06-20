@@ -57,15 +57,16 @@ Imports:
     kableExtra, 
     moments,
     naniar, 
-    plotly, 
-    scales, 
-    skimr, 
+    plotly,
+    scales,
+    skimr,
     tidyr,
     knitr,
     rmarkdown,
     purrr,
     mice,
-    missForest
+    missForest,
+    pdp
 Suggests:
     testthat (>= 3.0.0),
     C50,
@@ -81,7 +82,6 @@ Suggests:
     rstanarm,
     mixOmics,
     lime,
-    pdp,
     iml,
     ceterisParibus,
 RoxygenNote: 7.3.2
