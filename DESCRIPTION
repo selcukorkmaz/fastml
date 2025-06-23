@@ -65,8 +65,7 @@ Imports:
     rmarkdown,
     purrr,
     mice,
-    missForest,
-    pdp
+    missForest
 Suggests:
     testthat (>= 3.0.0),
     C50,
