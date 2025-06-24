@@ -8,7 +8,6 @@
 #' @param ... Additional arguments passed to `pdp::partial`.
 #'
 #' @return A `ggplot` object displaying ICE curves.
-#' @importFrom pdp partial
 #' @export
 #' @examples
 #' \dontrun{

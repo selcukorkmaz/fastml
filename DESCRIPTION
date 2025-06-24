@@ -83,5 +83,6 @@ Suggests:
     lime,
     iml,
     ceterisParibus,
+    pdp
 RoxygenNote: 7.3.2
 Config/testthat/edition: 3
