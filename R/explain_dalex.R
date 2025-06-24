@@ -10,7 +10,6 @@
 #' @importFrom tune extract_fit_parsnip
 #' @importFrom DALEX explain model_parts loss_root_mean_square loss_cross_entropy model_profile predict_parts
 #' @importFrom ggplot2 labs
-#' @importFrom patchwork wrap_plots
 #' @importFrom stats predict
 #' @export
 explain_dalex <- function(object,
@@ -201,7 +200,7 @@ explain_dalex <- function(object,
         shap_df <- shap[[model_name]]
         plot_list[[model_name]] <- plot(shap_df) + labs(title = paste("SHAP Values:", model_name))
       }
-      combined_plot <- wrap_plots(plot_list, nrow = 1)
+      combined_plot <- patchwork::wrap_plots(plot_list, nrow = 1)
       print(combined_plot)
     }
 

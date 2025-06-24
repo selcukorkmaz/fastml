@@ -41,12 +41,10 @@ Imports:
     viridisLite,
     DALEX,
     magrittr,
-    patchwork,
     pROC,
     janitor,
     stringr,
     DT, 
-    GGally, 
     UpSetR, 
     VIM, 
     broom, 
@@ -83,6 +81,8 @@ Suggests:
     lime,
     iml,
     ceterisParibus,
-    pdp
+    pdp,
+    patchwork,
+    GGally
 RoxygenNote: 7.3.2
 Config/testthat/edition: 3

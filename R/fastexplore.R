@@ -99,7 +99,6 @@ utils::globalVariables(c(".", "Corr", "P_Value", "Test", "Var1", "Var2", "value"
 #' @importFrom VIM aggr
 #' @importFrom plotly plot_ly
 #' @importFrom reshape2 melt
-#' @importFrom GGally ggpairs
 #' @importFrom htmlwidgets saveWidget
 #' @importFrom dbscan dbscan lof
 #' @importFrom scales percent_format percent
@@ -798,7 +797,7 @@ fastexplore <- function(
     if (pairwise_matrix && length(numeric_cols) > 1) {
       # Limit how many columns to show
       numeric_subset <- numeric_cols[1:min(length(numeric_cols), max_scatter_cols)]
-        spm <- ggpairs(data_vis[, numeric_subset, drop = FALSE])
+        spm <- GGally::ggpairs(data_vis[, numeric_subset, drop = FALSE])
         if(save_results){
         save_plot(spm, results_folder, "ScatterPlot", "pairwise_scatterplot_matrix.png")
         }
@@ -1226,7 +1225,7 @@ fastexplore <- function(
       "if (pairwise_matrix && length(numeric_cols) > 1) {",
       "  numeric_subset <- numeric_cols[1:min(length(numeric_cols), max_scatter_cols)]",
       "",
-      "  spm <- ggpairs(data_vis[, numeric_subset, drop = FALSE])",
+      "  spm <- GGally::ggpairs(data_vis[, numeric_subset, drop = FALSE])",
       "  print(spm)",
       "}  else {",
       "  cat('No pairwise scatter plots available\\n')",
