@@ -9,7 +9,6 @@
 #' @param ... Additional arguments passed to `ceterisParibus::calculate_counterfactuals`.
 #'
 #' @return A counterfactual explanation object.
-#' @importFrom ceterisParibus calculate_counterfactuals
 #' @importFrom DALEX explain
 #' @export
 #' @examples
