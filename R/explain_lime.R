@@ -9,7 +9,7 @@
 #' @param ... Additional arguments passed to `lime::explain`.
 #'
 #' @return An object produced by `lime::explain`.
-#' @importFrom lime lime explain plot_features
+#' @importFrom lime lime plot_features
 #' @export
 #' @examples
 #' \dontrun{
