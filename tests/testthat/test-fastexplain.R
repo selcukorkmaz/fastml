@@ -32,3 +32,10 @@ test_that("ICE plot runs", {
 test_that("ALE explanation runs", {
   expect_silent(fastexplain(model, method = "ale", features = "Sepal.Length"))
 })
+
+test_that("DALEX explanation produces no warnings", {
+  expect_warning(
+    fastexplain(model),
+    regexp = NA
+  )
+})
