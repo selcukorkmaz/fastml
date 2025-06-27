@@ -36,9 +36,10 @@ explain_dalex <- function(object,
     return(invisible(NULL))
   }
 
-  train_data <- object$processed_train_data
+  train_data <- as.data.frame(object$processed_train_data)
   rownames(train_data) <- seq_len(nrow(train_data))
   x <- train_data %>% select(-!!label)
+  x <- as.data.frame(x)
   rownames(x) <- seq_len(nrow(x))
   y <- train_data[[label]]
 
