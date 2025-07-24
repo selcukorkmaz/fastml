@@ -1,3 +1,8 @@
+#' Define Quadratic Discriminant Analysis Model Specification
+#'
+#' @return List containing the model specification (`model_spec`).
+#' @importFrom parsnip set_mode set_engine discrim_quad
+#' @noRd
 define_discrim_quad_spec <- function(task, engine = "MASS") {
   if (task != "classification") {
     stop("discrim_quad is only applicable for classification tasks.")

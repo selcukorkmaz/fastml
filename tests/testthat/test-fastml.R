@@ -255,7 +255,7 @@ test_that("grid tuning executes successfully", {
     use_default_tuning = TRUE,
     tuning_strategy = "grid",
     resampling_method = "cv",
-    folds = 2
+    folds = 5
   )
   expect_s3_class(res, "fastml")
   expect_true(length(res$models) > 0)
@@ -270,7 +270,7 @@ test_that("Bayesian tuning executes successfully", {
     tuning_strategy = "bayes",
     tuning_iterations = 2,
     resampling_method = "cv",
-    folds = 2
+    folds = 5
   )
   expect_s3_class(res, "fastml")
   expect_true(length(res$models) > 0)
@@ -285,7 +285,7 @@ test_that("adaptive tuning executes successfully", {
     tuning_strategy = "grid",
     adaptive = TRUE,
     resampling_method = "cv",
-    folds = 2
+    folds = 5
   )
   expect_s3_class(res, "fastml")
 })
@@ -300,7 +300,7 @@ test_that("early_stopping does not warn with grid tuning", {
       tuning_strategy = "grid",
       early_stopping = TRUE,
       resampling_method = "cv",
-      folds = 2
+      folds = 5
     ),
     regexp = NA
   )
@@ -316,7 +316,7 @@ test_that("early stopping with bayesian tuning works", {
     tuning_iterations = 2,
     early_stopping = TRUE,
     resampling_method = "cv",
-    folds = 2
+    folds = 5
   )
   expect_s3_class(res, "fastml")
 })
@@ -330,7 +330,7 @@ test_that("invalid tuning_iterations triggers error", {
       tuning_strategy = "bayes",
       tuning_iterations = 0,
       resampling_method = "cv",
-      folds = 2
+      folds = 5
     ),
     "tuning_iterations"
   )
@@ -346,7 +346,7 @@ test_that("tuning_iterations ignored for non-bayesian strategies", {
       tuning_strategy = "grid",
       tuning_iterations = 0,
       resampling_method = "cv",
-      folds = 2
+      folds = 5
     )
   )
   expect_no_error(
@@ -372,7 +372,7 @@ test_that("adaptive ignored with bayesian tuning", {
       adaptive = TRUE,
       tuning_iterations = 1,
       resampling_method = "cv",
-      folds = 2
+      folds = 5
     ),
     "adaptive"
   )

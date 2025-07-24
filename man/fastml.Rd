@@ -27,6 +27,8 @@ fastml(
   impute_custom_function = NULL,
   encode_categoricals = TRUE,
   scaling_methods = c("center", "scale"),
+  balance_method = c("none", "upsample", "downsample"),
+  resamples = NULL,
   summaryFunction = NULL,
   use_default_tuning = FALSE,
   tuning_strategy = "grid",
@@ -66,7 +68,9 @@ Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.}
 
 \item{recipe}{A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.}
 
-\item{tune_params}{A named list of tuning ranges for each algorithm and engine pair. Example: \code{list(rand\_forest = list(ranger = list(mtry = c(1, 3))))}. Default is \code{NULL}.}
+\item{tune_params}{A named list of tuning ranges for each algorithm and engine
+pair. Example: \code{list(rand_forest = list(ranger = list(mtry = c(1, 3))))}
+will override the defaults for the ranger engine. Default is \code{NULL}.}
 
 \item{metric}{The performance metric to optimize during training.}
 
@@ -95,27 +99,38 @@ Default is \code{"error"}.}
 \item{encode_categoricals}{Logical indicating whether to encode categorical variables. Default is \code{TRUE}.}
 
 \item{scaling_methods}{Vector of scaling methods to apply. Default is \code{c("center", "scale")}.}
-\item{balance_method}{Method to handle class imbalance. One of \code{"none"}, \code{"upsample"}, or \code{"downsample"}. Default is \code{"none"}.}
-\item{resamples}{Optional rsample object with custom resampling splits. Overrides \code{resampling_method}, \code{folds}, and \code{repeats}.}
+
+\item{balance_method}{Method to handle class imbalance. One of \code{"none"},
+\code{"upsample"}, or \code{"downsample"}. Applied to the training set for
+classification tasks. Default is \code{"none"}.}
+
+\item{resamples}{Optional rsample object providing custom resampling splits.
+If supplied, \code{resampling_method}, \code{folds}, and \code{repeats} are
+ignored.}
 
 \item{summaryFunction}{A custom summary function for model evaluation. Default is \code{NULL}.}
+
 \item{use_default_tuning}{Logical; if \code{TRUE} and \code{tune_params} is \code{NULL}, tuning is performed using default grids. Tuning also occurs when custom \code{tune_params} are supplied. When \code{FALSE} and no custom parameters are given, models are fitted once with default settings. Default is \code{FALSE}.}
 
+\item{tuning_strategy}{A string specifying the tuning strategy. Must be one of
+\code{"grid"}, \code{"bayes"}, or \code{"none"}. Default is \code{"grid"}.
+If custom \code{tune_params} are provided while \code{tuning_strategy = "none"},
+they will be ignored with a warning.}
 
+\item{tuning_iterations}{Number of iterations for Bayesian tuning. Ignored when
+\code{tuning_strategy} is not \code{"bayes"}. Validation of this argument only
+occurs for the Bayesian strategy. Default is \code{10}.}
 
-\item{tuning_strategy}{A string specifying the tuning strategy. Must be one of \code{"grid"}, \code{"bayes"}, or \code{"none"}. If \code{"none"} is used, the workflow is fitted directly without tuning. If custom \code{tune\_params} are provided in this mode, they will be ignored with a warning. Default is \code{"grid"}.}
+\item{early_stopping}{Logical indicating whether to use early stopping in Bayesian tuning methods (if supported). Default is \code{FALSE}.}
 
-\item{tuning_iterations}{Number of iterations for Bayesian tuning. Ignored when \code{tuning_strategy} is not \code{"bayes"}. Validation of this argument only occurs for the Bayesian strategy. Default is \code{10}.}
-
-\item{early_stopping}{Logical enabling engine-level early stopping when supported. Default is \code{FALSE}.}
-
-\item{adaptive}{Logical indicating whether to use adaptive/racing methods for tuning. If \code{tuning_strategy = "bayes"}, this option is ignored with a warning. Default is \code{FALSE}.}
+\item{adaptive}{Logical indicating whether to use adaptive/racing methods for tuning. Default is \code{FALSE}.}
 
 \item{learning_curve}{Logical. If TRUE, generate learning curves (performance vs. training size).}
 
 \item{seed}{An integer value specifying the random seed for reproducibility.}
 
-\item{verbose}{Logical; if TRUE, prints progress messages during the training and evaluation process.}
+\item{verbose}{Logical; if TRUE, prints progress messages during the training
+and evaluation process.}
 }
 \value{
 An object of class \code{fastml} containing the best model, performance metrics, and other information.

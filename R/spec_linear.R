@@ -123,7 +123,7 @@ define_elastic_net_spec <- function(task, tuning = FALSE, engine = "glmnet") {
 #'
 #' @inheritParams define_decision_tree_spec
 #' @return List containing the model specification (`model_spec`).
-#' @importFrom parsnip bag_tree set_mode set_engine
+#' @importFrom parsnip bag_tree set_mode set_engine logistic_reg
 #' @import baguette
 #' @importFrom tune tune
 #' @noRd

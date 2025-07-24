@@ -74,13 +74,7 @@ define_rand_forest_spec <- function(task, train_data, label, tuning = FALSE, eng
 }
 
 
-#' Define Lasso Regression Model Specification
-#'
-#' @inheritParams define_elastic_net_spec
-#' @return List containing the model specification (`model_spec`).
-#' @importFrom parsnip linear_reg set_mode set_engine
-#' @importFrom tune tune
-#' @noRd
+
 #' Define bag_tree Model Specification
 #'
 #' @inheritParams define_decision_tree_spec
@@ -107,12 +101,7 @@ define_bag_tree_spec <- function(task, tuning = FALSE, engine = "rpart") {
   list(model_spec = model_spec)
 }
 
-#' Define Quadratic Discriminant Analysis Model Specification
-#'
-#' @inheritParams define_logistic_reg_spec
-#' @return List containing the model specification (`model_spec`).
-#' @importFrom parsnip set_mode set_engine discrim_quad
-#' @noRd
+
 #' Define Decision Tree Model Specification
 #'
 #' @inheritParams define_rand_forest_spec

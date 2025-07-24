@@ -1,4 +1,41 @@
+#' Process and Evaluate a Model Workflow
+#'
+#' This function processes a fitted model or a tuning result, finalizes the model if tuning was used,
+#' makes predictions on the test set, and computes performance metrics depending on the task type
+#' (classification or regression). It supports binary and multiclass classification, and handles
+#' probabilistic outputs when supported by the modeling engine.
+#'
+#' @param model_obj A fitted model or a tuning result (`tune_results` object).
+#' @param model_id A character identifier for the model (used in warnings).
+#' @param task Type of task, either `"classification"` or `"regression"`.
+#' @param test_data A data frame containing the test data.
+#' @param label The name of the outcome variable (as a character string).
+#' @param event_class For binary classification, specifies which class is considered the positive class:
+#'   `"first"` or `"second"`.
+#' @param engine A character string indicating the model engine (e.g., `"xgboost"`, `"randomForest"`). Used
+#'   to determine if class probabilities are supported. If `NULL`, probabilities are skipped.
+#' @param train_data A data frame containing the training data, required to refit finalized workflows.
+#' @param metric The name of the metric (e.g., `"roc_auc"`, `"accuracy"`, `"rmse"`) used for selecting the best tuning result.
+#'
+#' @return A list with two elements:
+#' \describe{
+#'   \item{performance}{A tibble with computed performance metrics.}
+#'   \item{predictions}{A tibble with predicted values and corresponding truth values, and probabilities (if applicable).}
+#' }
+#'
+#' @details
+#' - If the input `model_obj` is a `tune_results` object, the function finalizes the model using the
+#'   best hyperparameters according to the specified `metric`, and refits the model on the full training data.
+#'
+#' - For classification tasks, performance metrics include accuracy, kappa, sensitivity, specificity, precision,
+#'   F1-score, and ROC AUC (if probabilities are available).
+#'
+#' - For regression tasks, RMSE, R-squared, and MAE are returned.
+#'
+#' - For models with missing prediction lengths, a helpful imputation error is thrown to guide data preprocessing.
+#'
 #' @export
+
 process_model <- function(model_obj, model_id, task, test_data, label, event_class,
                           engine, train_data, metric) {
   # If the model object is a tuning result, finalize the workflow
