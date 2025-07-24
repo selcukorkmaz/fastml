@@ -1,7 +1,7 @@
 Package: fastml
 Type: Package
 Title: Fast Machine Learning Model Training and Evaluation
-Version: 0.6.1
+Version: 0.6.2
 Authors@R: c(person("Selcuk", "Korkmaz", email="selcukorkmaz@gmail.com", role=c("aut", "cre"),
                     comment = c(ORCID = "0000-0003-4632-6850")), 
              person("Dincer", "Goksuluk", email="dincer.goksuluk@gmail.com", role="aut",
@@ -41,12 +41,10 @@ Imports:
     viridisLite,
     DALEX,
     magrittr,
-    patchwork,
     pROC,
     janitor,
     stringr,
     DT, 
-    GGally, 
     UpSetR, 
     VIM, 
     broom, 
@@ -57,9 +55,9 @@ Imports:
     kableExtra, 
     moments,
     naniar, 
-    plotly, 
-    scales, 
-    skimr, 
+    plotly,
+    scales,
+    skimr,
     tidyr,
     knitr,
     rmarkdown,
@@ -80,5 +78,11 @@ Suggests:
     lightgbm,
     rstanarm,
     mixOmics,
+    lime,
+    iml,
+    ceterisParibus,
+    pdp,
+    patchwork,
+    GGally
 RoxygenNote: 7.3.2
 Config/testthat/edition: 3

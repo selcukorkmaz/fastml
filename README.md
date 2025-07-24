@@ -67,4 +67,29 @@ fastml supports both grid search and Bayesian optimization through the
 parameter controls the number of iterations **only** when
 `tuning_strategy = "bayes"` and is ignored otherwise.
 
+## Explainability
+
+`fastexplain()` provides several ways to understand trained models. Set the
+`method` argument to choose an approach:
+
+```r
+# LIME explanations
+explain_lime(model)
+
+# ICE curves
+fastexplain(model, method = "ice", features = "Sepal.Length")
+
+# Accumulated Local Effects
+fastexplain(model, method = "ale", features = "Sepal.Length")
+
+# Surrogate tree
+fastexplain(model, method = "surrogate")
+
+# Interaction strength
+fastexplain(model, method = "interaction")
+
+# Counterfactual explanation for a single observation
+fastexplain(model, method = "counterfactual", observation = iris[1, ])
+```
+
 
