@@ -8,6 +8,7 @@ fastexplain(
   object,
   method = "dalex",
   features = NULL,
+  observation = NULL,
   grid_size = 20,
   shap_sample = 5,
   vi_iterations = 10,
@@ -19,9 +20,11 @@ fastexplain(
 \arguments{
 \item{object}{A \code{fastml} object.}
 
-\item{method}{Currently only \code{"dalex"} is supported.}
+\item{method}{Explanation method. One of \code{"dalex"}, \code{"lime"}, \code{"ice"}, \code{"ale"}, \code{"surrogate"}, \code{"interaction"}, or \code{"counterfactual"}.}
 
 \item{features}{Character vector of feature names for partial dependence (model profiles). Default NULL.}
+
+\item{observation}{Single observation used for counterfactual explanations.}
 
 \item{grid_size}{Number of grid points for partial dependence. Default 20.}
 
