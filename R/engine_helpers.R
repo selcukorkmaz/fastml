@@ -10,7 +10,7 @@
 #' @details Depending on the specified \code{type}, the function returns a different set of algorithm names:
 #' \itemize{
 #'   \item For \code{"classification"}, it returns algorithms such as \code{"logistic_reg"}, \code{"multinom_reg"}, \code{"decision_tree"}, \code{"C5_rules"}, \code{"rand_forest"}, \code{"xgboost"}, \code{"lightgbm"}, \code{"svm_linear"}, \code{"svm_rbf"}, \code{"nearest_neighbor"}, \code{"naive_Bayes"}, \code{"mlp"}, \code{"discrim_linear"}, \code{"discrim_quad"}, and \code{"bag_tree"}.
-#'   \item For \code{"regression"}, it returns algorithms such as \code{"linear_reg"}, \code{"ridge_regression"}, \code{"lasso_regression"}, \code{"elastic_net"}, \code{"decision_tree"}, \code{"rand_forest"}, \code{"xgboost"}, \code{"lightgbm"}, \code{"svm_linear"}, \code{"svm_rbf"}, \code{"nearest_neighbor"}, \code{"mlp"}, \code{"pls"}, and \code{"bayes_glm"}.
+#'   \item For \code{"regression"}, it returns algorithms such as \code{"linear_reg"}, \code{"ridge_reg"}, \code{"lasso_reg"}, \code{"elastic_net"}, \code{"decision_tree"}, \code{"rand_forest"}, \code{"xgboost"}, \code{"lightgbm"}, \code{"svm_linear"}, \code{"svm_rbf"}, \code{"nearest_neighbor"}, \code{"mlp"}, \code{"pls"}, and \code{"bayes_glm"}.
 #' }
 #'
 #' @export
@@ -38,8 +38,8 @@ availableMethods <- function(type = c("classification", "regression"), ...){
     } else {
       c(
         "linear_reg",
-        "ridge_regression",
-        "lasso_regression",
+        "ridge_reg",
+        "lasso_reg",
         "elastic_net",
         "decision_tree",
         "rand_forest",
@@ -91,8 +91,8 @@ get_default_engine <- function(algo) {
          "bayes_glm" = "stan",
          "pls" = "mixOmics",
          "linear_reg" = "lm",
-         "ridge_regression" = "glmnet",
-         "lasso_regression" = "glmnet",
+         "ridge_reg" = "glmnet",
+         "lasso_reg" = "glmnet",
          "deep_learning" = "keras",
          stop("No default engine defined for algorithm: ", algo)
   )
