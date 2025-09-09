@@ -1,6 +1,7 @@
 #' Define Random Forest Model Specification
 #'
-#' @param task Character string specifying the task type: "classification" or "regression".
+#' @param task Character string specifying the task type: "classification",
+#'   "regression", or "survival".
 #' @param train_data Data frame containing the training data.
 #' @param label Character string specifying the name of the target variable.
 #' @param tune Logical indicating whether to use tuning parameters.
@@ -34,7 +35,8 @@ define_rand_forest_spec <- function(task, train_data, label, tuning = FALSE, eng
   }
 
   # Set the model mode (e.g. "classification", "regression", etc.)
-  model_spec <- model_spec %>% set_mode(task)
+  mode <- if (task == "survival") "censored regression" else task
+  model_spec <- model_spec %>% set_mode(mode)
 
   # Engine-specific parameter settings:
   # - For ranger (the default engine), if doing classification, we enable probability estimates.

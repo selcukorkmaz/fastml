@@ -5,8 +5,10 @@
 #' @param models A list of trained model objects.
 #' @param train_data Preprocessed training data frame.
 #' @param test_data Preprocessed test data frame.
-#' @param label Name of the target variable.
-#' @param task Type of task: "classification" or "regression".
+#' @param label Name of the target variable. For survival analysis this should
+#'   be a character vector of length two giving the names of the time and status
+#'   columns.
+#' @param task Type of task: "classification", "regression", or "survival".
 #' @param metric The performance metric to optimize (e.g., "accuracy", "rmse").
 #' @param event_class A single string. Either "first" or "second" to specify which level of truth to consider as the "event".
 #' @importFrom dplyr filter bind_rows pull mutate select bind_cols
@@ -26,6 +28,9 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
   # Load required packages
   required_pkgs <- c("yardstick", "parsnip", "tune", "workflows",
                      "dplyr", "rlang", "tibble")
+  if (task == "survival") {
+    required_pkgs <- c(required_pkgs, "survival")
+  }
   for(pkg in required_pkgs){
     if (!requireNamespace(pkg, quietly = TRUE)) {
       stop(sprintf("The '%s' package is required but not installed.", pkg))
@@ -38,8 +43,9 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
   performance <- list()
   predictions_list <- list()
 
-  # Extract true labels from the test set
-  true_labels <- test_data[[label]]
+  if (task != "survival") {
+    true_labels <- test_data[[label]]
+  }
 
 
   # Iterate over the models object. Check if the model is nested (i.e. a list of engines)

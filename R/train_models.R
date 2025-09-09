@@ -5,7 +5,7 @@
 #' @param train_data Preprocessed training data frame.
 #' @param train_data Preprocessed training data frame.
 #' @param label Name of the target variable.
-#' @param task Type of task: "classification" or "regression".
+#' @param task Type of task: "classification", "regression", or "survival".
 #' @param algorithms Vector of algorithm names to train.
 #' @param resampling_method Resampling method for cross-validation (e.g., "cv", "repeatedcv", "boot", "none").
 #' @param folds Number of folds for cross-validation.
@@ -90,7 +90,39 @@ train_models <- function(train_data,
     message("Engine-level early stopping will be applied when supported")
   }
 
-  if (task == "classification") {
+  if (task == "survival") {
+    models <- list()
+
+    get_engine <- function(algo, default_engine) {
+      if (!is.null(algorithm_engines) && !is.null(algorithm_engines[[algo]])) {
+        return(algorithm_engines[[algo]])
+      } else {
+        return(default_engine)
+      }
+    }
+
+    for (algo in algorithms) {
+      engine <- get_engine(algo, get_default_engine(algo))
+      if (algo == "rand_forest") {
+        spec <- define_rand_forest_spec("survival", train_data, label,
+                                       tuning = FALSE, engine = engine)$model_spec
+      } else if (algo == "elastic_net") {
+        spec <- parsnip::linear_reg() %>%
+          set_mode("censored regression") %>%
+          set_engine("glmnet")
+      } else {
+        next
+      }
+
+      wf <- workflows::workflow() %>%
+        workflows::add_recipe(recipe) %>%
+        workflows::add_model(spec)
+      models[[algo]] <- parsnip::fit(wf, data = train_data)
+    }
+
+    return(models)
+
+  } else if (task == "classification") {
 
     if(is.null(summaryFunction)){
       metrics <- metric_set(
