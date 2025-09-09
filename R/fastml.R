@@ -13,9 +13,14 @@ utils::globalVariables(c("Fraction", "Performance"))
 #' @param data A data frame containing the complete dataset. If both `train_data` and `test_data` are `NULL`, `fastml()` will split this into training and testing sets according to `test_size` and `stratify`. Defaults to `NULL`.
 #' @param train_data A data frame pre-split for model training. If provided, `test_data` must also be supplied, and no internal splitting will occur. Defaults to `NULL`.
 #' @param test_data A data frame pre-split for model evaluation. If provided, `train_data` must also be supplied, and no internal splitting will occur. Defaults to `NULL`.
-#' @param label A string specifying the name of the target variable.
+#' @param label A string specifying the name of the target variable. For
+#'   survival analysis, supply a character vector with the names of the time and
+#'   status columns.
 #' @param algorithms A vector of algorithm names to use. Default is \code{"all"} to run all supported algorithms.
-#' @param task Character string specifying model type selection. Use "auto" to let the function detect whether the target is for classification or regression based on the data, or explicitly set to "classification" or "regression".
+#' @param task Character string specifying model type selection. Use "auto" to
+#'   let the function detect whether the target is for classification or
+#'   regression based on the data, or explicitly set to "classification",
+#'   "regression", or "survival".
 #' @param test_size A numeric value between 0 and 1 indicating the proportion of the data to use for testing. Default is \code{0.2}.
 #' @param resampling_method A string specifying the resampling method for model evaluation. Default is \code{"cv"} (cross-validation).
 #'                          Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.
@@ -70,7 +75,7 @@ utils::globalVariables(c("Fraction", "Performance"))
 #'   and evaluation process.
 #' @importFrom magrittr %>%
 #' @importFrom rsample initial_split training testing
-#' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake all_numeric_predictors all_predictors all_nominal_predictors all_outcomes step_zv
+#' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake all_numeric_predictors all_predictors all_nominal_predictors all_outcomes step_zv step_rm
 #' @importFrom dplyr filter pull rename_with mutate across where select all_of
 #' @importFrom rlang sym
 #' @importFrom stats as.formula complete.cases
@@ -148,7 +153,7 @@ fastml <- function(data = NULL,
 
   set.seed(seed)
 
-  task <- match.arg(task, c("auto", "classification", "regression"))
+  task <- match.arg(task, c("auto", "classification", "regression", "survival"))
   tuning_strategy <- match.arg(tuning_strategy, c("grid", "bayes", "none"))
   balance_method <- match.arg(balance_method)
 
@@ -168,10 +173,17 @@ fastml <- function(data = NULL,
   # Determine source for target variable
   source_data <- if (!is.null(data)) data else train_data
   # Ensure label exists in source
-  if (!(label %in% names(source_data))) {
-    stop("Label variable must exist in the data source.")
+  if (task == "survival") {
+    if (length(label) != 2 || !all(label %in% names(source_data))) {
+      stop("For survival tasks, 'label' must contain the time and status column names present in the data.")
+    }
+    target_var <- source_data[[label[1]]]
+  } else {
+    if (!(label %in% names(source_data))) {
+      stop("Label variable must exist in the data source.")
+    }
+    target_var <- source_data[[label]]
   }
-  target_var <- source_data[[label]]
 
 
 
@@ -247,14 +259,32 @@ fastml <- function(data = NULL,
     }
   }
 
+  if (task == "survival") {
+    time_col <- label[1]
+    status_col <- label[2]
+    train_data$surv_obj <- survival::Surv(train_data[[time_col]], train_data[[status_col]])
+    test_data$surv_obj <- survival::Surv(test_data[[time_col]], test_data[[status_col]])
+    label_surv <- label
+    label <- "surv_obj"
+  } else {
+    label_surv <- label
+  }
+
 
   if (is.null(metric)) {
-    metric <- if (task == "classification") "accuracy" else "rmse"
+    metric <- if (task == "classification") {
+      "accuracy"
+    } else if (task == "regression") {
+      "rmse"
+    } else {
+      "c_index"
+    }
   }
 
   # Define allowed metrics
   allowed_metrics_classification <- c("accuracy", "kap", "sens", "spec", "precision", "f_meas", "roc_auc")
   allowed_metrics_regression <- c("rmse", "rsq", "mae")
+  allowed_metrics_survival <- c("c_index", "brier_score", "logrank_p")
 
   # Validate the metric based on the task
   if (task == "classification") {
@@ -262,10 +292,15 @@ fastml <- function(data = NULL,
       stop(paste0("Invalid metric for classification task. Choose one of: ",
                   paste(allowed_metrics_classification, collapse = ", "), "."))
     }
-  } else {  # regression
+  } else if (task == "regression") {
     if (!(metric %in% allowed_metrics_regression) && is.null(summaryFunction)) {
       stop(paste0("Invalid metric for regression task. Choose one of: ",
                   paste(allowed_metrics_regression, collapse = ", "), "."))
+    }
+  } else {
+    if (!(metric %in% allowed_metrics_survival)) {
+      stop(paste0("Invalid metric for survival task. Choose one of: ",
+                  paste(allowed_metrics_survival, collapse = ", "), "."))
     }
   }
 
@@ -286,22 +321,24 @@ fastml <- function(data = NULL,
 
 
 
-  # Task detection and numeric-to-factor conversion for small numeric targets
-  if (is.numeric(target_var) && length(unique(target_var)) <= 5) {
-    # Convert both train and test labels to factor
-    train_data[[label]] <- factor(train_data[[label]])
-    test_data[[label]]  <- factor(test_data[[label]], levels = levels(train_data[[label]]))
-    task <- "classification"
-    warning(sprintf(
-      "The target variable '%s' is numeric with %d unique values. Converted to factor; task set to 'classification'.",
-      label, length(unique(target_var))
-    ))
-  } else if (is.factor(target_var) || is.character(target_var) || is.logical(target_var)) {
-    task <- "classification"
-  } else if (is.numeric(target_var)) {
-    task <- "regression"
-  } else {
-    stop("Unable to detect task type. The target variable must be numeric, factor, character, or logical.")
+  if (task != "survival") {
+    # Task detection and numeric-to-factor conversion for small numeric targets
+    if (is.numeric(target_var) && length(unique(target_var)) <= 5) {
+      # Convert both train and test labels to factor
+      train_data[[label]] <- factor(train_data[[label]])
+      test_data[[label]]  <- factor(test_data[[label]], levels = levels(train_data[[label]]))
+      task <- "classification"
+      warning(sprintf(
+        "The target variable '%s' is numeric with %d unique values. Converted to factor; task set to 'classification'.",
+        label, length(unique(target_var))
+      ))
+    } else if (is.factor(target_var) || is.character(target_var) || is.logical(target_var)) {
+      task <- "classification"
+    } else if (is.numeric(target_var)) {
+      task <- "regression"
+    } else {
+      stop("Unable to detect task type. The target variable must be numeric, factor, character, or logical.")
+    }
   }
 
 
@@ -334,9 +371,11 @@ fastml <- function(data = NULL,
                                levels(train_data[[label]])[1],
                                levels(train_data[[label]])[2])
     }
-  } else {
+  } else if (task == "regression") {
     train_data[[label]] <- as.numeric(train_data[[label]])
     test_data[[label]] <- as.numeric(test_data[[label]])
+    positive_class <- NULL
+  } else {
     positive_class <- NULL
   }
 
@@ -448,6 +487,9 @@ fastml <- function(data = NULL,
     if (verbose) message("Creating preprocessing recipe...")
     # Build a default recipe, possibly skipping recipe-based imputation if advanced used
     recipe <- recipe(as.formula(paste(label, "~ .")), data = train_data)
+    if (task == "survival") {
+      recipe <- recipe %>% step_rm(all_of(label_surv))
+    }
 
     # Remove zero-variance predictors
     recipe <- recipe %>%
@@ -548,7 +590,7 @@ fastml <- function(data = NULL,
   }
 
   if (verbose) message("Evaluating models...")
-  eval_output <- evaluate_models(models, train_data, test_data, label, task, metric, event_class)
+  eval_output <- evaluate_models(models, train_data, test_data, label_surv, task, metric, event_class)
   performance <- eval_output$performance
   predictions <- eval_output$predictions
 
@@ -674,7 +716,7 @@ fastml <- function(data = NULL,
         sub_models,
         sub_train,
         test_data,
-        label,
+        label_surv,
         task,
         metric,
         event_class
