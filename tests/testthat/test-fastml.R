@@ -21,6 +21,21 @@ test_that("survival label accepts time and status columns", {
   )
 })
 
+test_that("survival task works with mice imputation", {
+  skip_if_not_installed("mice")
+  res <- suppressWarnings(
+    fastml(
+      data = cancer,
+      label = c("time", "status"),
+      algorithms = c("rand_forest"),
+      task = "survival",
+      test_size = 0.3,
+      impute_method = "mice"
+    )
+  )
+  expect_s3_class(res, "fastml")
+})
+
 test_that("'label' is not available in the data", {
   expect_error({
     # Train models with Bayesian optimization
