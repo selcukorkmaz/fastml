@@ -456,13 +456,13 @@ train_models <- function(train_data,
                                define_linear_reg_spec(task,
                                                       engine = engine)
                              },
-                             "ridge_regression" = {
-                               define_ridge_regression_spec(task,
+                             "ridge_reg" = {
+                               define_ridge_reg_spec(task,
                                                             tuning = perform_tuning,
                                                             engine = engine)
                              },
-                             "lasso_regression" = {
-                               define_lasso_regression_spec(task,
+                             "lasso_reg" = {
+                               define_lasso_reg_spec(task,
                                                             tuning = perform_tuning,
                                                             engine = engine)
                              },

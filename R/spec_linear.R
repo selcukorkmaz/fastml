@@ -1,8 +1,8 @@
-define_lasso_regression_spec <- function(task, tuning = FALSE, engine = "glmnet") {
+define_lasso_reg_spec <- function(task, tuning = FALSE, engine = "glmnet") {
   if (task != "regression") {
     stop("Lasso regression is only applicable for regression tasks.")
   }
-  defaults <- get_default_params("lasso_regression")
+  defaults <- get_default_params("lasso_reg")
 
   if (tuning) {
     model_spec <- linear_reg(
@@ -29,11 +29,11 @@ define_lasso_regression_spec <- function(task, tuning = FALSE, engine = "glmnet"
 #' @importFrom parsnip linear_reg set_mode set_engine
 #' @importFrom tune tune
 #' @noRd
-define_ridge_regression_spec <- function(task, tuning = FALSE, engine = "glmnet") {
+define_ridge_reg_spec <- function(task, tuning = FALSE, engine = "glmnet") {
   if (task != "regression") {
     stop("Ridge regression is only applicable for regression tasks.")
   }
-  defaults <- get_default_params("ridge_regression")
+  defaults <- get_default_params("ridge_reg")
 
   if (tuning) {
     model_spec <- linear_reg(
@@ -326,7 +326,7 @@ define_multinomial_reg_spec <- function(task, tuning = FALSE, engine) {
     model_spec <- model_spec %>%
       set_engine("keras", hidden_units = 1, act = "linear")
   } else if (engine == "spark") {
-    # For spark, the underlying function (sparklyr::ml_logistic_regression) expects
+    # For spark, the underlying function (sparklyr::ml_logistic_reg) expects
     # reg_param and elastic_net_param in place of penalty and mixture.
     model_spec <- model_spec %>%
       set_engine("spark", standardization = TRUE, reg_param = 0.0, elastic_net_param = 0.0)
