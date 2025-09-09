@@ -417,8 +417,19 @@ fastml <- function(data = NULL,
           # Perform MICE on train_data only. Typically, you do MICE on training and apply
           # some approach to test, but for simplicity, we'll do them separately:
           # 1) For train_data:
-          train_data_mice <- mice(train_data)  # Basic usage
-          train_data <- complete(train_data_mice)
+          train_cols <- names(train_data)
+          matrix_cols_train <- vapply(train_data, is.matrix, logical(1))
+          if (any(matrix_cols_train)) {
+            train_matrix <- train_data[, matrix_cols_train, drop = FALSE]
+            train_non_matrix <- train_data[, !matrix_cols_train, drop = FALSE]
+            train_data_mice <- mice(train_non_matrix)
+            train_non_matrix <- complete(train_data_mice)
+            train_data <- cbind(train_non_matrix, train_matrix)
+            train_data <- train_data[, train_cols]
+          } else {
+            train_data_mice <- mice(train_data)  # Basic usage
+            train_data <- complete(train_data_mice)
+          }
 
           warning("Missing values in the training set have been imputed using the 'mice' method.")
 
@@ -428,8 +439,19 @@ fastml <- function(data = NULL,
           # We'll create a temporary combined approach or re-run MICE on test alone.
           # This is simplistic but workable for demonstration.
           if (anyNA(test_data)) {
-            test_data_mice <- mice(test_data)
-            test_data <- complete(test_data_mice)
+            test_cols <- names(test_data)
+            matrix_cols_test <- vapply(test_data, is.matrix, logical(1))
+            if (any(matrix_cols_test)) {
+              test_matrix <- test_data[, matrix_cols_test, drop = FALSE]
+              test_non_matrix <- test_data[, !matrix_cols_test, drop = FALSE]
+              test_data_mice <- mice(test_non_matrix)
+              test_non_matrix <- complete(test_data_mice)
+              test_data <- cbind(test_non_matrix, test_matrix)
+              test_data <- test_data[, test_cols]
+            } else {
+              test_data_mice <- mice(test_data)
+              test_data <- complete(test_data_mice)
+            }
 
             warning("Missing values in the test set have been imputed using the 'mice' method.")
 
