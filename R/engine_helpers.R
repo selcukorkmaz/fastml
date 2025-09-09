@@ -1,8 +1,12 @@
 #' Get Available Methods
 #'
-#' Returns a character vector of algorithm names available for either classification or regression tasks.
+#' Returns a character vector of algorithm names available for classification,
+#' regression or survival tasks.
 #'
-#' @param type A character string specifying the type of task. Must be either \code{"classification"} or \code{"regression"}. Defaults to \code{c("classification", "regression")} and uses \code{\link[base]{match.arg}} to select one.
+#' @param type A character string specifying the type of task. Must be one of
+#'   \code{"classification"}, \code{"regression"}, or \code{"survival"}. Defaults to
+#'   \code{c("classification", "regression", "survival")} and uses
+#'   \code{\link[base]{match.arg}} to select one.
 #' @param ... Additional arguments (currently not used).
 #'
 #' @return A character vector containing the names of the available algorithms for the specified task type.
@@ -14,7 +18,7 @@
 #' }
 #'
 #' @export
-availableMethods <- function(type = c("classification", "regression"), ...){
+availableMethods <- function(type = c("classification", "regression", "survival"), ...){
     type <- match.arg(type)
 
     algorithms <- if (type == "classification"){
@@ -35,7 +39,7 @@ availableMethods <- function(type = c("classification", "regression"), ...){
         "discrim_quad",
         "bag_tree"
       )
-    } else {
+    } else if (type == "regression") {
       c(
         "linear_reg",
         "ridge_reg",
@@ -51,6 +55,11 @@ availableMethods <- function(type = c("classification", "regression"), ...){
         "mlp",
         "pls",
         "bayes_glm"
+      )
+    } else {
+      c(
+        "rand_forest",
+        "elastic_net"
       )
     }
 

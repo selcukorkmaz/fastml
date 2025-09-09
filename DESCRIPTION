@@ -63,7 +63,8 @@ Imports:
     rmarkdown,
     purrr,
     mice,
-    missForest
+    missForest,
+    survival
 Suggests:
     testthat (>= 3.0.0),
     C50,

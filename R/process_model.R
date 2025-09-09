@@ -7,7 +7,8 @@
 #'
 #' @param model_obj A fitted model or a tuning result (`tune_results` object).
 #' @param model_id A character identifier for the model (used in warnings).
-#' @param task Type of task, either `"classification"` or `"regression"`.
+#' @param task Type of task, either `"classification"`, `"regression"`, or
+#'   `"survival"`.
 #' @param test_data A data frame containing the test data.
 #' @param label The name of the outcome variable (as a character string).
 #' @param event_class For binary classification, specifies which class is considered the positive class:
@@ -174,6 +175,51 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         perf <- perf_class
       }
     }
+  } else if (task == "survival") {
+    time_col <- label[1]
+    status_col <- label[2]
+    surv_obj <- survival::Surv(test_data[[time_col]], test_data[[status_col]])
+    risk <- tryCatch(
+      predict(final_model, new_data = test_data, type = "linear_pred")$.pred,
+      error = function(e) predict(final_model, new_data = test_data)$.pred
+    )
+
+    t0 <- stats::median(train_data[[time_col]])
+    surv_pred <- tryCatch(
+      predict(final_model, new_data = test_data, type = "survival", eval_time = t0),
+      error = function(e) NULL
+    )
+    if (!is.null(surv_pred)) {
+      if (".pred" %in% names(surv_pred)) {
+        surv_prob <- surv_pred$.pred
+      } else if (".pred_survival" %in% names(surv_pred)) {
+        surv_prob <- surv_pred$.pred_survival
+      } else {
+        surv_prob <- surv_pred[[1]]
+      }
+      brier <- mean((as.numeric(test_data[[time_col]] > t0) - surv_prob)^2)
+    } else {
+      surv_prob <- rep(NA_real_, nrow(test_data))
+      brier <- NA_real_
+    }
+
+    c_index <- survival::concordance(surv_obj ~ risk)$concordance
+    risk_group <- ifelse(risk > stats::median(risk), "high", "low")
+    lr <- survival::survdiff(surv_obj ~ risk_group)
+    logrank_p <- 1 - stats::pchisq(lr$chisq, length(lr$n) - 1)
+
+    perf <- tibble::tibble(
+      .metric = c("c_index", "brier_score", "logrank_p"),
+      .estimate = c(c_index, brier, logrank_p)
+    )
+
+    data_metrics <- tibble::tibble(
+      time = test_data[[time_col]],
+      status = test_data[[status_col]],
+      risk = risk,
+      surv_prob = surv_prob
+    )
+
   } else {
     # Regression task
     predictions <- predict(final_model, new_data = test_data)
