@@ -1,10 +1,25 @@
 library(dplyr)
 library(testthat)
+library(survival)
 
 data(iris)
 iris <- iris[iris$Species != "setosa", ]  # Binary classification
 iris$Species <- factor(iris$Species)
 
+
+data(cancer)
+test_that("survival label accepts time and status columns", {
+  expect_error(
+    fastml(
+      data = cancer,
+      label = c("time", "status"),
+      algorithms = c("rand_forest"),
+      task = "survival",
+      test_size = 0.3
+    ),
+    NA
+  )
+})
 
 test_that("'label' is not available in the data", {
   expect_error({
