@@ -19,11 +19,11 @@ with the `lung` dataset from the `survival` package.
 library(fastml)
 library(survival)
 
-data(lung)
+head(cancer)
 
 set.seed(42)
 model <- fastml(
-  data = lung,
+  data = cancer,
   label = c("time", "status"),
   algorithms = "rand_forest",
   task = "survival",
