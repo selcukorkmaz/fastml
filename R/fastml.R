@@ -211,7 +211,15 @@ fastml <- function(data = NULL,
 
   # If initial data provided, perform exclusion and checks, then split
   if (!is.null(data)) {
-    if (!(label %in% names(data))) stop("The specified label does not exist in the data.")
+    if (task == "survival") {
+      if (!all(label %in% names(data))) {
+        stop("The specified label(s) do not exist in the data.")
+      }
+    } else {
+      if (!(label %in% names(data))) {
+        stop("The specified label does not exist in the data.")
+      }
+    }
     if (!is.null(exclude)) {
       if (label %in% exclude) stop("Label variable cannot be excluded: ", label)
       missing_vars <- setdiff(exclude, colnames(data))
