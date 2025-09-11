@@ -9,6 +9,8 @@ iris$Species <- factor(iris$Species)
 
 data(cancer)
 test_that("survival label accepts time and status columns", {
+  skip_if_not_installed("aorsf")
+  skip_if_not_installed("censored")
   expect_error(
     fastml(
       data = cancer,
@@ -26,6 +28,8 @@ test_that("rand_forest defaults to aorsf engine for survival", {
 })
 
 test_that("survival task works with mice imputation", {
+  skip_if_not_installed("aorsf")
+  skip_if_not_installed("censored")
   skip_if_not_installed("mice")
   res <- suppressWarnings(
     fastml(
