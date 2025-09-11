@@ -2,7 +2,7 @@
 % Please edit documentation in R/fastexplain.R
 \name{fastexplain}
 \alias{fastexplain}
-\title{FastExplain the fastml (DALEX + SHAP + Permutation-based VI)}
+\title{Explain a fastml model using various techniques}
 \usage{
 fastexplain(
   object,
@@ -20,11 +20,14 @@ fastexplain(
 \arguments{
 \item{object}{A \code{fastml} object.}
 
-\item{method}{Explanation method. One of \code{"dalex"}, \code{"lime"}, \code{"ice"}, \code{"ale"}, \code{"surrogate"}, \code{"interaction"}, or \code{"counterfactual"}.}
+\item{method}{Character string specifying the explanation method.
+Supported values are \code{"dalex"}, \code{"lime"}, \code{"ice"},
+\code{"ale"}, \code{"surrogate"}, \code{"interaction"}, and
+\code{"counterfactual"}. Defaults to \code{"dalex"}.}
 
 \item{features}{Character vector of feature names for partial dependence (model profiles). Default NULL.}
 
-\item{observation}{Single observation used for counterfactual explanations.}
+\item{observation}{A single observation for counterfactual explanations. Default NULL.}
 
 \item{grid_size}{Number of grid points for partial dependence. Default 20.}
 
@@ -40,13 +43,13 @@ fastexplain(
   \item If \code{NULL} and task = 'regression', defaults to \code{DALEX::loss_root_mean_square}.
 }}
 
-\item{...}{Additional arguments (not currently used).}
+\item{...}{Additional arguments passed to the underlying helper functions.}
 }
 \value{
 Prints DALEX explanations: variable importance table & plot, model profiles (if any), and SHAP table & summary plot.
 }
 \description{
-Provides model explainability using DALEX. This function:
+Provides model explainability. When `method = "dalex"` this function:
 \itemize{
   \item Creates a DALEX explainer.
   \item Computes permutation-based variable importance with boxplots showing variability, displays the table and plot.

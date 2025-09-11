@@ -21,9 +21,11 @@ evaluate_models(
 
 \item{test_data}{Preprocessed test data frame.}
 
-\item{label}{Name of the target variable.}
+\item{label}{Name of the target variable. For survival analysis this should
+be a character vector of length two giving the names of the time and status
+columns.}
 
-\item{task}{Type of task: "classification" or "regression".}
+\item{task}{Type of task: "classification", "regression", or "survival".}
 
 \item{metric}{The performance metric to optimize (e.g., "accuracy", "rmse").}
 

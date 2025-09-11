@@ -83,7 +83,7 @@ on numeric columns.}
 Possible values include \code{"shapiro"} or \code{"ks"} (Kolmogorov-Smirnov).
 Only used if \code{run_distribution_checks = TRUE}.}
 
-\item{pairwise_matrix}{Logical. If \code{TRUE}, produces a scatterplot matrix (using the \pkg{GGally} package if available)
+\item{pairwise_matrix}{Logical. If \code{TRUE}, produces a scatterplot matrix (using \pkg{GGally})
 for numeric columns.}
 
 \item{max_scatter_cols}{Integer. Maximum number of numeric columns to include in the pairwise matrix.}

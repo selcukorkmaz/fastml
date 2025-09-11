@@ -47,11 +47,16 @@ fastml(
 
 \item{test_data}{A data frame pre-split for model evaluation. If provided, `train_data` must also be supplied, and no internal splitting will occur. Defaults to `NULL`.}
 
-\item{label}{A string specifying the name of the target variable.}
+\item{label}{A string specifying the name of the target variable. For
+survival analysis, supply a character vector with the names of the time and
+status columns.}
 
 \item{algorithms}{A vector of algorithm names to use. Default is \code{"all"} to run all supported algorithms.}
 
-\item{task}{Character string specifying model type selection. Use "auto" to let the function detect whether the target is for classification or regression based on the data, or explicitly set to "classification" or "regression".}
+\item{task}{Character string specifying model type selection. Use "auto" to
+let the function detect whether the target is for classification or
+regression based on the data, or explicitly set to "classification",
+"regression", or "survival".}
 
 \item{test_size}{A numeric value between 0 and 1 indicating the proportion of the data to use for testing. Default is \code{0.2}.}
 

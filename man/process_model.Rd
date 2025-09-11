@@ -21,7 +21,8 @@ process_model(
 
 \item{model_id}{A character identifier for the model (used in warnings).}
 
-\item{task}{Type of task, either `"classification"` or `"regression"`.}
+\item{task}{Type of task, either `"classification"`, `"regression"`, or
+`"survival"`.}
 
 \item{test_data}{A data frame containing the test data.}
 

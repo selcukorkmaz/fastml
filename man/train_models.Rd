@@ -31,7 +31,7 @@ train_models(
 
 \item{label}{Name of the target variable.}
 
-\item{task}{Type of task: "classification" or "regression".}
+\item{task}{Type of task: "classification", "regression", or "survival".}
 
 \item{algorithms}{Vector of algorithm names to train.}
 
