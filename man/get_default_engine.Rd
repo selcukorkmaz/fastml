@@ -18,5 +18,5 @@ A character string containing the default engine name associated with the provid
 Returns the default engine corresponding to the specified algorithm.
 }
 \details{
-The function uses a \code{switch} statement to select the default engine based on the given algorithm. When\code{task} is \code{"survival"} and \code{algo} is \code{"rand_forest"}, the default engine is \code{"aorsf"}; otherwise, each algorithm maps to a single engine. If the provided algorithm does not have a defined default engine, the function terminates with an error.
+The function uses a \code{switch} statement to select the default engine based on the given algorithm. For survival random forests, the function defaults to \code{"aorsf"}. If the provided algorithm does not have a defined default engine, the function terminates with an error.
 }
