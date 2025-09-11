@@ -72,6 +72,7 @@ Suggests:
     xgboost,
     ranger,
     aorsf,
+    censored,
     crayon,
     kernlab,
     klaR,

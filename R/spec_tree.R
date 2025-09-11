@@ -63,6 +63,12 @@ define_rand_forest_spec <- function(task, train_data, label, tuning = FALSE, eng
     model_spec <- model_spec %>%
       set_engine("spark", seed = 1234)
   } else if (engine == "aorsf") {
+    if (!requireNamespace("censored", quietly = TRUE)) {
+      stop("Package 'censored' is required for the 'aorsf' engine. Please install it.", call. = FALSE)
+    }
+    if (!requireNamespace("aorsf", quietly = TRUE)) {
+      stop("Package 'aorsf' is required for the 'aorsf' engine. Please install it.", call. = FALSE)
+    }
     model_spec <- model_spec %>%
       set_engine("aorsf")
   } else if (engine == "partykit") {
