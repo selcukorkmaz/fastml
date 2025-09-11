@@ -21,6 +21,10 @@ test_that("survival label accepts time and status columns", {
   )
 })
 
+test_that("rand_forest defaults to aorsf engine for survival", {
+  expect_identical(get_default_engine("rand_forest", "survival"), "aorsf")
+})
+
 test_that("survival task works with mice imputation", {
   skip_if_not_installed("mice")
   res <- suppressWarnings(

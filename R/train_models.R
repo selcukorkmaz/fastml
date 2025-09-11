@@ -102,7 +102,7 @@ train_models <- function(train_data,
     }
 
     for (algo in algorithms) {
-      engine <- get_engine(algo, get_default_engine(algo))
+      engine <- get_engine(algo, get_default_engine(algo, task))
       if (algo == "rand_forest") {
         spec <- define_rand_forest_spec("survival", train_data, label,
                                        tuning = FALSE, engine = engine)$model_spec
@@ -293,7 +293,7 @@ train_models <- function(train_data,
 
     if(n_class > 2 && algo == "logistic_reg") {algo = "multinom_reg"}
 
-    engines <- get_engine(algo, get_default_engine(algo))
+    engines <- get_engine(algo, get_default_engine(algo, task))
 
 
     # Create a nested list to store models by algorithm and engine.
