@@ -179,9 +179,26 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
     time_col <- label[1]
     status_col <- label[2]
     surv_obj <- survival::Surv(test_data[[time_col]], test_data[[status_col]])
+
+    extract_pred <- function(pred) {
+      if (is.null(pred)) {
+        return(pred)
+      }
+      if (is.data.frame(pred)) {
+        if (".pred" %in% names(pred)) {
+          pred <- pred[[".pred"]]
+        } else if (".pred_survival" %in% names(pred)) {
+          pred <- pred[[".pred_survival"]]
+        } else {
+          pred <- pred[[1]]
+        }
+      }
+      as.numeric(pred)
+    }
+
     risk <- tryCatch(
-      predict(final_model, new_data = test_data, type = "linear_pred")$.pred,
-      error = function(e) predict(final_model, new_data = test_data)$.pred
+      extract_pred(predict(final_model, new_data = test_data, type = "linear_pred")),
+      error = function(e) extract_pred(predict(final_model, new_data = test_data))
     )
 
     t0 <- stats::median(train_data[[time_col]])
@@ -190,13 +207,7 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       error = function(e) NULL
     )
     if (!is.null(surv_pred)) {
-      if (".pred" %in% names(surv_pred)) {
-        surv_prob <- surv_pred$.pred
-      } else if (".pred_survival" %in% names(surv_pred)) {
-        surv_prob <- surv_pred$.pred_survival
-      } else {
-        surv_prob <- surv_pred[[1]]
-      }
+      surv_prob <- extract_pred(surv_pred)
       brier <- mean((as.numeric(test_data[[time_col]] > t0) - surv_prob)^2)
     } else {
       surv_prob <- rep(NA_real_, nrow(test_data))
