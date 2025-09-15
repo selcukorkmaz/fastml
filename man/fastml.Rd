@@ -54,9 +54,10 @@ status columns.}
 \item{algorithms}{A vector of algorithm names to use. Default is \code{"all"} to run all supported algorithms.}
 
 \item{task}{Character string specifying model type selection. Use "auto" to
-let the function detect whether the target is for classification or
-regression based on the data, or explicitly set to "classification",
-"regression", or "survival".}
+let the function detect whether the target is for classification, regression,
+or survival based on the data. Survival is detected when `label` is a
+character vector of length 2 that matches time and status columns in the data.
+You may also explicitly set to "classification", "regression", or "survival".}
 
 \item{test_size}{A numeric value between 0 and 1 indicating the proportion of the data to use for testing. Default is \code{0.2}.}
 

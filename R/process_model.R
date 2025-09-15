@@ -58,6 +58,9 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       workflows::add_model(final_model_spec)
 
     final_model <- parsnip::fit(final_workflow, data = train_data)
+  } else if (inherits(model_obj, "fastml_native_survival")) {
+    # Native survival model fitted outside parsnip/workflows
+    final_model <- model_obj
   } else {
     # Otherwise, assume the model is already a fitted workflow
     final_model <- model_obj
@@ -180,10 +183,23 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
     status_col <- label[2]
     surv_obj <- survival::Surv(test_data[[time_col]], test_data[[status_col]])
 
+    # Prepare data for prediction depending on model type
+    pred_new_data <- test_data
+    if (inherits(final_model, "fastml_native_survival")) {
+      # Use baked test data from the stored recipe
+      pred_new_data <- tryCatch(
+        recipes::bake(final_model$recipe, new_data = test_data),
+        error = function(e) test_data
+      )
+    }
+
     extract_pred <- function(pred) {
+      # Return early if NULL
       if (is.null(pred)) {
         return(pred)
       }
+
+      # If a tibble/data.frame, pick the appropriate column first
       if (is.data.frame(pred)) {
         if (".pred" %in% names(pred)) {
           pred <- pred[[".pred"]]
@@ -193,19 +209,60 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
           pred <- pred[[1]]
         }
       }
+
+      # If a list (including list-column extracted from tibble), unlist robustly
+      # Engines for survival often return a list-column where each element is a
+      # numeric of length 1 when a single eval_time is provided.
+      if (is.list(pred)) {
+        pred <- vapply(pred, function(x) {
+          if (is.null(x)) return(NA_real_)
+          # If it's a scalar numeric, take it; otherwise try first element
+          if (is.numeric(x) && length(x) == 1L) return(as.numeric(x))
+          if (is.atomic(x) && length(x) >= 1L) return(as.numeric(x[[1L]]))
+          # If it's a list wrapping a scalar, try to dig one level
+          if (is.list(x) && length(x) >= 1L) {
+            x1 <- x[[1L]]
+            if (is.numeric(x1) && length(x1) >= 1L) return(as.numeric(x1[[1L]]))
+          }
+          NA_real_
+        }, numeric(1))
+      }
+
+      # Coerce remaining vector-like objects to numeric
       as.numeric(pred)
     }
 
-    risk <- tryCatch(
-      extract_pred(predict(final_model, new_data = test_data, type = "linear_pred")),
-      error = function(e) extract_pred(predict(final_model, new_data = test_data))
-    )
+    risk <- tryCatch({
+      if (inherits(final_model, "fastml_native_survival")) {
+        # For coxph objects, use linear predictor
+        if (inherits(final_model$fit, "coxph")) {
+          as.numeric(stats::predict(final_model$fit, newdata = pred_new_data, type = "lp"))
+        } else {
+          rep(NA_real_, nrow(test_data))
+        }
+      } else {
+        extract_pred(predict(final_model, new_data = test_data, type = "linear_pred"))
+      }
+    }, error = function(e) {
+      if (inherits(final_model, "fastml_native_survival")) {
+        rep(NA_real_, nrow(test_data))
+      } else {
+        extract_pred(predict(final_model, new_data = test_data))
+      }
+    })
 
     t0 <- stats::median(train_data[[time_col]])
-    surv_pred <- tryCatch(
-      predict(final_model, new_data = test_data, type = "survival", eval_time = t0),
-      error = function(e) NULL
-    )
+    surv_pred <- tryCatch({
+      if (inherits(final_model, "fastml_native_survival")) {
+        if (inherits(final_model$fit, "coxph") && requireNamespace("censored", quietly = TRUE)) {
+          censored::survival_prob_coxph(final_model$fit, pred_new_data, eval_time = t0)
+        } else {
+          NULL
+        }
+      } else {
+        predict(final_model, new_data = test_data, type = "survival", eval_time = t0)
+      }
+    }, error = function(e) NULL)
     if (!is.null(surv_pred)) {
       surv_prob <- extract_pred(surv_pred)
       brier <- mean((as.numeric(test_data[[time_col]] > t0) - surv_prob)^2)

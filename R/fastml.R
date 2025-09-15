@@ -18,9 +18,10 @@ utils::globalVariables(c("Fraction", "Performance"))
 #'   status columns.
 #' @param algorithms A vector of algorithm names to use. Default is \code{"all"} to run all supported algorithms.
 #' @param task Character string specifying model type selection. Use "auto" to
-#'   let the function detect whether the target is for classification or
-#'   regression based on the data, or explicitly set to "classification",
-#'   "regression", or "survival".
+#'   let the function detect whether the target is for classification, regression,
+#'   or survival based on the data. Survival is detected when `label` is a
+#'   character vector of length 2 that matches time and status columns in the data.
+#'   You may also explicitly set to "classification", "regression", or "survival".
 #' @param test_size A numeric value between 0 and 1 indicating the proportion of the data to use for testing. Default is \code{0.2}.
 #' @param resampling_method A string specifying the resampling method for model evaluation. Default is \code{"cv"} (cross-validation).
 #'                          Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.
@@ -172,36 +173,65 @@ fastml <- function(data = NULL,
 
   # Determine source for target variable
   source_data <- if (!is.null(data)) data else train_data
-  # Ensure label exists in source
-  if (task == "survival") {
-    if (length(label) != 2 || !all(label %in% names(source_data))) {
-      stop("For survival tasks, 'label' must contain the time and status column names present in the data.")
-    }
-    target_var <- source_data[[label[1]]]
-  } else {
-    if (!(label %in% names(source_data))) {
-      stop("Label variable must exist in the data source.")
-    }
-    target_var <- source_data[[label]]
-  }
 
-
-
-  if(task == "auto"){
-    if (is.numeric(target_var) && length(unique(target_var)) <= 5) {
-      task <- "classification"
-      warning(sprintf(
-        "The target variable '%s' is numeric with %d unique values. Converted to factor; task set to 'classification'.",
-        label, length(unique(target_var))
-      ))
-    } else if (is.factor(target_var) || is.character(target_var) || is.logical(target_var)) {
-      task <- "classification"
-    } else if (is.numeric(target_var)) {
-      task <- "regression"
+  # Auto-detect task if requested, including survival when label has two columns
+  if (task == "auto") {
+    # survival detection: label is c(time_col, status_col)
+    if (is.character(label) && length(label) == 2) {
+      if (!all(label %in% names(source_data))) {
+        missing_vars <- setdiff(label, names(source_data))
+        stop(paste0(
+          "When task='auto' and 'label' has length 2, both columns must exist in the data for survival detection. Missing: ",
+          paste(missing_vars, collapse = ", ")
+        ))
+      }
+      time_col <- label[1]
+      status_col <- label[2]
+      time_vec <- source_data[[time_col]]
+      status_vec <- source_data[[status_col]]
+      is_time_ok <- is.numeric(time_vec)
+      # status acceptable if logical, or 2 unique values (factor/character/numeric)
+      uniq_status <- unique(status_vec)
+      is_status_ok <- is.logical(status_vec) || length(uniq_status) == 2
+      if (is_time_ok && is_status_ok) {
+        task <- "survival"
+        target_var <- NULL
+      } else {
+        stop("Unable to detect survival task automatically: ensure time is numeric and status has two unique values.")
+      }
     } else {
-      stop("Unable to detect task type. The target variable must be numeric, factor, character, or logical.")
+      # classification/regression detection with single target label
+      if (!(label %in% names(source_data))) {
+        stop("Label variable must exist in the data source.")
+      }
+      target_var <- source_data[[label]]
+      if (is.numeric(target_var) && length(unique(target_var)) <= 5) {
+        task <- "classification"
+        warning(sprintf(
+          "The target variable '%s' is numeric with %d unique values. Converted to factor; task set to 'classification'.",
+          label, length(unique(target_var))
+        ))
+      } else if (is.factor(target_var) || is.character(target_var) || is.logical(target_var)) {
+        task <- "classification"
+      } else if (is.numeric(target_var)) {
+        task <- "regression"
+      } else {
+        stop("Unable to detect task type. The target variable must be numeric, factor, character, or logical.")
+      }
     }
-
+  } else {
+    # Non-auto: validate label(s) exist and set target_var when applicable
+    if (task == "survival") {
+      if (length(label) != 2 || !all(label %in% names(source_data))) {
+        stop("For survival tasks, 'label' must contain the time and status column names present in the data.")
+      }
+      target_var <- NULL
+    } else {
+      if (!(label %in% names(source_data))) {
+        stop("Label variable must exist in the data source.")
+      }
+      target_var <- source_data[[label]]
+    }
   }
 
   # determine positive_class after data split when factor levels are available
@@ -221,7 +251,13 @@ fastml <- function(data = NULL,
       }
     }
     if (!is.null(exclude)) {
-      if (label %in% exclude) stop("Label variable cannot be excluded: ", label)
+      if (task == "survival") {
+        if (any(label %in% exclude)) {
+          stop("Label variable(s) cannot be excluded: ", paste(label[label %in% exclude], collapse = ", "))
+        }
+      } else {
+        if (label %in% exclude) stop("Label variable cannot be excluded: ", label)
+      }
       missing_vars <- setdiff(exclude, colnames(data))
       if (length(missing_vars) > 0) {
         warning("Variables not in data: ", paste(missing_vars, collapse = ", "))
@@ -626,31 +662,49 @@ fastml <- function(data = NULL,
 
   # metric_values <- sapply(performance, function(x) x %>% filter(.metric == metric) %>% pull(.estimate))
 
-  # Create a new list where each element's name is "algorithm (engine)"
+  # Build a normalized performance list and align model names as "algorithm (engine)"
   combined_performance  <- list()
+  model_map <- list()
   for (alg in names(performance)) {
-    for (eng in names(performance[[alg]])) {
+    perf_alg <- performance[[alg]]
+    # Case 1: nested by engine (list of tibbles)
+    if (is.list(perf_alg) && !inherits(perf_alg, "data.frame")) {
+      for (eng in names(perf_alg)) {
+        combined_name <- paste0(alg, " (", eng, ")")
+        combined_performance[[combined_name]] <- perf_alg[[eng]]
+        # Map corresponding model
+        if (is.list(models[[alg]]) && !inherits(models[[alg]], "workflow") && !inherits(models[[alg]], "tune_results")) {
+          model_map[[combined_name]] <- models[[alg]][[eng]]
+        } else {
+          model_map[[combined_name]] <- models[[alg]]
+        }
+      }
+    } else if (inherits(perf_alg, "data.frame")) {
+      # Case 2: single workflow (tibble). Infer engine name when possible
+      eng_candidates <- tryCatch(engine_names[[alg]], error = function(e) NULL)
+      eng <- if (!is.null(eng_candidates) && length(eng_candidates) >= 1 && !is.na(eng_candidates[1])) {
+        eng_candidates[1]
+      } else {
+        tryCatch(get_default_engine(alg, task), error = function(e) "unknown")
+      }
       combined_name <- paste0(alg, " (", eng, ")")
-      combined_performance[[combined_name]] <- performance[[alg]][[eng]]
+      combined_performance[[combined_name]] <- perf_alg
+      model_map[[combined_name]] <- models[[alg]]
     }
   }
 
-  if(length(names(models)) == length(names(combined_performance))) {
-    names(models) <- names(combined_performance)
-    models = lapply(models, function(x) x[[1]])
-
-  } else {
-
-    models <- flatten_and_rename_models(models)
-    names(models) <- names(models)
-
-
-  }
+  # Replace models with normalized, consistently named map
+  models <- model_map
 
 
   # Now apply the function over the flattened list
   metric_values <- sapply(combined_performance, function(x) {
-    x %>% filter(.metric == metric) %>% pull(.estimate)
+    if (is.data.frame(x)) {
+      val <- x %>% dplyr::filter(.metric == metric) %>% dplyr::pull(.estimate)
+      if (length(val) == 0) NA_real_ else as.numeric(val[1])
+    } else {
+      NA_real_
+    }
   })
 
 

@@ -54,7 +54,8 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
     predictions_list[[algo]] <- list()
 
     # If the model object has names, assume it is nested by engine.
-    if (is.list(models[[algo]]) && !inherits(models[[algo]], "workflow") && !inherits(models[[algo]], "tune_results")) {
+    # But skip this for native survival models stored as lists.
+    if (is.list(models[[algo]]) && !inherits(models[[algo]], "workflow") && !inherits(models[[algo]], "tune_results") && !inherits(models[[algo]], "fastml_native_survival")) {
       for (eng in names(models[[algo]])) {
         model_obj <- models[[algo]][[eng]]
         result <- process_model(model_obj, model_id = paste(algo, eng, sep = "_"),
@@ -68,7 +69,9 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
       }
     } else {
       # Otherwise, assume a single model (not nested)
-      eng <- if (!is.null(engine_names[[algo]])) {
+      eng <- if (inherits(models[[algo]], "fastml_native_survival")) {
+        models[[algo]]$engine
+      } else if (!is.null(engine_names[[algo]])) {
         engine_names[[algo]][1]
       } else if (inherits(models[[algo]], "workflow")) {
         workflows::extract_fit_parsnip(models[[algo]])$spec$engine

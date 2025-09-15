@@ -79,14 +79,32 @@ plot.fastml <- function(x,
   positive_class   <- x$positive_class
   engine_names     <- x$engine_names
 
-  # Rebuild performance_wide (same logic as in summary.fastml)
+  # Rebuild performance_wide (robust to single- or multi-engine structures)
   metrics_list <- lapply(names(performance), function(model_name) {
-    engine_dfs <- lapply(names(performance[[model_name]]), function(engine_name) {
-      df <- as.data.frame(performance[[model_name]][[engine_name]])
-      df$Engine <- engine_name
-      df
-    })
-    combined_engines      <- do.call(rbind, engine_dfs)
+    perf_entry <- performance[[model_name]]
+
+    resolve_engine <- function(default_engine = NA_character_) {
+      if (!is.null(engine_names) && !is.null(engine_names[[model_name]]) && !is.na(engine_names[[model_name]])) {
+        return(engine_names[[model_name]])
+      }
+      if (!is.null(best_model_name) && model_name %in% names(best_model_name)) {
+        return(as.character(best_model_name[[model_name]]))
+      }
+      default_engine
+    }
+
+    if (is.list(perf_entry) && !is.data.frame(perf_entry)) {
+      engine_dfs <- lapply(names(perf_entry), function(engine_name) {
+        df <- as.data.frame(perf_entry[[engine_name]])
+        df$Engine <- engine_name
+        df
+      })
+      combined_engines <- do.call(rbind, engine_dfs)
+    } else {
+      combined_engines <- as.data.frame(perf_entry)
+      combined_engines$Engine <- resolve_engine()
+    }
+
     combined_engines$Model <- model_name
     combined_engines
   })
@@ -102,8 +120,12 @@ plot.fastml <- function(x,
 
   if (task == "classification") {
     desired_metrics <- c("accuracy", "f_meas", "kap", "precision", "sens", "spec", "roc_auc")
-  } else {
+  } else if (task == "regression") {
     desired_metrics <- c("rmse", "rsq", "mae")
+  } else if (task == "survival") {
+    desired_metrics <- c("c_index", "brier_score", "logrank_p")
+  } else {
+    desired_metrics <- unique(performance_df$.metric)
   }
   desired_metrics <- intersect(desired_metrics, all_metric_names)
   if (length(desired_metrics) == 0) {
@@ -130,17 +152,32 @@ plot.fastml <- function(x,
         values_from = .estimate
       ) %>%
         dplyr::select(Model, Engine, accuracy, kap, sens, spec, precision, f_meas, roc_auc)
-    } else {
+    } else if (task == "regression") {
       performance_wide <- tidyr::pivot_wider(
         performance_sub,
         names_from  = .metric,
         values_from = .estimate
       ) %>%
         dplyr::select(Model, Engine, rmse, rsq, mae)
+    } else if (task == "survival") {
+      performance_wide <- tidyr::pivot_wider(
+        performance_sub,
+        names_from  = .metric,
+        values_from = .estimate
+      )
+      keep_cols <- c("Model", "Engine", intersect(c("c_index", "brier_score", "logrank_p"), colnames(performance_wide)))
+      performance_wide <- dplyr::select(performance_wide, dplyr::all_of(keep_cols))
+    } else {
+      performance_wide <- tidyr::pivot_wider(
+        performance_sub,
+        names_from  = .metric,
+        values_from = .estimate
+      )
     }
   }
 
-  if (task == "regression" && main_metric != "rsq") {
+  ascending_metrics <- c("rmse", "mae", "brier_score", "logloss", "mse", "logrank_p")
+  if (main_metric %in% ascending_metrics) {
     performance_wide <- performance_wide[order(performance_wide[[main_metric]], na.last = TRUE), ]
   } else {
     performance_wide <- performance_wide[order(-performance_wide[[main_metric]], na.last = TRUE), ]
@@ -156,7 +193,10 @@ plot.fastml <- function(x,
     spec      = "Specificity",
     rsq       = "R-squared",
     mae       = "MAE",
-    rmse      = "RMSE"
+    rmse      = "RMSE",
+    c_index   = "C-index",
+    brier_score = "Brier Score",
+    logrank_p = "Log-rank p"
   )
 
   # ============================
@@ -187,6 +227,12 @@ plot.fastml <- function(x,
       present_reg_metrics <- intersect(reg_order, unique(performance_melt$Metric))
       if (length(present_reg_metrics) > 0) {
         performance_melt$Metric <- factor(performance_melt$Metric, levels = present_reg_metrics)
+      }
+    } else if (task == "survival") {
+      surv_order <- c("C-index", "Brier Score", "Log-rank p")
+      present_surv_metrics <- intersect(surv_order, unique(performance_melt$Metric))
+      if (length(present_surv_metrics) > 0) {
+        performance_melt$Metric <- factor(performance_melt$Metric, levels = present_surv_metrics)
       }
     }
 

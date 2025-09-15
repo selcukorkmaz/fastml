@@ -77,19 +77,38 @@ summary.fastml <- function(object,
   # Loop over the top-level names (e.g. "rand_forest", "logistic_reg")
   metrics_list <- lapply(names(performance), function(model_name) {
 
-    # For each model, loop over its engines
-    engine_dfs <- lapply(names(performance[[model_name]]), function(engine_name) {
+    perf_entry <- performance[[model_name]]
 
-      # Get the tibble for this engine and convert it to a data.frame
-      df <- as.data.frame(performance[[model_name]][[engine_name]])
+    # Two possible structures:
+    # 1) A list of engines, each containing a tibble with .metric/.estimate
+    # 2) A single tibble (no engine nesting), typical when only one engine was used
 
-      # Add an "Engine" column
-      df$Engine <- engine_name
-      df
-    })
+    # Helper to resolve engine label for a model
+    resolve_engine <- function(default_engine = NA_character_) {
+      # Prefer provided engine_names if available
+      if (!is.null(engine_names) && !is.null(engine_names[[model_name]]) && !is.na(engine_names[[model_name]])) {
+        return(engine_names[[model_name]])
+      }
+      # Fallback to best_model_name mapping if present
+      if (!is.null(best_model_name) && model_name %in% names(best_model_name)) {
+        return(as.character(best_model_name[[model_name]]))
+      }
+      default_engine
+    }
 
-    # Combine the tibbles from different engines (row-wise)
-    combined_engines <- do.call(rbind, engine_dfs)
+    if (is.list(perf_entry) && !is.data.frame(perf_entry)) {
+      # Multi-engine structure
+      engine_dfs <- lapply(names(perf_entry), function(engine_name) {
+        df <- as.data.frame(perf_entry[[engine_name]])
+        df$Engine <- engine_name
+        df
+      })
+      combined_engines <- do.call(rbind, engine_dfs)
+    } else {
+      # Single tibble structure (no engine-level nesting)
+      combined_engines <- as.data.frame(perf_entry)
+      combined_engines$Engine <- resolve_engine()
+    }
 
     # Add a "Model" column
     combined_engines$Model <- model_name
@@ -116,8 +135,14 @@ summary.fastml <- function(object,
 
   if (task == "classification") {
     desired_metrics <- c("accuracy", "f_meas", "kap", "precision", "sens", "spec", "roc_auc")
-  } else {
+  } else if (task == "regression") {
     desired_metrics <- c("rmse", "rsq", "mae")
+  } else if (task == "survival") {
+    # Common survival metrics used in fastml
+    desired_metrics <- c("c_index", "brier_score", "logrank_p")
+  } else {
+    # Fallback for any other task types
+    desired_metrics <- unique(performance_df$.metric)
   }
   desired_metrics <- intersect(desired_metrics, all_metric_names)
   if (length(desired_metrics) == 0) desired_metrics <- main_metric
@@ -147,7 +172,7 @@ summary.fastml <- function(object,
       ) %>%
         dplyr::select(Model, Engine, accuracy, kap, sens, spec, precision, f_meas, roc_auc)
 
-      }else{
+      }else if(task == "regression"){
 
         performance_wide <- pivot_wider(
           performance_sub,
@@ -155,6 +180,22 @@ summary.fastml <- function(object,
           values_from = .estimate
         ) %>%
           dplyr::select(Model, Engine, rmse, rsq, mae)
+      } else if (task == "survival") {
+        performance_wide <- pivot_wider(
+          performance_sub,
+          names_from = .metric,
+          values_from = .estimate
+        )
+        # Keep only available survival metrics among expected set
+        keep_cols <- c("Model", "Engine", intersect(c("c_index", "brier_score", "logrank_p"), colnames(performance_wide)))
+        performance_wide <- dplyr::select(performance_wide, dplyr::all_of(keep_cols))
+      } else {
+        # Generic fallback: keep all metrics present
+        performance_wide <- pivot_wider(
+          performance_sub,
+          names_from = .metric,
+          values_from = .estimate
+        )
       }
 
     }
@@ -164,7 +205,9 @@ summary.fastml <- function(object,
   # performance_wide$Engine <- engine_names[match(performance_wide$Model, names(engine_names))]
   # performance_wide <- performance_wide[, c("Model", "Engine", setdiff(colnames(performance_wide), c("Model", "Engine")))]
 
-  if (task == "regression" && main_metric != "rsq") {
+  # Sort direction: lower-better metrics vs higher-better metrics
+  ascending_metrics <- c("rmse", "mae", "brier_score", "logloss", "mse", "logrank_p")
+  if (main_metric %in% ascending_metrics) {
     performance_wide <- performance_wide[order(performance_wide[[main_metric]], na.last = TRUE), ]
   } else {
     performance_wide <- performance_wide[order(-performance_wide[[main_metric]], na.last = TRUE), ]
@@ -180,7 +223,10 @@ summary.fastml <- function(object,
     spec = "Specificity",
     rsq = "R-squared",
     mae = "MAE",
-    rmse = "RMSE"
+    rmse = "RMSE",
+    c_index = "C-index",
+    brier_score = "Brier Score",
+    logrank_p = "Log-rank p"
   )
 
 
@@ -443,4 +489,3 @@ summary.fastml <- function(object,
 
   invisible(object)
 }
-

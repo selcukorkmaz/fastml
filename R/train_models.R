@@ -104,20 +104,56 @@ train_models <- function(train_data,
     for (algo in algorithms) {
       engine <- get_engine(algo, get_default_engine(algo, task))
       if (algo == "rand_forest") {
+        # Prefer 'aorsf'; fall back to 'ranger' if not available
+        if (identical(engine, "aorsf") && !requireNamespace("aorsf", quietly = TRUE)) {
+          if (requireNamespace("ranger", quietly = TRUE)) {
+            warning("Engine 'aorsf' not installed. Falling back to 'ranger' for survival random forest.")
+            engine <- "ranger"
+          } else {
+            warning("Neither 'aorsf' nor 'ranger' are available. Skipping survival random forest.")
+            next
+          }
+        }
+        # Parsonip survival mode/extensions provided via 'censored'; skip if missing
+        if (!requireNamespace("censored", quietly = TRUE)) {
+          warning("Package 'censored' not installed; skipping survival random forest parsnip model.")
+          next
+        }
         spec <- define_rand_forest_spec("survival", train_data, label,
                                        tuning = FALSE, engine = engine)$model_spec
       } else if (algo == "elastic_net") {
-        spec <- parsnip::linear_reg() %>%
-          set_mode("censored regression") %>%
-          set_engine("glmnet")
+        warning("Survival 'elastic_net' requires censored survival model specs not available in your setup. Skipping.")
+        next
+      } else if (algo == "cox_ph") {
+        if (!requireNamespace("survival", quietly = TRUE)) {
+          stop("The 'survival' package is required for Cox PH. Please install it.")
+        }
+        rec_prep <- recipes::prep(recipe, training = train_data, retain = TRUE)
+        baked_train <- recipes::bake(rec_prep, new_data = NULL)
+        f <- as.formula(paste(label, "~ ."))
+        fit <- survival::coxph(formula = f, data = baked_train, ties = "efron")
+        spec <- list(
+          algo = "cox_ph",
+          engine = if (!is.null(engine)) engine else "survival",
+          fit = fit,
+          recipe = rec_prep
+        )
+        class(spec) <- c("fastml_native_survival", "fastml_model")
+      } else if (algo == "aft") {
+        warning("Survival 'aft' requires censored survival model specs not available in your setup. Skipping.")
+        next
       } else {
         next
       }
 
-      wf <- workflows::workflow() %>%
-        workflows::add_recipe(recipe) %>%
-        workflows::add_model(spec)
-      models[[algo]] <- parsnip::fit(wf, data = train_data)
+      if (inherits(spec, "fastml_native_survival")) {
+        models[[algo]] <- spec
+      } else {
+        wf <- workflows::workflow() %>%
+          workflows::add_recipe(recipe) %>%
+          workflows::add_model(spec)
+        models[[algo]] <- parsnip::fit(wf, data = train_data)
+      }
     }
 
     return(models)

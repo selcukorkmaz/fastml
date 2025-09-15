@@ -59,7 +59,7 @@ availableMethods <- function(type = c("classification", "regression", "survival"
     } else {
       c(
         "rand_forest",
-        "elastic_net"
+        "cox_ph"
       )
     }
 
@@ -82,6 +82,12 @@ availableMethods <- function(type = c("classification", "regression", "survival"
 get_default_engine <- function(algo, task = NULL) {
   if (algo == "rand_forest" && !is.null(task) && task == "survival") {
     return("aorsf")
+  }
+  if (algo == "cox_ph" && !is.null(task) && task == "survival") {
+    return("survival")
+  }
+  if (algo == "aft" && !is.null(task) && task == "survival") {
+    return("survival")
   }
 
   switch(algo,
@@ -130,6 +136,10 @@ get_engine_names <- function(models) {
   lapply(models, function(model_list) {
     # Extract engine names from each workflow
     engines <- sapply(model_list, function(mod) {
+      # Handle custom native survival models
+      if (inherits(mod, "fastml_native_survival")) {
+        return(if (!is.null(mod$engine)) mod$engine else NA_character_)
+      }
       fit_obj <- tryCatch(
         extract_fit_parsnip(mod),
         error = function(e) NULL
