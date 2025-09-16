@@ -308,10 +308,20 @@ summary.fastml <- function(object,
     data_str$Model[best_model_idx] <- paste0(data_str$Model[best_model_idx], "*")
   }
 
+  # Compute safe column widths (handle NA and non-character values)
+  safe_nchar <- function(x) {
+    x_chr <- as.character(x)
+    x_chr[is.na(x_chr)] <- ""
+    nchar(x_chr)
+  }
+
   col_widths <- sapply(seq_along(header), function(i) {
     col_name <- header[i]
-    col_data <- data_str[[c("Model", "Engine", desired_metrics)[i]]]
-    max(nchar(col_name), max(nchar(col_data)))
+    col_key  <- c("Model", "Engine", desired_metrics)[i]
+    col_data <- data_str[[col_key]]
+    name_w   <- safe_nchar(col_name)
+    data_w   <- if (length(col_data)) max(safe_nchar(col_data), na.rm = TRUE) else 0
+    max(name_w, data_w, na.rm = TRUE)
   })
 
   header_line <- paste(mapply(function(h, w) format(h, width = w, justify = "left"), header, col_widths), collapse = "  ")

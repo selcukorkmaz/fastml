@@ -252,10 +252,17 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
     })
 
     t0 <- stats::median(train_data[[time_col]])
+    # Try to obtain survival probability at t0
     surv_pred <- tryCatch({
       if (inherits(final_model, "fastml_native_survival")) {
-        if (inherits(final_model$fit, "coxph") && requireNamespace("censored", quietly = TRUE)) {
-          censored::survival_prob_coxph(final_model$fit, pred_new_data, eval_time = t0)
+        if (requireNamespace("censored", quietly = TRUE)) {
+          if (inherits(final_model$fit, "coxph")) {
+            censored::survival_prob_coxph(final_model$fit, pred_new_data, eval_time = t0)
+          } else if (inherits(final_model$fit, "survreg")) {
+            censored::survival_prob_survreg(final_model$fit, pred_new_data, eval_time = t0)
+          } else {
+            NULL
+          }
         } else {
           NULL
         }
@@ -271,6 +278,26 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       brier <- NA_real_
     }
 
+    # Try to obtain predicted survival time where supported
+    surv_time <- tryCatch({
+      if (inherits(final_model, "fastml_native_survival") && requireNamespace("censored", quietly = TRUE)) {
+        if (inherits(final_model$fit, "coxph")) {
+          as.numeric(censored::survival_time_coxph(final_model$fit, pred_new_data))
+        } else if (inherits(final_model$fit, "survbagg")) {
+          as.numeric(censored::survival_time_survbagg(final_model$fit, pred_new_data))
+        } else if (inherits(final_model$fit, "mboost")) {
+          as.numeric(censored::survival_time_mboost(final_model$fit, pred_new_data))
+        } else if (inherits(final_model$fit, "glmnet")) {
+          as.numeric(censored::survival_time_coxnet(final_model$fit, pred_new_data))
+        } else {
+          rep(NA_real_, nrow(test_data))
+        }
+      } else {
+        # For workflow-based models, rely on engine-specific predict; not all expose time directly
+        rep(NA_real_, nrow(test_data))
+      }
+    }, error = function(e) rep(NA_real_, nrow(test_data)))
+
     c_index <- survival::concordance(surv_obj ~ risk)$concordance
     risk_group <- ifelse(risk > stats::median(risk), "high", "low")
     lr <- survival::survdiff(surv_obj ~ risk_group)
@@ -285,7 +312,8 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       time = test_data[[time_col]],
       status = test_data[[status_col]],
       risk = risk,
-      surv_prob = surv_prob
+      surv_prob = surv_prob,
+      surv_time = surv_time
     )
 
   } else {
