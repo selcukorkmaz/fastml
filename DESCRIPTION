@@ -71,7 +71,7 @@ Suggests:
     glmnet,
     xgboost,
     ranger,
-    crayon, 
+    crayon,
     kernlab,
     klaR,
     kknn,
@@ -84,6 +84,7 @@ Suggests:
     ceterisParibus,
     pdp,
     patchwork,
-    GGally
+    GGally,
+    rstpm2
 RoxygenNote: 7.3.2
 Config/testthat/edition: 3

@@ -116,8 +116,10 @@ summary.fastml <- function(object,
 
   if (task == "classification") {
     desired_metrics <- c("accuracy", "f_meas", "kap", "precision", "sens", "spec", "roc_auc")
-  } else {
+  } else if (task == "regression") {
     desired_metrics <- c("rmse", "rsq", "mae")
+  } else {
+    desired_metrics <- c("c_index", "brier_score", "logrank_p")
   }
   desired_metrics <- intersect(desired_metrics, all_metric_names)
   if (length(desired_metrics) == 0) desired_metrics <- main_metric
@@ -145,7 +147,16 @@ summary.fastml <- function(object,
         names_from = .metric,
         values_from = .estimate
       ) %>%
-        dplyr::select(Model, Engine, accuracy, kap, sens, spec, precision, f_meas, roc_auc)
+        dplyr::select(Model, Engine, dplyr::any_of(c("accuracy", "kap", "sens", "spec", "precision", "f_meas", "roc_auc")))
+
+      }else if(task == "regression"){
+
+        performance_wide <- pivot_wider(
+          performance_sub,
+          names_from = .metric,
+          values_from = .estimate
+        ) %>%
+          dplyr::select(Model, Engine, dplyr::any_of(c("rmse", "rsq", "mae")))
 
       }else{
 
@@ -154,7 +165,7 @@ summary.fastml <- function(object,
           names_from = .metric,
           values_from = .estimate
         ) %>%
-          dplyr::select(Model, Engine, rmse, rsq, mae)
+          dplyr::select(Model, Engine, dplyr::any_of(c("c_index", "brier_score", "logrank_p")))
       }
 
     }
@@ -180,7 +191,10 @@ summary.fastml <- function(object,
     spec = "Specificity",
     rsq = "R-squared",
     mae = "MAE",
-    rmse = "RMSE"
+    rmse = "RMSE",
+    c_index = "C-index",
+    brier_score = "Brier Score",
+    logrank_p = "Log-rank p"
   )
 
 
