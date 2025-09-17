@@ -298,10 +298,38 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       }
     }, error = function(e) rep(NA_real_, nrow(test_data)))
 
-    c_index <- survival::concordance(surv_obj ~ risk)$concordance
-    risk_group <- ifelse(risk > stats::median(risk), "high", "low")
-    lr <- survival::survdiff(surv_obj ~ risk_group)
-    logrank_p <- 1 - stats::pchisq(lr$chisq, length(lr$n) - 1)
+
+    risk_valid <- is.finite(risk)
+    c_index <- NA_real_
+    logrank_p <- NA_real_
+    risk_group <- rep(NA_character_, length(risk))
+
+    if (any(risk_valid)) {
+      risk_vals <- risk[risk_valid]
+      surv_valid <- surv_obj[risk_valid]
+      if (length(unique(risk_vals)) > 1) {
+        c_index <- tryCatch(
+          survival::concordance(surv_valid ~ risk_vals)$concordance,
+          error = function(e) NA_real_
+        )
+        risk_threshold <- stats::median(risk_vals)
+        risk_group_vals <- ifelse(risk_vals > risk_threshold, "high", "low")
+        risk_group[risk_valid] <- risk_group_vals
+        if (length(unique(risk_group_vals)) > 1) {
+          lr <- tryCatch(
+            survival::survdiff(surv_valid ~ factor(risk_group_vals, levels = c("low", "high"))),
+            error = function(e) NULL
+          )
+          if (!is.null(lr)) {
+            logrank_p <- 1 - stats::pchisq(lr$chisq, length(lr$n) - 1)
+          }
+        }
+      } else {
+        risk_group[risk_valid] <- "low"
+      }
+    } else {
+      warning(sprintf("Model %s produced no finite risk predictions; survival metrics set to NA.", model_id))
+    }
 
     perf <- tibble::tibble(
       .metric = c("c_index", "brier_score", "logrank_p"),
@@ -327,3 +355,4 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
 
   return(list(performance = perf, predictions = data_metrics))
 }
+
