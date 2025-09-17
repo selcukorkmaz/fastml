@@ -281,12 +281,50 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
                 }
               }
               penalty <- final_model$penalty
-              pred_lp <- glmnet::predict(final_model$fit, newx = mm_full,
-                                         s = penalty, type = "link")
-              if (is.matrix(pred_lp)) {
+              pred_lp <- tryCatch({
+                glmnet::predict(final_model$fit, newx = mm_full,
+                                 s = penalty, type = "link")
+              }, error = function(e) NULL)
+              if (!is.null(pred_lp) && is.matrix(pred_lp)) {
                 pred_lp <- pred_lp[, 1, drop = TRUE]
               }
-              as.numeric(pred_lp)
+              if (!is.null(pred_lp)) {
+                pred_lp <- as.numeric(pred_lp)
+              }
+
+              needs_manual_lp <- is.null(pred_lp) || length(pred_lp) == 0 || any(!is.finite(pred_lp))
+
+              if (needs_manual_lp) {
+                coef_mat <- tryCatch({
+                  glmnet::coef(final_model$fit, s = penalty)
+                }, error = function(e) NULL)
+
+                if (!is.null(coef_mat)) {
+                  coef_dense <- as.matrix(coef_mat)
+                  intercept <- 0
+                  if ("(Intercept)" %in% rownames(coef_dense)) {
+                    intercept <- coef_dense["(Intercept)", 1]
+                    coef_dense <- coef_dense[setdiff(rownames(coef_dense), "(Intercept)"), , drop = FALSE]
+                  }
+
+                  coef_vec <- numeric(length(feature_names))
+                  names(coef_vec) <- feature_names
+                  coef_overlap <- intersect(feature_names, rownames(coef_dense))
+                  if (length(coef_overlap) > 0) {
+                    coef_vals <- coef_dense[coef_overlap, 1]
+                    coef_vals[!is.finite(coef_vals)] <- 0
+                    coef_vec[coef_overlap] <- coef_vals
+                  }
+                  if (!is.finite(intercept)) {
+                    intercept <- 0
+                  }
+                  pred_lp <- as.numeric(mm_full %*% coef_vec + intercept)
+                } else {
+                  pred_lp <- rep(NA_real_, n_obs)
+                }
+              }
+
+              pred_lp
             }
           }
         } else {
