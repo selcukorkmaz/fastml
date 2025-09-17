@@ -37,7 +37,7 @@
 #' @importFrom tibble tibble
 #' @importFrom rlang sym
 #' @importFrom dials range_set value_set grid_regular grid_latin_hypercube finalize
-#' @importFrom parsnip fit extract_parameter_set_dials
+#' @importFrom parsnip fit extract_parameter_set_dials cox_ph survival_reg
 #' @importFrom workflows workflow add_model add_recipe
 #' @importFrom tune tune_grid control_grid select_best finalize_workflow finalize_model tune_bayes control_grid control_bayes
 #' @importFrom yardstick metric_set accuracy kap roc_auc sens spec precision f_meas rmse rsq mae new_class_metric
@@ -102,23 +102,128 @@ train_models <- function(train_data,
     }
 
     for (algo in algorithms) {
-      engine <- get_engine(algo, get_default_engine(algo))
-      if (algo == "rand_forest") {
-        spec <- define_rand_forest_spec("survival", train_data, label,
-                                       tuning = FALSE, engine = engine)$model_spec
-      } else if (algo == "elastic_net") {
-        spec <- parsnip::linear_reg() %>%
-          set_mode("censored regression") %>%
-          set_engine("glmnet")
-      } else {
+      engines <- get_engine(algo, get_default_engine(algo))
+      if (algo == "rand_forest" && (is.null(algorithm_engines) || is.null(algorithm_engines[[algo]]))) {
+        engines <- "aorsf"
+      }
+
+      if (is.null(engines) || length(engines) == 0) {
         next
       }
 
-      wf <- workflows::workflow() %>%
-        workflows::add_recipe(recipe) %>%
-        workflows::add_model(spec)
-      models[[algo]] <- parsnip::fit(wf, data = train_data)
+      models[[algo]] <- list()
+
+      for (engine in engines) {
+        if (algo == "rand_forest") {
+          spec <- define_rand_forest_spec(
+            "survival",
+            train_data,
+            label,
+            tuning = FALSE,
+            engine = engine
+          )$model_spec
+
+          wf <- workflows::workflow() %>%
+            workflows::add_recipe(recipe) %>%
+            workflows::add_model(spec)
+
+          models[[algo]][[engine]] <- parsnip::fit(wf, data = train_data)
+
+        } else if (algo == "elastic_net") {
+          spec <- parsnip::linear_reg() %>%
+            set_mode("censored regression") %>%
+            set_engine(engine)
+
+          wf <- workflows::workflow() %>%
+            workflows::add_recipe(recipe) %>%
+            workflows::add_model(spec)
+
+          models[[algo]][[engine]] <- parsnip::fit(wf, data = train_data)
+
+        } else if (algo == "cox_ph") {
+          spec <- parsnip::cox_ph() %>%
+            set_mode("censored regression") %>%
+            set_engine(engine)
+
+          wf <- workflows::workflow() %>%
+            workflows::add_recipe(recipe) %>%
+            workflows::add_model(spec)
+
+          models[[algo]][[engine]] <- parsnip::fit(wf, data = train_data)
+
+        } else if (algo == "survreg") {
+          spec <- parsnip::survival_reg() %>%
+            set_mode("censored regression") %>%
+            set_engine(engine)
+
+          wf <- workflows::workflow() %>%
+            workflows::add_recipe(recipe) %>%
+            workflows::add_model(spec)
+
+          models[[algo]][[engine]] <- parsnip::fit(wf, data = train_data)
+
+        } else if (algo == "royston_parmar") {
+          if (!requireNamespace("rstpm2", quietly = TRUE)) {
+            warning("royston_parmar requires the 'rstpm2' package. Skipping.")
+            next
+          }
+
+          trained_recipe <- tryCatch(
+            recipes::prep(recipe, training = train_data, retain = TRUE),
+            error = function(e) {
+              warning(paste0("royston_parmar recipe preparation failed: ", e$message))
+              return(NULL)
+            }
+          )
+
+          if (is.null(trained_recipe)) {
+            next
+          }
+
+          processed_train <- tryCatch(
+            recipes::bake(trained_recipe, new_data = NULL),
+            error = function(e) {
+              warning(paste0("royston_parmar preprocessing failed: ", e$message))
+              return(NULL)
+            }
+          )
+
+          if (is.null(processed_train)) {
+            next
+          }
+
+          rp_fit <- tryCatch(
+            rstpm2::stpm2(surv_obj ~ ., data = processed_train, df = 3),
+            error = function(e) {
+              warning(paste0("royston_parmar training failed: ", e$message))
+              return(NULL)
+            }
+          )
+
+          if (is.null(rp_fit)) {
+            next
+          }
+
+          models[[algo]][[engine]] <- structure(
+            list(
+              fit = rp_fit,
+              recipe = trained_recipe,
+              engine = engine
+            ),
+            class = "fastml_royston"
+          )
+
+        } else {
+          warning(paste("Algorithm", algo, "is not supported or failed to train."))
+        }
+      }
+
+      if (length(models[[algo]]) == 0) {
+        models[[algo]] <- NULL
+      }
     }
+
+    models <- models[!sapply(models, is.null)]
 
     return(models)
 

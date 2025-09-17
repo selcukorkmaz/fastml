@@ -59,7 +59,10 @@ availableMethods <- function(type = c("classification", "regression", "survival"
     } else {
       c(
         "rand_forest",
-        "elastic_net"
+        "elastic_net",
+        "cox_ph",
+        "survreg",
+        "royston_parmar"
       )
     }
 
@@ -103,6 +106,9 @@ get_default_engine <- function(algo) {
          "ridge_reg" = "glmnet",
          "lasso_reg" = "glmnet",
          "deep_learning" = "keras",
+         "cox_ph" = "survival",
+         "survreg" = "survival",
+         "royston_parmar" = "rstpm2",
          stop("No default engine defined for algorithm: ", algo)
   )
 }

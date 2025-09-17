@@ -32,10 +32,152 @@
 #'   F1-score, and ROC AUC (if probabilities are available).
 #'
 #' - For regression tasks, RMSE, R-squared, and MAE are returned.
-#'
+#' 
 #' - For models with missing prediction lengths, a helpful imputation error is thrown to guide data preprocessing.
-#'
+#' 
+#' @importFrom survival psurvreg survfit
 #' @export
+
+compute_survreg_probabilities <- function(final_model, new_data, eval_time, fit_info = NULL) {
+  lp_tbl <- tryCatch(
+    predict(final_model, new_data = new_data, type = "linear_pred"),
+    error = function(e) NULL
+  )
+
+  if (is.null(lp_tbl) || !".pred" %in% names(lp_tbl)) {
+    return(rep(NA_real_, nrow(new_data)))
+  }
+
+  lp <- lp_tbl$.pred
+
+  if (is.null(fit_info)) {
+    fit_info <- tryCatch(
+      workflows::extract_fit_parsnip(final_model),
+      error = function(e) NULL
+    )
+  }
+
+  if (is.null(fit_info) || is.null(fit_info$fit)) {
+    return(rep(NA_real_, length(lp)))
+  }
+
+  survreg_fit <- fit_info$fit
+  scale_val <- if (!is.null(survreg_fit$scale)) survreg_fit$scale else 1
+
+  dist_val <- NULL
+  if (!is.null(survreg_fit$dist)) {
+    dist_val <- survreg_fit$dist
+  } else if (!is.null(survreg_fit$call$dist)) {
+    dist_val <- as.character(survreg_fit$call$dist)
+  }
+  if (is.null(dist_val) || length(dist_val) == 0) {
+    dist_val <- "weibull"
+  }
+
+  surv_prob <- tryCatch(
+    1 - survival::psurvreg(
+      rep(eval_time, length(lp)),
+      mean = lp,
+      scale = scale_val,
+      distribution = dist_val
+    ),
+    error = function(e) rep(NA_real_, length(lp))
+  )
+
+  as.numeric(surv_prob)
+}
+
+get_survival_probabilities <- function(final_model, new_data, eval_time, engine) {
+  raw_pred <- tryCatch(
+    predict(final_model, new_data = new_data, type = "survival", eval_time = eval_time),
+    error = function(e) NULL
+  )
+
+  if (!is.null(raw_pred)) {
+    if (".pred" %in% names(raw_pred)) {
+      return(raw_pred$.pred)
+    }
+    if (".pred_survival" %in% names(raw_pred)) {
+      return(raw_pred$.pred_survival)
+    }
+    first_col <- raw_pred[[1]]
+    if (is.numeric(first_col)) {
+      return(first_col)
+    }
+  }
+
+  fit_info <- tryCatch(
+    workflows::extract_fit_parsnip(final_model),
+    error = function(e) NULL
+  )
+
+  if (!is.null(fit_info)) {
+    spec_class <- class(fit_info$spec)[1]
+    if (!is.null(spec_class) && spec_class == "survival_reg" && engine == "survival") {
+      return(compute_survreg_probabilities(final_model, new_data, eval_time, fit_info))
+    }
+  } else if (inherits(final_model, "model_fit")) {
+    spec_class <- class(final_model$spec)[1]
+    if (!is.null(spec_class) && spec_class == "survival_reg" && engine == "survival") {
+      return(compute_survreg_probabilities(final_model, new_data, eval_time))
+    }
+  }
+
+  rep(NA_real_, nrow(new_data))
+}
+
+compute_ipcw_brier <- function(train_time, train_status, test_time, test_status, surv_prob, eval_time) {
+  if (length(surv_prob) != length(test_time) || all(is.na(surv_prob))) {
+    return(NA_real_)
+  }
+
+  indicator <- as.numeric(test_time > eval_time)
+  train_status <- as.numeric(train_status)
+  test_status <- as.numeric(test_status)
+
+  if (length(indicator) != length(surv_prob)) {
+    return(NA_real_)
+  }
+
+  if (all(train_status == 1, na.rm = TRUE)) {
+    return(mean((indicator - surv_prob)^2))
+  }
+
+  censor_fit <- tryCatch(
+    survival::survfit(survival::Surv(train_time, 1 - train_status) ~ 1),
+    error = function(e) NULL
+  )
+
+  if (is.null(censor_fit)) {
+    return(mean((indicator - surv_prob)^2))
+  }
+
+  g_eval <- tryCatch(
+    summary(censor_fit, times = eval_time, extend = TRUE)$surv,
+    error = function(e) NA_real_
+  )
+
+  g_tminus <- tryCatch(
+    summary(censor_fit, times = pmax(test_time - 1e-8, 0), extend = TRUE)$surv,
+    error = function(e) rep(NA_real_, length(test_time))
+  )
+
+  if (is.na(g_eval) || any(is.na(g_tminus))) {
+    return(mean((indicator - surv_prob)^2))
+  }
+
+  eps <- sqrt(.Machine$double.eps)
+  contrib <- (indicator - surv_prob)^2
+  observed_event <- (test_time <= eval_time) & (test_status == 1)
+  beyond_time <- test_time > eval_time
+
+  contrib[observed_event] <- contrib[observed_event] / pmax(g_tminus[observed_event], eps)
+  contrib[beyond_time] <- contrib[beyond_time] / pmax(g_eval, eps)
+  contrib[!(observed_event | beyond_time)] <- 0
+  contrib[!is.finite(contrib)] <- 0
+
+  mean(contrib)
+}
 
 process_model <- function(model_obj, model_id, task, test_data, label, event_class,
                           engine, train_data, metric) {
@@ -179,34 +321,82 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
     time_col <- label[1]
     status_col <- label[2]
     surv_obj <- survival::Surv(test_data[[time_col]], test_data[[status_col]])
-    risk <- tryCatch(
-      predict(final_model, new_data = test_data, type = "linear_pred")$.pred,
-      error = function(e) predict(final_model, new_data = test_data)$.pred
-    )
-
     t0 <- stats::median(train_data[[time_col]])
-    surv_pred <- tryCatch(
-      predict(final_model, new_data = test_data, type = "survival", eval_time = t0),
-      error = function(e) NULL
-    )
-    if (!is.null(surv_pred)) {
-      if (".pred" %in% names(surv_pred)) {
-        surv_prob <- surv_pred$.pred
-      } else if (".pred_survival" %in% names(surv_pred)) {
-        surv_prob <- surv_pred$.pred_survival
+
+    if (inherits(final_model, "fastml_royston")) {
+      processed_test <- tryCatch(
+        recipes::bake(final_model$recipe, new_data = test_data),
+        error = function(e) NULL
+      )
+
+      if (is.null(processed_test)) {
+        risk <- rep(NA_real_, nrow(test_data))
+        surv_prob <- rep(NA_real_, nrow(test_data))
       } else {
-        surv_prob <- surv_pred[[1]]
+        processed_new <- as.data.frame(processed_test)
+        if ("surv_obj" %in% names(processed_new)) {
+          processed_new$surv_obj <- NULL
+        }
+        risk <- tryCatch(
+          as.numeric(rstpm2::predict(final_model$fit, newdata = processed_new, type = "link")),
+          error = function(e) rep(NA_real_, nrow(test_data))
+        )
+        surv_prob <- tryCatch(
+          as.numeric(rstpm2::predict(final_model$fit, newdata = processed_new, type = "surv", time = t0)),
+          error = function(e) rep(NA_real_, nrow(test_data))
+        )
       }
-      brier <- mean((as.numeric(test_data[[time_col]] > t0) - surv_prob)^2)
     } else {
-      surv_prob <- rep(NA_real_, nrow(test_data))
-      brier <- NA_real_
+      risk <- tryCatch(
+        predict(final_model, new_data = test_data, type = "linear_pred")$.pred,
+        error = function(e) {
+          tryCatch(
+            predict(final_model, new_data = test_data)$.pred,
+            error = function(e2) rep(NA_real_, nrow(test_data))
+          )
+        }
+      )
+
+      surv_prob <- get_survival_probabilities(final_model, test_data, t0, engine)
     }
 
-    c_index <- survival::concordance(surv_obj ~ risk)$concordance
-    risk_group <- ifelse(risk > stats::median(risk), "high", "low")
-    lr <- survival::survdiff(surv_obj ~ risk_group)
-    logrank_p <- 1 - stats::pchisq(lr$chisq, length(lr$n) - 1)
+    train_surv <- survival::Surv(train_data[[time_col]], train_data[[status_col]])
+    train_status_vec <- train_surv[, "status"]
+    test_status_vec <- surv_obj[, "status"]
+
+    brier <- if (anyNA(surv_prob)) {
+      NA_real_
+    } else {
+      compute_ipcw_brier(
+        train_time = train_data[[time_col]],
+        train_status = train_status_vec,
+        test_time = test_data[[time_col]],
+        test_status = test_status_vec,
+        surv_prob = surv_prob,
+        eval_time = t0
+      )
+    }
+
+    if (all(is.na(risk))) {
+      c_index <- NA_real_
+      risk_group <- rep(NA_character_, length(risk))
+      logrank_p <- NA_real_
+    } else {
+      c_index <- survival::concordance(surv_obj ~ risk)$concordance
+      median_risk <- stats::median(risk, na.rm = TRUE)
+      if (is.finite(median_risk)) {
+        risk_group <- ifelse(risk > median_risk, "high", "low")
+        if (length(unique(risk_group[!is.na(risk_group)])) > 1) {
+          lr <- survival::survdiff(surv_obj ~ risk_group)
+          logrank_p <- 1 - stats::pchisq(lr$chisq, length(lr$n) - 1)
+        } else {
+          logrank_p <- NA_real_
+        }
+      } else {
+        risk_group <- rep(NA_character_, length(risk))
+        logrank_p <- NA_real_
+      }
+    }
 
     perf <- tibble::tibble(
       .metric = c("c_index", "brier_score", "logrank_p"),

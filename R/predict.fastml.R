@@ -85,8 +85,8 @@ predict.fastml <- function(object, newdata,
   if (!is.null(model_name)) {
     # user wants a specific model → look in object$models
     all_mods <- object$models
-    if (!is.list(all_mods) ||
-        !all(sapply(all_mods, inherits, "workflow"))) {
+    valid_model <- function(mod) inherits(mod, "workflow") || inherits(mod, "fastml_royston")
+    if (!is.list(all_mods) || !all(sapply(all_mods, valid_model))) {
       stop("No valid `models` slot in fastml object.")
     }
     bad <- setdiff(model_name, names(all_mods))
@@ -97,10 +97,10 @@ predict.fastml <- function(object, newdata,
   } else {
     # default → best_model slot
     bm <- object$best_model
-    if (inherits(bm, "workflow")) {
+    if (inherits(bm, "workflow") || inherits(bm, "fastml_royston")) {
       to_predict <- list(bm)
       names(to_predict) <- if (!is.null(names(bm))) names(bm) else "best_model"
-    } else if (is.list(bm) && all(sapply(bm, inherits, "workflow"))) {
+    } else if (is.list(bm) && all(sapply(bm, valid_model))) {
       to_predict <- bm
     } else {
       stop("No valid `best_model` found in fastml object.")
@@ -111,14 +111,26 @@ predict.fastml <- function(object, newdata,
   preds <- lapply(names(to_predict), function(nm) {
     wf <- to_predict[[nm]]
     if (verbose) message("Predicting with: ", nm)
-    p <- predict(wf, new_data = new_proc, type = predict_type, ...)
-    # pull out the vector (or keep full prob‐tibble)
-    if (is.data.frame(p) || tibble::is_tibble(p)) {
-      p <- switch(predict_type,
-                  class   = p$.pred_class,
-                  numeric = p$.pred,
-                  prob    = p
+    if (inherits(wf, "workflow")) {
+      p <- predict(wf, new_data = new_proc, type = predict_type, ...)
+      if (is.data.frame(p) || tibble::is_tibble(p)) {
+        p <- switch(predict_type,
+                    class   = p$.pred_class,
+                    numeric = p$.pred,
+                    prob    = p
+        )
+      }
+    } else if (inherits(wf, "fastml_royston")) {
+      pred_data <- new_proc
+      if ("surv_obj" %in% names(pred_data)) {
+        pred_data$surv_obj <- NULL
+      }
+      p <- tryCatch(
+        as.numeric(rstpm2::predict(wf$fit, newdata = pred_data, type = "link")),
+        error = function(e) rep(NA_real_, nrow(pred_data))
       )
+    } else {
+      stop("Unsupported model type for prediction.")
     }
     if (!is.null(postprocess_fn)) {
       p <- postprocess_fn(p)
