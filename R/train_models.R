@@ -266,8 +266,23 @@ train_models <- function(train_data,
           warning(sprintf("coxnet final fit failed: %s", glmnet_fit$message))
           next
         }
-        spec <- create_native_spec("coxnet", engine, glmnet_fit, rec_prep,
-                                   extras = list(penalty = lambda, feature_names = colnames(x_mat)))
+        x_terms <- attr(x_mat, "terms")
+        if (!is.null(x_terms)) {
+          attr(x_terms, ".Environment") <- baseenv()
+        }
+        x_contrasts <- attr(x_mat, "contrasts")
+        spec <- create_native_spec(
+          "coxnet",
+          engine,
+          glmnet_fit,
+          rec_prep,
+          extras = list(
+            penalty = lambda,
+            feature_names = colnames(x_mat),
+            x_terms = x_terms,
+            x_contrasts = x_contrasts
+          )
+        )
       } else if (algo == "royston_parmar") {
         if (!requireNamespace("rstpm2", quietly = TRUE)) {
           warning("Package 'rstpm2' not installed; skipping royston_parmar.")

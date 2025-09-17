@@ -261,32 +261,70 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
             rep(NA_real_, nrow(test_data))
           } else {
             feature_names <- final_model$feature_names
-            n_obs <- nrow(pred_predictors)
+            x_terms <- final_model$x_terms
+            x_contrasts <- final_model$x_contrasts
+            n_obs <- if (is.null(pred_predictors)) 0L else nrow(pred_predictors)
+
             if (is.null(feature_names) || length(feature_names) == 0) {
               rep(NA_real_, nrow(test_data))
             } else if (n_obs == 0) {
               numeric(0)
             } else {
-              if (ncol(pred_predictors) > 0) {
-                mm <- stats::model.matrix(~ . - 1, data = pred_predictors)
-              } else {
-                mm <- matrix(0, nrow = n_obs, ncol = 0)
-              }
-              mm_full <- matrix(0, nrow = n_obs, ncol = length(feature_names))
-              colnames(mm_full) <- feature_names
-              if (ncol(mm) > 0) {
-                overlap <- intersect(feature_names, colnames(mm))
-                if (length(overlap) > 0) {
-                  mm_full[, overlap, drop = FALSE] <- mm[, overlap, drop = FALSE]
+              prepare_glmnet_newx <- function(new_data) {
+                if (is.null(new_data)) {
+                  new_data <- data.frame()
                 }
+                n_local <- nrow(new_data)
+                if (n_local == 0) {
+                  out <- matrix(0, nrow = 0, ncol = length(feature_names))
+                  colnames(out) <- feature_names
+                  return(out)
+                }
+                if (ncol(new_data) == 0) {
+                  mm <- matrix(0, nrow = n_local, ncol = 0)
+                } else {
+                  mm <- tryCatch({
+                    if (!is.null(x_terms)) {
+                      stats::model.matrix(x_terms, new_data, contrasts.arg = x_contrasts)
+                    } else {
+                      stats::model.matrix(~ . - 1, data = new_data)
+                    }
+                  }, error = function(e) NULL)
+                  if (is.null(mm)) {
+                    mm <- tryCatch(stats::model.matrix(~ . - 1, data = new_data), error = function(e) NULL)
+                  }
+                  if (is.null(mm)) {
+                    mm <- matrix(0, nrow = n_local, ncol = 0)
+                  }
+                }
+                mm <- as.matrix(mm)
+                mm_colnames <- colnames(mm)
+                if (!is.null(mm_colnames) && any(mm_colnames == "(Intercept)")) {
+                  keep_cols <- mm_colnames != "(Intercept)"
+                  mm <- mm[, keep_cols, drop = FALSE]
+                  mm_colnames <- colnames(mm)
+                }
+                mm_full <- matrix(0, nrow = n_local, ncol = length(feature_names))
+                colnames(mm_full) <- feature_names
+                if (ncol(mm) > 0) {
+                  overlap <- intersect(feature_names, mm_colnames)
+                  if (length(overlap) > 0) {
+                    mm_full[, overlap] <- mm[, overlap, drop = FALSE]
+                  }
+                }
+                mm_full[!is.finite(mm_full)] <- 0
+                mm_full
               }
+
+              mm_full <- prepare_glmnet_newx(pred_predictors)
+              n_obs <- nrow(mm_full)
               penalty <- final_model$penalty
               pred_lp <- tryCatch({
                 glmnet::predict(final_model$fit, newx = mm_full,
                                  s = penalty, type = "link")
               }, error = function(e) NULL)
-              if (!is.null(pred_lp) && is.matrix(pred_lp)) {
-                pred_lp <- pred_lp[, 1, drop = TRUE]
+              if (!is.null(pred_lp) && length(dim(pred_lp)) >= 2) {
+                pred_lp <- as.matrix(pred_lp)[, 1, drop = TRUE]
               }
               if (!is.null(pred_lp)) {
                 pred_lp <- as.numeric(pred_lp)
