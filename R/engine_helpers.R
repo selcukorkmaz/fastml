@@ -153,25 +153,45 @@ get_default_engine <- function(algo, task = NULL) {
 #'
 #' @export
 get_engine_names <- function(models) {
-  lapply(models, function(model_list) {
-    # Extract engine names from each workflow
-    engines <- sapply(model_list, function(mod) {
-      # Handle custom native survival models
-      if (inherits(mod, "fastml_native_survival")) {
-        return(if (!is.null(mod$engine)) mod$engine else NA_character_)
+  extract_engine <- function(mod) {
+    if (inherits(mod, "fastml_native_survival")) {
+      eng <- mod$engine
+      if (is.null(eng) || is.na(eng)) {
+        return(NA_character_)
       }
-      fit_obj <- tryCatch(
-        extract_fit_parsnip(mod),
-        error = function(e) NULL
-      )
-      if (!is.null(fit_obj)) {
-        fit_obj$spec$engine
-      } else {
+      return(as.character(eng))
+    }
+    fit_obj <- tryCatch(
+      extract_fit_parsnip(mod),
+      error = function(e) NULL
+    )
+    if (!is.null(fit_obj) && !is.null(fit_obj$spec$engine)) {
+      return(as.character(fit_obj$spec$engine))
+    }
+    NA_character_
+  }
+
+  lapply(models, function(model_entry) {
+    if (inherits(model_entry, "fastml_native_survival")) {
+      eng <- extract_engine(model_entry)
+      if (is.na(eng)) NA_character_ else eng
+    } else if (inherits(model_entry, "workflow") || inherits(model_entry, "model_fit")) {
+      eng <- extract_engine(model_entry)
+      if (is.na(eng)) NA_character_ else eng
+    } else if (is.list(model_entry)) {
+      if (length(model_entry) == 0) {
+        return(NA_character_)
+      }
+      engines <- vapply(model_entry, extract_engine, character(1))
+      engines <- unique(engines[!is.na(engines) & engines != ""])
+      if (length(engines) == 0) {
         NA_character_
+      } else {
+        engines
       }
-    })
-    # Remove names and duplicate entries
-    unique(unname(engines))
+    } else {
+      NA_character_
+    }
   })
 }
 
