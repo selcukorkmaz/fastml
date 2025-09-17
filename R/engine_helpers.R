@@ -63,7 +63,6 @@ availableMethods <- function(type = c("classification", "regression", "survival"
         "stratified_cox",
         "time_varying_cox",
         "survreg",
-        "coxnet",
         "royston_parmar"
       )
     }
@@ -100,9 +99,6 @@ get_default_engine <- function(algo, task = NULL) {
   if (algo == "survreg" && !is.null(task) && task == "survival") {
     return("survival")
   }
-  if (algo == "coxnet" && !is.null(task) && task == "survival") {
-    return("glmnet")
-  }
   if (algo == "royston_parmar" && !is.null(task) && task == "survival") {
     return("rstpm2")
   }
@@ -136,7 +132,6 @@ get_default_engine <- function(algo, task = NULL) {
          "stratified_cox" = "survival",
          "time_varying_cox" = "survival",
          "survreg" = "survival",
-         "coxnet" = "glmnet",
          "royston_parmar" = "rstpm2",
          "deep_learning" = "keras",
          stop("No default engine defined for algorithm: ", algo)

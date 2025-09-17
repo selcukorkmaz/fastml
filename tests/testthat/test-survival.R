@@ -34,30 +34,6 @@ test_that("cox_ph survival model trains and evaluates", {
   }
 })
 
-test_that("coxnet survival model returns finite risk predictions", {
-  skip_if_not_installed("glmnet")
-  data(cancer, package = "survival")
-  cancer <- cancer[complete.cases(cancer), ]
-  set.seed(42)
-  res <- fastml(
-    data = cancer,
-    label = c("time", "status"),
-    algorithms = "coxnet",
-    task = "survival",
-    resampling_method = "none",
-    test_size = 0.3,
-    metric = "c_index"
-  )
-  expect_s3_class(res, "fastml")
-  perf <- res$performance[[1]]
-  c_index <- perf$.estimate[perf$.metric == "c_index"]
-  expect_equal(length(c_index), 1)
-  expect_true(is.finite(c_index))
-  preds <- res$predictions[[1]]
-  expect_true("risk" %in% names(preds))
-  expect_gt(sum(is.finite(preds$risk)), 0)
-})
-
 test_that("survival random forest with aorsf engine trains when available", {
   skip_if_not_installed("aorsf")
   skip_if_not_installed("censored")

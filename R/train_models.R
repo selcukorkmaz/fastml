@@ -235,54 +235,6 @@ train_models <- function(train_data,
                                  dist = "weibull")
         spec <- create_native_spec("survreg", engine, fit, rec_prep,
                                    extras = list(distribution = "weibull"))
-      } else if (algo == "coxnet") {
-        if (!requireNamespace("glmnet", quietly = TRUE)) {
-          warning("Package 'glmnet' not installed; skipping coxnet.")
-          next
-        }
-        prep_dat <- get_prepped_data()
-        baked_train <- prep_dat$data
-        rec_prep <- prep_dat$recipe
-        predictor_df <- baked_train
-        predictor_df[[response_col]] <- NULL
-        if (ncol(predictor_df) == 0) {
-          warning("No predictors available for coxnet; skipping.")
-          next
-        }
-        x_mat <- stats::model.matrix(~ . - 1, data = predictor_df)
-        if (ncol(x_mat) == 0) {
-          warning("No predictors available for coxnet; skipping.")
-          next
-        }
-        y <- baked_train[[response_col]]
-        cv_fit <- tryCatch(glmnet::cv.glmnet(x_mat, y, family = "cox"), error = function(e) e)
-        if (inherits(cv_fit, "error")) {
-          warning(sprintf("coxnet training failed: %s", cv_fit$message))
-          next
-        }
-        lambda <- cv_fit$lambda.min
-        glmnet_fit <- tryCatch(glmnet::glmnet(x_mat, y, family = "cox", lambda = lambda), error = function(e) e)
-        if (inherits(glmnet_fit, "error")) {
-          warning(sprintf("coxnet final fit failed: %s", glmnet_fit$message))
-          next
-        }
-        x_terms <- attr(x_mat, "terms")
-        if (!is.null(x_terms)) {
-          attr(x_terms, ".Environment") <- baseenv()
-        }
-        x_contrasts <- attr(x_mat, "contrasts")
-        spec <- create_native_spec(
-          "coxnet",
-          engine,
-          glmnet_fit,
-          rec_prep,
-          extras = list(
-            penalty = lambda,
-            feature_names = colnames(x_mat),
-            x_terms = x_terms,
-            x_contrasts = x_contrasts
-          )
-        )
       } else if (algo == "royston_parmar") {
         if (!requireNamespace("rstpm2", quietly = TRUE)) {
           warning("Package 'rstpm2' not installed; skipping royston_parmar.")

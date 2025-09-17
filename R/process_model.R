@@ -453,8 +453,6 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
           as.numeric(censored::survival_time_survbagg(final_model$fit, pred_predictors))
         } else if (inherits(final_model$fit, "mboost")) {
           as.numeric(censored::survival_time_mboost(final_model$fit, pred_predictors))
-        } else if (inherits(final_model$fit, "glmnet")) {
-          as.numeric(censored::survival_time_coxnet(final_model$fit, pred_predictors))
         } else {
           rep(NA_real_, nrow(test_data))
         }
