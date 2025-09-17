@@ -93,6 +93,19 @@ train_models <- function(train_data,
   if (task == "survival") {
     models <- list()
 
+    response_col <- label
+    label_cols <- attr(train_data[[label]], "fastml_label_cols")
+    if (is.null(label_cols)) {
+      if (length(label) > 1) {
+        label_cols <- label
+      } else {
+        stop("Survival training requires original time/status column names to be stored on the response.")
+      }
+    }
+    start_col <- if (length(label_cols) == 3) label_cols[1] else NULL
+    time_col <- if (length(label_cols) == 3) label_cols[2] else label_cols[1]
+    status_col <- label_cols[length(label_cols)]
+
     get_engine <- function(algo, default_engine) {
       if (!is.null(algorithm_engines) && !is.null(algorithm_engines[[algo]])) {
         return(algorithm_engines[[algo]])
@@ -101,10 +114,36 @@ train_models <- function(train_data,
       }
     }
 
+    rec_prep_cache <- NULL
+    baked_train_cache <- NULL
+    get_prepped_data <- function() {
+      if (is.null(rec_prep_cache)) {
+        rec_prep_cache <<- recipes::prep(recipe, training = train_data, retain = TRUE)
+        baked_train_cache <<- recipes::bake(rec_prep_cache, new_data = NULL)
+      }
+      list(recipe = rec_prep_cache, data = baked_train_cache)
+    }
+
+    create_native_spec <- function(algo_name, engine_name, fit_obj, recipe_obj, extras = list()) {
+      spec <- c(list(
+        algo = algo_name,
+        engine = if (!is.null(engine_name)) engine_name else NA_character_,
+        fit = fit_obj,
+        recipe = recipe_obj,
+        response = response_col,
+        label_cols = label_cols,
+        time_col = time_col,
+        status_col = status_col,
+        start_col = start_col
+      ), extras)
+      class(spec) <- c("fastml_native_survival", "fastml_model")
+      spec
+    }
+
     for (algo in algorithms) {
       engine <- get_engine(algo, get_default_engine(algo, task))
+
       if (algo == "rand_forest") {
-        # Prefer 'aorsf'; fall back to 'ranger' if not available
         if (identical(engine, "aorsf") && !requireNamespace("aorsf", quietly = TRUE)) {
           if (requireNamespace("ranger", quietly = TRUE)) {
             warning("Engine 'aorsf' not installed. Falling back to 'ranger' for survival random forest.")
@@ -114,7 +153,6 @@ train_models <- function(train_data,
             next
           }
         }
-        # Parsonip survival mode/extensions provided via 'censored'; skip if missing
         if (!requireNamespace("censored", quietly = TRUE)) {
           warning("Package 'censored' not installed; skipping survival random forest parsnip model.")
           next
@@ -128,17 +166,126 @@ train_models <- function(train_data,
         if (!requireNamespace("survival", quietly = TRUE)) {
           stop("The 'survival' package is required for Cox PH. Please install it.")
         }
-        rec_prep <- recipes::prep(recipe, training = train_data, retain = TRUE)
-        baked_train <- recipes::bake(rec_prep, new_data = NULL)
-        f <- as.formula(paste(label, "~ ."))
-        fit <- survival::coxph(formula = f, data = baked_train, ties = "efron")
-        spec <- list(
-          algo = "cox_ph",
-          engine = if (!is.null(engine)) engine else "survival",
-          fit = fit,
-          recipe = rec_prep
-        )
-        class(spec) <- c("fastml_native_survival", "fastml_model")
+        prep_dat <- get_prepped_data()
+        baked_train <- prep_dat$data
+        rec_prep <- prep_dat$recipe
+        fit <- survival::coxph(as.formula(paste(response_col, "~ .")),
+                               data = baked_train,
+                               ties = "efron")
+        spec <- create_native_spec("cox_ph", engine, fit, rec_prep)
+      } else if (algo == "stratified_cox") {
+        if (!requireNamespace("survival", quietly = TRUE)) {
+          stop("The 'survival' package is required for stratified Cox. Please install it.")
+        }
+        strata_cols <- names(train_data)[grepl("^strata", names(train_data))]
+        if (length(strata_cols) == 0) {
+          warning("No columns starting with 'strata' were found; skipping stratified Cox.")
+          next
+        }
+        prep_dat <- get_prepped_data()
+        baked_train <- prep_dat$data
+        rec_prep <- prep_dat$recipe
+        strata_cols_present <- character()
+        for (sc in strata_cols) {
+          if (!(sc %in% names(baked_train)) && sc %in% names(train_data)) {
+            baked_train[[sc]] <- train_data[[sc]]
+          }
+          if (sc %in% names(baked_train) && !is.factor(baked_train[[sc]])) {
+            baked_train[[sc]] <- as.factor(baked_train[[sc]])
+          }
+          if (sc %in% names(baked_train)) {
+            strata_cols_present <- c(strata_cols_present, sc)
+          }
+        }
+        if (length(strata_cols_present) == 0) {
+          warning("Unable to identify usable strata columns after preprocessing; skipping stratified Cox.")
+          next
+        }
+        predictor_cols <- setdiff(names(baked_train), c(response_col, strata_cols_present))
+        rhs_terms <- c(predictor_cols, paste0("strata(", strata_cols_present, ")"))
+        formula_rhs <- if (length(rhs_terms) == 0) "1" else paste(rhs_terms, collapse = " + ")
+        f <- as.formula(paste(response_col, "~", formula_rhs))
+        fit <- survival::coxph(f, data = baked_train, ties = "efron")
+        spec <- create_native_spec("stratified_cox", engine, fit, rec_prep,
+                                   extras = list(strata_cols = strata_cols_present))
+      } else if (algo == "time_varying_cox") {
+        if (length(label_cols) != 3) {
+          warning("time_varying_cox requires label = c(start, stop, status). Skipping.")
+          next
+        }
+        if (!requireNamespace("survival", quietly = TRUE)) {
+          stop("The 'survival' package is required for time-varying Cox. Please install it.")
+        }
+        prep_dat <- get_prepped_data()
+        baked_train <- prep_dat$data
+        rec_prep <- prep_dat$recipe
+        fit <- survival::coxph(as.formula(paste(response_col, "~ .")),
+                               data = baked_train,
+                               ties = "efron")
+        spec <- create_native_spec("time_varying_cox", engine, fit, rec_prep)
+      } else if (algo == "survreg") {
+        if (!requireNamespace("survival", quietly = TRUE)) {
+          stop("The 'survival' package is required for survreg. Please install it.")
+        }
+        prep_dat <- get_prepped_data()
+        baked_train <- prep_dat$data
+        rec_prep <- prep_dat$recipe
+        fit <- survival::survreg(as.formula(paste(response_col, "~ .")),
+                                 data = baked_train,
+                                 dist = "weibull")
+        spec <- create_native_spec("survreg", engine, fit, rec_prep,
+                                   extras = list(distribution = "weibull"))
+      } else if (algo == "coxnet") {
+        if (!requireNamespace("glmnet", quietly = TRUE)) {
+          warning("Package 'glmnet' not installed; skipping coxnet.")
+          next
+        }
+        prep_dat <- get_prepped_data()
+        baked_train <- prep_dat$data
+        rec_prep <- prep_dat$recipe
+        predictor_df <- baked_train
+        predictor_df[[response_col]] <- NULL
+        if (ncol(predictor_df) == 0) {
+          warning("No predictors available for coxnet; skipping.")
+          next
+        }
+        x_mat <- stats::model.matrix(~ . - 1, data = predictor_df)
+        if (ncol(x_mat) == 0) {
+          warning("No predictors available for coxnet; skipping.")
+          next
+        }
+        y <- baked_train[[response_col]]
+        cv_fit <- tryCatch(glmnet::cv.glmnet(x_mat, y, family = "cox"), error = function(e) e)
+        if (inherits(cv_fit, "error")) {
+          warning(sprintf("coxnet training failed: %s", cv_fit$message))
+          next
+        }
+        lambda <- cv_fit$lambda.min
+        glmnet_fit <- tryCatch(glmnet::glmnet(x_mat, y, family = "cox", lambda = lambda), error = function(e) e)
+        if (inherits(glmnet_fit, "error")) {
+          warning(sprintf("coxnet final fit failed: %s", glmnet_fit$message))
+          next
+        }
+        spec <- create_native_spec("coxnet", engine, glmnet_fit, rec_prep,
+                                   extras = list(penalty = lambda, feature_names = colnames(x_mat)))
+      } else if (algo == "royston_parmar") {
+        if (!requireNamespace("rstpm2", quietly = TRUE)) {
+          warning("Package 'rstpm2' not installed; skipping royston_parmar.")
+          next
+        }
+        prep_dat <- get_prepped_data()
+        baked_train <- prep_dat$data
+        rec_prep <- prep_dat$recipe
+        fit <- tryCatch(rstpm2::stpm2(as.formula(paste(response_col, "~ .")),
+                                      data = baked_train,
+                                      df = 3),
+                        error = function(e) e)
+        if (inherits(fit, "error")) {
+          warning(sprintf("royston_parmar training failed: %s", fit$message))
+          next
+        }
+        spec <- create_native_spec("royston_parmar", engine, fit, rec_prep,
+                                   extras = list(spline_df = 3))
       } else if (algo == "aft") {
         warning("Survival 'aft' requires censored survival model specs not available in your setup. Skipping.")
         next
@@ -157,7 +304,6 @@ train_models <- function(train_data,
     }
 
     return(models)
-
   } else if (task == "classification") {
 
     if(is.null(summaryFunction)){

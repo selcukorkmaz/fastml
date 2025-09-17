@@ -177,27 +177,27 @@ fastml <- function(data = NULL,
   # Auto-detect task if requested, including survival when label has two columns
   if (task == "auto") {
     # survival detection: label is c(time_col, status_col)
-    if (is.character(label) && length(label) == 2) {
+    if (is.character(label) && length(label) %in% c(2, 3)) {
       if (!all(label %in% names(source_data))) {
         missing_vars <- setdiff(label, names(source_data))
         stop(paste0(
-          "When task='auto' and 'label' has length 2, both columns must exist in the data for survival detection. Missing: ",
+          "When task='auto' and 'label' has length ",
+          length(label),
+          ", the specified columns must exist in the data for survival detection. Missing: ",
           paste(missing_vars, collapse = ", ")
         ))
       }
-      time_col <- label[1]
-      status_col <- label[2]
-      time_vec <- source_data[[time_col]]
+      time_cols <- if (length(label) == 3) label[1:2] else label[1]
+      status_col <- label[length(label)]
+      time_ok <- all(vapply(time_cols, function(col) is.numeric(source_data[[col]]), logical(1)))
       status_vec <- source_data[[status_col]]
-      is_time_ok <- is.numeric(time_vec)
-      # status acceptable if logical, or 2 unique values (factor/character/numeric)
       uniq_status <- unique(status_vec)
-      is_status_ok <- is.logical(status_vec) || length(uniq_status) == 2
-      if (is_time_ok && is_status_ok) {
+      status_ok <- is.logical(status_vec) || length(uniq_status) == 2
+      if (time_ok && status_ok) {
         task <- "survival"
         target_var <- NULL
       } else {
-        stop("Unable to detect survival task automatically: ensure time is numeric and status has two unique values.")
+        stop("Unable to detect survival task automatically: ensure time/start/stop are numeric and status has two unique values.")
       }
     } else {
       # classification/regression detection with single target label
@@ -222,8 +222,8 @@ fastml <- function(data = NULL,
   } else {
     # Non-auto: validate label(s) exist and set target_var when applicable
     if (task == "survival") {
-      if (length(label) != 2 || !all(label %in% names(source_data))) {
-        stop("For survival tasks, 'label' must contain the time and status column names present in the data.")
+      if (!(length(label) %in% c(2, 3)) || !all(label %in% names(source_data))) {
+        stop("For survival tasks, 'label' must contain the time/status columns present in the data (length 2 or 3).")
       }
       target_var <- NULL
     } else {
@@ -304,11 +304,26 @@ fastml <- function(data = NULL,
   }
 
   if (task == "survival") {
-    time_col <- label[1]
-    status_col <- label[2]
-    train_data$surv_obj <- survival::Surv(train_data[[time_col]], train_data[[status_col]])
-    test_data$surv_obj <- survival::Surv(test_data[[time_col]], test_data[[status_col]])
+    if (!(length(label) %in% c(2, 3))) {
+      stop("For survival tasks, 'label' must contain the time/status columns present in the data (length 2 or 3).")
+    }
     label_surv <- label
+    if (length(label) == 2) {
+      time_col <- label[1]
+      status_col <- label[2]
+      surv_train <- survival::Surv(train_data[[time_col]], train_data[[status_col]])
+      surv_test  <- survival::Surv(test_data[[time_col]], test_data[[status_col]])
+    } else {
+      start_col <- label[1]
+      stop_col <- label[2]
+      status_col <- label[3]
+      surv_train <- survival::Surv(train_data[[start_col]], train_data[[stop_col]], train_data[[status_col]])
+      surv_test  <- survival::Surv(test_data[[start_col]], test_data[[stop_col]], test_data[[status_col]])
+    }
+    attr(surv_train, "fastml_label_cols") <- label_surv
+    attr(surv_test, "fastml_label_cols") <- label_surv
+    train_data$surv_obj <- surv_train
+    test_data$surv_obj <- surv_test
     label <- "surv_obj"
   } else {
     label_surv <- label
