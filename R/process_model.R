@@ -246,6 +246,263 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       as.numeric(pred)
     }
 
+    align_survival_curve <- function(curve_times, curve_surv, eval_times) {
+      if (length(eval_times) == 0) {
+        return(numeric(0))
+      }
+      if (length(curve_times) == 0 || length(curve_surv) == 0) {
+        return(rep(NA_real_, length(eval_times)))
+      }
+      curve_times <- as.numeric(curve_times)
+      curve_surv <- as.numeric(curve_surv)
+      ord <- order(curve_times)
+      curve_times <- curve_times[ord]
+      curve_surv <- curve_surv[ord]
+      idx <- findInterval(eval_times, curve_times)
+      res <- rep(NA_real_, length(eval_times))
+      if (any(idx == 0)) {
+        res[idx == 0] <- 1
+      }
+      pos_idx <- which(idx > 0)
+      if (length(pos_idx) > 0) {
+        mapped <- pmin(idx[pos_idx], length(curve_surv))
+        res[pos_idx] <- curve_surv[mapped]
+      }
+      if (any(idx > length(curve_surv))) {
+        last_val <- curve_surv[length(curve_surv)]
+        res[idx > length(curve_surv)] <- last_val
+      }
+      res <- pmin(pmax(res, 0), 1)
+      res
+    }
+
+    build_survfit_matrix <- function(fit_obj, eval_times, n_obs) {
+      if (is.null(fit_obj) || length(eval_times) == 0 || n_obs == 0) {
+        return(NULL)
+      }
+      surv_times <- fit_obj$time
+      surv_vals <- fit_obj$surv
+      if (is.null(surv_times) || is.null(surv_vals)) {
+        return(NULL)
+      }
+      if (is.matrix(surv_vals)) {
+        n_curves <- ncol(surv_vals)
+        res <- matrix(NA_real_, nrow = n_curves, ncol = length(eval_times))
+        for (j in seq_len(n_curves)) {
+          res[j, ] <- align_survival_curve(surv_times, surv_vals[, j], eval_times)
+        }
+        if (n_curves != n_obs) {
+          if (n_curves == 1 && n_obs > 1) {
+            res <- matrix(res[1, ], nrow = n_obs, ncol = length(eval_times), byrow = TRUE)
+          } else {
+            res <- res[seq_len(min(n_curves, n_obs)), , drop = FALSE]
+            if (n_curves < n_obs) {
+              res <- rbind(res, matrix(NA_real_, nrow = n_obs - n_curves, ncol = length(eval_times)))
+            }
+          }
+        }
+        return(res)
+      }
+      if (is.numeric(surv_vals)) {
+        curve <- align_survival_curve(surv_times, surv_vals, eval_times)
+        return(matrix(rep(curve, each = n_obs), nrow = n_obs, ncol = length(eval_times)))
+      }
+      NULL
+    }
+
+    convert_survival_predictions <- function(pred_obj, eval_times, n_obs) {
+      if (is.null(pred_obj) || length(eval_times) == 0 || n_obs == 0) {
+        return(NULL)
+      }
+
+      if (is.matrix(pred_obj)) {
+        if (nrow(pred_obj) == n_obs && ncol(pred_obj) == length(eval_times)) {
+          return(as.matrix(pred_obj))
+        }
+        if (ncol(pred_obj) == n_obs && nrow(pred_obj) == length(eval_times)) {
+          return(t(pred_obj))
+        }
+      }
+
+      if (is.numeric(pred_obj) && length(pred_obj) == n_obs * length(eval_times)) {
+        return(matrix(pred_obj, nrow = n_obs, ncol = length(eval_times)))
+      }
+
+      extract_list <- NULL
+      if (is.data.frame(pred_obj)) {
+        if (".pred_survival" %in% names(pred_obj)) {
+          extract_list <- pred_obj$.pred_survival
+        } else if (".pred" %in% names(pred_obj)) {
+          extract_list <- pred_obj$.pred
+        } else {
+          extract_list <- pred_obj[[1]]
+        }
+      } else if (is.list(pred_obj)) {
+        extract_list <- pred_obj
+      }
+
+      if (is.null(extract_list)) {
+        return(NULL)
+      }
+
+      if (!is.list(extract_list)) {
+        if (is.numeric(extract_list) && length(extract_list) == n_obs * length(eval_times)) {
+          return(matrix(extract_list, nrow = n_obs, ncol = length(eval_times)))
+        }
+        if (is.numeric(extract_list) && length(extract_list) == n_obs) {
+          return(matrix(extract_list, nrow = n_obs, ncol = 1))
+        }
+        return(NULL)
+      }
+
+      res <- matrix(NA_real_, nrow = n_obs, ncol = length(eval_times))
+      max_iter <- min(length(extract_list), n_obs)
+      for (i in seq_len(max_iter)) {
+        entry <- extract_list[[i]]
+        if (is.null(entry)) next
+        if (is.data.frame(entry)) {
+          time_col <- intersect(c(".eval_time", ".time", "time"), names(entry))
+          surv_col <- intersect(c(".survival", "survival", ".pred_survival"), names(entry))
+          if (length(time_col) > 0 && length(surv_col) > 0) {
+            res[i, ] <- align_survival_curve(entry[[time_col[1]]], entry[[surv_col[1]]], eval_times)
+            next
+          }
+          if (ncol(entry) == length(eval_times)) {
+            vals <- as.numeric(entry[1, , drop = TRUE])
+            if (length(vals) == length(eval_times)) {
+              res[i, ] <- vals
+              next
+            }
+          }
+        }
+        if (is.numeric(entry)) {
+          vals <- as.numeric(entry)
+          if (length(vals) == length(eval_times)) {
+            res[i, ] <- vals
+            next
+          }
+          if (length(vals) == 1 && length(eval_times) == 1) {
+            res[i, ] <- rep(vals, length(eval_times))
+            next
+          }
+          if (length(vals) > 1) {
+            take <- min(length(vals), length(eval_times))
+            res[i, seq_len(take)] <- vals[seq_len(take)]
+            next
+          }
+        }
+        if (is.list(entry) && length(entry) > 0) {
+          inner <- entry[[1]]
+          if (is.data.frame(inner)) {
+            time_col <- intersect(c(".eval_time", ".time", "time"), names(inner))
+            surv_col <- intersect(c(".survival", "survival", ".pred_survival"), names(inner))
+            if (length(time_col) > 0 && length(surv_col) > 0) {
+              res[i, ] <- align_survival_curve(inner[[time_col[1]]], inner[[surv_col[1]]], eval_times)
+              next
+            }
+          }
+          if (is.numeric(inner)) {
+            vals <- as.numeric(inner)
+            if (length(vals) == length(eval_times)) {
+              res[i, ] <- vals
+            }
+          }
+        }
+      }
+      res
+    }
+
+    compute_ibrier <- function(eval_times, surv_mat, time_vec, status_vec) {
+      n <- length(time_vec)
+      m <- length(eval_times)
+      if (n == 0 || m == 0 || is.null(surv_mat) || nrow(surv_mat) != n || ncol(surv_mat) != m) {
+        return(list(ibs = NA_real_, curve = rep(NA_real_, m)))
+      }
+
+      status_vec <- ifelse(is.na(status_vec), 0, status_vec)
+      status_vec <- ifelse(status_vec > 0, 1, 0)
+      time_vec <- as.numeric(time_vec)
+
+      valid_idx <- which(!is.na(time_vec) & !is.na(status_vec))
+      if (length(valid_idx) == 0) {
+        return(list(ibs = NA_real_, curve = rep(NA_real_, m)))
+      }
+
+      censor_indicator <- 1 - status_vec[valid_idx]
+      censor_fit <- tryCatch({
+        survival::survfit(survival::Surv(time_vec[valid_idx], censor_indicator) ~ 1)
+      }, error = function(e) NULL)
+      if (is.null(censor_fit)) {
+        return(list(ibs = NA_real_, curve = rep(NA_real_, m)))
+      }
+
+      censor_eval <- function(times) {
+        if (length(times) == 0) return(numeric(0))
+        if (length(censor_fit$time) == 0 || length(censor_fit$surv) == 0) {
+          return(rep(1, length(times)))
+        }
+        align_survival_curve(censor_fit$time, censor_fit$surv, times)
+      }
+
+      G_t <- censor_eval(eval_times)
+      G_t[!is.finite(G_t) | G_t <= 0] <- NA_real_
+
+      time_minus <- pmax(time_vec - 1e-08, 0)
+      G_time_minus <- censor_eval(time_minus)
+      G_time_minus[!is.finite(G_time_minus) | G_time_minus <= 0] <- NA_real_
+
+      weights <- matrix(0, nrow = n, ncol = m)
+      for (j in seq_len(m)) {
+        t_val <- eval_times[j]
+        g_t <- G_t[j]
+        for (i in seq_len(n)) {
+          ti <- time_vec[i]
+          if (!is.finite(ti)) {
+            next
+          }
+          if (ti <= t_val && status_vec[i] == 1) {
+            denom <- G_time_minus[i]
+            if (is.finite(denom) && denom > 0) {
+              weights[i, j] <- 1 / denom
+            }
+          } else if (ti > t_val) {
+            if (is.finite(g_t) && g_t > 0) {
+              weights[i, j] <- 1 / g_t
+            }
+          }
+        }
+      }
+
+      indicator <- matrix(0, nrow = n, ncol = m)
+      for (j in seq_len(m)) {
+        indicator[, j] <- as.numeric(time_vec > eval_times[j])
+      }
+
+      residual <- indicator - surv_mat
+      residual[!is.finite(residual)] <- NA_real_
+      weighted <- weights * residual^2
+      weighted[!is.finite(weighted)] <- 0
+      bs_t <- colSums(weighted, na.rm = TRUE) / n
+      bs_t[!is.finite(bs_t)] <- NA_real_
+
+      valid_bs <- which(is.finite(bs_t) & is.finite(eval_times))
+      if (length(valid_bs) >= 2) {
+        times_valid <- eval_times[valid_bs]
+        bs_valid <- bs_t[valid_bs]
+        times_aug <- c(0, times_valid)
+        bs_aug <- c(0, bs_valid)
+        area <- sum(diff(times_aug) * (head(bs_aug, -1) + tail(bs_aug, -1)) / 2)
+        tau <- max(times_valid)
+        ibs <- if (tau > 0) area / tau else NA_real_
+      } else if (length(valid_bs) == 1) {
+        ibs <- bs_t[valid_bs]
+      } else {
+        ibs <- NA_real_
+      }
+
+      list(ibs = ibs, curve = bs_t)
+    }
+
     risk <- tryCatch({
       if (inherits(final_model, "fastml_native_survival")) {
         # Prepare predictor-only data for native survival fits
@@ -379,70 +636,136 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       }
     })
 
-    t0 <- stats::median(train_data[[time_col]])
-    # Try to obtain survival probability at t0
-    surv_pred <- tryCatch({
-      if (inherits(final_model, "fastml_native_survival")) {
-        if (requireNamespace("censored", quietly = TRUE)) {
-          if (inherits(final_model$fit, "coxph")) {
-            censored::survival_prob_coxph(final_model$fit, pred_predictors, eval_time = t0)
-          } else if (inherits(final_model$fit, "survreg")) {
-            censored::survival_prob_survreg(final_model$fit, pred_predictors, eval_time = t0)
-          } else {
-            NULL
+    train_times <- as.numeric(train_data[[time_col]])
+    test_times <- as.numeric(test_data[[time_col]])
+    t0 <- stats::median(train_times, na.rm = TRUE)
+
+    combined_times <- c(train_times, test_times)
+    combined_times <- combined_times[is.finite(combined_times) & combined_times > 0]
+    if (length(combined_times) > 0) {
+      eval_times <- sort(unique(combined_times))
+      if (length(eval_times) > 200) {
+        probs <- seq(0, 1, length.out = 200)
+        eval_times <- sort(unique(as.numeric(stats::quantile(eval_times, probs = probs, na.rm = TRUE, type = 1))))
+      }
+    } else {
+      eval_times <- numeric(0)
+    }
+    if (is.finite(t0) && t0 > 0) {
+      eval_times <- sort(unique(c(eval_times, t0)))
+    }
+
+    normalize_status <- function(status_vec) {
+      if (is.null(status_vec)) {
+        return(rep(0, length(test_times)))
+      }
+      if (is.factor(status_vec) || is.character(status_vec)) {
+        numeric_version <- suppressWarnings(as.numeric(as.character(status_vec)))
+        if (!all(is.na(numeric_version))) {
+          status_vec <- numeric_version
+        } else {
+          status_levels <- unique(status_vec[!is.na(status_vec)])
+          if (length(status_levels) <= 1) {
+            return(rep(0, length(status_vec)))
           }
-        } else if (inherits(final_model$fit, "coxph") || inherits(final_model$fit, "survreg")) {
-          if (nrow(pred_predictors) == 0) {
-            numeric(0)
-          } else {
-            surv_fit <- tryCatch(
-              survival::survfit(final_model$fit, newdata = pred_predictors),
-              error = function(e) NULL
-            )
-            if (is.null(surv_fit)) {
+          event_level <- status_levels[length(status_levels)]
+          return(ifelse(is.na(status_vec), 0, ifelse(status_vec == event_level, 1, 0)))
+        }
+      }
+      status_vec <- as.numeric(status_vec)
+      unique_vals <- sort(unique(status_vec[!is.na(status_vec)]))
+      if (length(unique_vals) == 0) {
+        rep(0, length(status_vec))
+      } else if (min(unique_vals) <= 0) {
+        ifelse(is.na(status_vec), 0, ifelse(status_vec > 0, 1, 0))
+      } else {
+        event_val <- max(unique_vals)
+        ifelse(is.na(status_vec), 0, ifelse(status_vec == event_val, 1, 0))
+      }
+    }
+
+    surv_matrix_vals <- tryCatch(as.matrix(surv_obj), error = function(e) NULL)
+    if (!is.null(surv_matrix_vals)) {
+      if ("time" %in% colnames(surv_matrix_vals)) {
+        obs_time <- as.numeric(surv_matrix_vals[, "time"])
+      } else if ("time2" %in% colnames(surv_matrix_vals)) {
+        obs_time <- as.numeric(surv_matrix_vals[, "time2"])
+      } else {
+        obs_time <- test_times
+      }
+      if ("status" %in% colnames(surv_matrix_vals)) {
+        status_event <- as.numeric(surv_matrix_vals[, "status"])
+      } else {
+        status_event <- normalize_status(test_data[[status_col]])
+      }
+    } else {
+      obs_time <- test_times
+      status_event <- normalize_status(test_data[[status_col]])
+    }
+    status_event[is.na(status_event)] <- 0
+
+    n_obs <- nrow(test_data)
+    surv_prob_mat <- NULL
+    if (length(eval_times) > 0 && n_obs > 0) {
+      if (inherits(final_model, "fastml_native_survival")) {
+        newdata_survfit <- pred_predictors
+        if (is.null(newdata_survfit) || nrow(newdata_survfit) != n_obs) {
+          newdata_survfit <- tryCatch({
+            if (is.null(pred_new_data)) {
               NULL
             } else {
-              surv_summary_vals <- tryCatch({
-                summary(surv_fit, times = t0, extend = TRUE)$surv
-              }, error = function(e) NULL)
-              if (!is.null(surv_summary_vals) && length(surv_summary_vals) == nrow(pred_predictors)) {
-                as.numeric(surv_summary_vals)
-              } else {
-                surv_times <- surv_fit$time
-                surv_vals <- surv_fit$surv
-                if (length(surv_times) == 0 || is.null(surv_vals)) {
-                  rep(1, nrow(pred_predictors))
-                } else if (is.matrix(surv_vals)) {
-                  idx <- findInterval(t0, surv_times)
-                  as.numeric(apply(surv_vals, 2, function(curve) {
-                    if (idx <= 0) {
-                      1
-                    } else {
-                      curve[min(idx, length(curve))]
-                    }
-                  }))
-                } else {
-                  idx <- findInterval(t0, surv_times)
-                  val <- if (idx <= 0) 1 else surv_vals[min(idx, length(surv_vals))]
-                  rep(val, nrow(pred_predictors))
-                }
-              }
+              drop_cols <- c(final_model$response, final_model$time_col, final_model$status_col, final_model$start_col)
+              drop_cols <- drop_cols[!is.na(drop_cols)]
+              keep_cols <- setdiff(names(pred_new_data), drop_cols)
+              pred_new_data[, keep_cols, drop = FALSE]
             }
-          }
-        } else {
-          NULL
+          }, error = function(e) NULL)
         }
+        surv_fit <- tryCatch(
+          survival::survfit(final_model$fit, newdata = newdata_survfit),
+          error = function(e) NULL
+        )
+        surv_prob_mat <- build_survfit_matrix(surv_fit, eval_times, n_obs)
       } else {
-        predict(final_model, new_data = test_data, type = "survival", eval_time = t0)
+        surv_pred <- tryCatch(
+          predict(final_model, new_data = test_data, type = "survival", eval_time = eval_times),
+          error = function(e) NULL
+        )
+        if (is.null(surv_pred) && length(eval_times) == 1) {
+          surv_pred <- tryCatch(
+            predict(final_model, new_data = test_data, type = "survival", eval_time = eval_times[1]),
+            error = function(e) NULL
+          )
+        }
+        surv_prob_mat <- convert_survival_predictions(surv_pred, eval_times, n_obs)
       }
-    }, error = function(e) NULL)
-    if (!is.null(surv_pred)) {
-      surv_prob <- extract_pred(surv_pred)
-      brier <- mean((as.numeric(test_data[[time_col]] > t0) - surv_prob)^2)
-    } else {
-      surv_prob <- rep(NA_real_, nrow(test_data))
-      brier <- NA_real_
     }
+
+    surv_prob <- rep(NA_real_, n_obs)
+    brier <- NA_real_
+    brier_curve <- rep(NA_real_, length(eval_times))
+    if (!is.null(surv_prob_mat) && nrow(surv_prob_mat) == n_obs && ncol(surv_prob_mat) == length(eval_times) && length(eval_times) > 0) {
+      idx_t0 <- 1L
+      if (is.finite(t0) && t0 > 0) {
+        idx_t0 <- which.min(abs(eval_times - t0))
+      }
+      idx_t0 <- max(1L, min(idx_t0, ncol(surv_prob_mat)))
+      surv_prob <- as.numeric(surv_prob_mat[, idx_t0])
+      ibs_res <- compute_ibrier(eval_times, surv_prob_mat, obs_time, status_event)
+      brier <- ibs_res$ibs
+      brier_curve <- ibs_res$curve
+    }
+
+    surv_curve_list <- vector("list", n_obs)
+    if (!is.null(surv_prob_mat) && nrow(surv_prob_mat) == n_obs && ncol(surv_prob_mat) == length(eval_times) && length(eval_times) > 0) {
+      formatted_times <- format(eval_times, trim = TRUE, scientific = FALSE)
+      for (i in seq_len(n_obs)) {
+        row_vals <- as.numeric(surv_prob_mat[i, ])
+        names(row_vals) <- formatted_times
+        surv_curve_list[[i]] <- row_vals
+      }
+    }
+    attr(surv_curve_list, "eval_times") <- eval_times
 
     # Try to obtain predicted survival time where supported
     surv_time <- tryCatch({
@@ -505,8 +828,11 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       status = test_data[[status_col]],
       risk = risk,
       surv_prob = surv_prob,
-      surv_time = surv_time
+      surv_time = surv_time,
+      surv_prob_curve = surv_curve_list
     )
+    attr(data_metrics, "eval_times") <- eval_times
+    attr(data_metrics, "brier_curve") <- tibble::tibble(eval_time = eval_times, brier = brier_curve)
 
   } else {
     # Regression task
