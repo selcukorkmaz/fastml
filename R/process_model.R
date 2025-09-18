@@ -1113,12 +1113,30 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         risk_group_vals <- ifelse(risk_vals > risk_threshold, "high", "low")
         risk_group[risk_valid] <- risk_group_vals
         if (length(unique(risk_group_vals)) > 1) {
-          lr <- tryCatch(
-            survival::survdiff(surv_valid ~ factor(risk_group_vals, levels = c("low", "high"))),
-            error = function(e) NULL
-          )
-          if (!is.null(lr)) {
-            logrank_p <- 1 - stats::pchisq(lr$chisq, length(lr$n) - 1)
+          # Handle log-rank calculation for both right-censored and counting process data
+          logrank_surv <- surv_valid
+          logrank_groups <- factor(risk_group_vals, levels = c("low", "high"))
+          surv_type <- attr(surv_valid, "type")
+          if (!is.null(surv_type) && surv_type == "counting") {
+            obs_sub <- obs_time[risk_valid]
+            status_sub <- status_event[risk_valid]
+            valid_idx <- is.finite(obs_sub) & !is.na(status_sub)
+            if (any(valid_idx)) {
+              logrank_surv <- survival::Surv(obs_sub[valid_idx], status_sub[valid_idx])
+              logrank_groups <- factor(logrank_groups[valid_idx], levels = c("low", "high"))
+            } else {
+              logrank_surv <- NULL
+            }
+          }
+          if (!is.null(logrank_surv) && length(logrank_groups) > 0 && length(unique(logrank_groups)) > 1) {
+            lr <- tryCatch(
+              survival::survdiff(logrank_surv ~ logrank_groups),
+              error = function(e) NULL
+            )
+            if (!is.null(lr) && is.finite(lr$chisq) && length(lr$n) > 1) {
+              df_lr <- length(lr$n) - 1L
+              logrank_p <- stats::pchisq(lr$chisq, df_lr, lower.tail = FALSE)
+            }
           }
         }
       } else {
