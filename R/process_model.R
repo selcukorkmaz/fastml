@@ -310,6 +310,170 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       NULL
     }
 
+    extract_survreg_components <- function(fit_obj, new_data) {
+      if (is.null(fit_obj) || is.null(new_data)) {
+        return(NULL)
+      }
+
+      Terms <- fit_obj$terms
+      if (is.null(Terms) || !inherits(Terms, "terms")) {
+        return(NULL)
+      }
+
+      Terms_noy <- stats::delete.response(Terms)
+
+      model_frame <- tryCatch({
+        stats::model.frame(
+          Terms_noy,
+          data = new_data,
+          na.action = stats::na.pass,
+          xlev = fit_obj$xlevels
+        )
+      }, error = function(e) NULL)
+
+      if (is.null(model_frame) || nrow(model_frame) == 0) {
+        return(NULL)
+      }
+
+      offset_vals <- tryCatch(stats::model.offset(model_frame), error = function(e) NULL)
+      if (length(offset_vals) == 0 || all(is.na(offset_vals))) {
+        offset_vals <- rep(0, nrow(model_frame))
+      } else {
+        offset_vals <- as.numeric(offset_vals)
+        offset_vals[is.na(offset_vals)] <- 0
+      }
+
+      model_matrix <- tryCatch({
+        stats::model.matrix(fit_obj, model_frame)
+      }, error = function(e) NULL)
+
+      if (is.null(model_matrix)) {
+        return(NULL)
+      }
+
+      coefs <- fit_obj$coefficients
+      mm_cols <- colnames(model_matrix)
+      if (!is.null(mm_cols) && !is.null(names(coefs))) {
+        missing_cols <- setdiff(mm_cols, names(coefs))
+        if (length(missing_cols) > 0) {
+          complete_coefs <- numeric(length(mm_cols))
+          names(complete_coefs) <- mm_cols
+          overlap <- intersect(mm_cols, names(coefs))
+          if (length(overlap) > 0) {
+            complete_coefs[overlap] <- coefs[overlap]
+          }
+          coefs <- complete_coefs
+        } else {
+          coefs <- coefs[mm_cols]
+        }
+      } else if (length(coefs) != ncol(model_matrix)) {
+        return(NULL)
+      }
+
+      coefs[!is.finite(coefs)] <- 0
+      lp <- as.numeric(model_matrix %*% coefs) + offset_vals
+
+      strata_special <- attr(Terms, "specials")$strata
+      if (!is.null(strata_special) && length(strata_special) > 0) {
+        temp <- survival::untangle.specials(Terms, "strata", 1)
+        if (length(temp$vars) == 1) {
+          strata_vals <- model_frame[[temp$vars]]
+        } else {
+          strata_vals <- survival::strata(model_frame[, temp$vars], shortlabel = TRUE)
+        }
+        scale_lookup <- fit_obj$scale
+        if (is.null(scale_lookup)) {
+          scale_vec <- rep(1, length(lp))
+        } else {
+          scale_names <- names(scale_lookup)
+          if (!is.null(scale_names)) {
+            strata_index <- match(as.character(strata_vals), scale_names)
+            strata_index[is.na(strata_index)] <- 1L
+          } else {
+            strata_index <- as.integer(factor(strata_vals))
+            strata_index[!is.finite(strata_index)] <- 1L
+            if (length(scale_lookup) < max(strata_index, na.rm = TRUE)) {
+              scale_lookup <- rep(scale_lookup, length.out = max(strata_index, na.rm = TRUE))
+            }
+          }
+          scale_vec <- scale_lookup[strata_index]
+        }
+      } else {
+        scale_lookup <- fit_obj$scale
+        if (length(scale_lookup) <= 1) {
+          scale_vec <- rep(scale_lookup, length(lp))
+        } else {
+          scale_vec <- scale_lookup[rep(1L, length(lp))]
+        }
+      }
+
+      scale_vec <- as.numeric(scale_vec)
+      scale_vec[!is.finite(scale_vec) | scale_vec <= 0] <- NA_real_
+
+      list(lp = lp, scale = scale_vec)
+    }
+
+    compute_survreg_matrix <- function(fit_obj, new_data, eval_times) {
+      if (!inherits(fit_obj, "survreg") || length(eval_times) == 0) {
+        return(NULL)
+      }
+
+      components <- extract_survreg_components(fit_obj, new_data)
+      if (is.null(components)) {
+        return(NULL)
+      }
+
+      lp <- components$lp
+      scale_vec <- components$scale
+      n_obs <- length(lp)
+
+      if (n_obs == 0) {
+        return(matrix(numeric(0), nrow = 0, ncol = length(eval_times)))
+      }
+
+      finite_scale <- scale_vec[is.finite(scale_vec) & scale_vec > 0]
+      fallback_scale <- if (length(finite_scale) > 0) stats::median(finite_scale) else 1
+      if (length(scale_vec) != n_obs || any(!is.finite(scale_vec) | scale_vec <= 0)) {
+        scale_vec <- rep(fallback_scale, n_obs)
+      }
+
+      dist_name <- fit_obj$dist
+      if (is.list(dist_name) && !is.null(dist_name$dist)) {
+        dist_name <- dist_name$dist
+      }
+      if (is.null(dist_name)) {
+        dist_name <- "weibull"
+      }
+      dist_name <- as.character(dist_name)
+      parms <- fit_obj$parms
+
+      res <- matrix(NA_real_, nrow = n_obs, ncol = length(eval_times))
+      for (j in seq_along(eval_times)) {
+        t_val <- eval_times[j]
+        if (!is.finite(t_val)) {
+          next
+        }
+        if (t_val <= 0) {
+          res[, j] <- 1
+          next
+        }
+        q_vec <- rep(t_val, n_obs)
+        surv_vals <- tryCatch({
+          if (is.null(parms)) {
+            survival::psurvreg(q_vec, mean = lp, scale = scale_vec, distribution = dist_name)
+          } else {
+            survival::psurvreg(q_vec, mean = lp, scale = scale_vec, distribution = dist_name, parms = parms)
+          }
+        }, error = function(e) rep(NA_real_, n_obs))
+
+        surv_vals <- 1 - surv_vals
+        surv_vals[!is.finite(surv_vals)] <- NA_real_
+        res[, j] <- pmin(pmax(surv_vals, 0), 1)
+      }
+
+      res
+    }
+
     convert_survival_predictions <- function(pred_obj, eval_times, n_obs) {
       if (is.null(pred_obj) || length(eval_times) == 0 || n_obs == 0) {
         return(NULL)
@@ -721,11 +885,22 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
             }
           }, error = function(e) NULL)
         }
-        surv_fit <- tryCatch(
-          survival::survfit(final_model$fit, newdata = newdata_survfit),
-          error = function(e) NULL
-        )
-        surv_prob_mat <- build_survfit_matrix(surv_fit, eval_times, n_obs)
+        if (inherits(final_model$fit, "survreg")) {
+          surv_prob_mat <- compute_survreg_matrix(final_model$fit, newdata_survfit, eval_times)
+          if (is.null(surv_prob_mat)) {
+            surv_fit <- tryCatch(
+              survival::survfit(final_model$fit, newdata = newdata_survfit),
+              error = function(e) NULL
+            )
+            surv_prob_mat <- build_survfit_matrix(surv_fit, eval_times, n_obs)
+          }
+        } else {
+          surv_fit <- tryCatch(
+            survival::survfit(final_model$fit, newdata = newdata_survfit),
+            error = function(e) NULL
+          )
+          surv_prob_mat <- build_survfit_matrix(surv_fit, eval_times, n_obs)
+        }
       } else {
         surv_pred <- tryCatch(
           predict(final_model, new_data = test_data, type = "survival", eval_time = eval_times),
