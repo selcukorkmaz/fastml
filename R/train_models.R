@@ -243,10 +243,15 @@ train_models <- function(train_data,
         prep_dat <- get_prepped_data()
         baked_train <- prep_dat$data
         rec_prep <- prep_dat$recipe
-        fit <- tryCatch(rstpm2::stpm2(as.formula(paste(response_col, "~ .")),
-                                      data = baked_train,
-                                      df = 3),
-                        error = function(e) e)
+        fit <- tryCatch({
+          gsm_fn <- get("gsm", envir = asNamespace("rstpm2"))
+          gsm_fn(
+            formula = as.formula(paste(response_col, "~ .")),
+            data = baked_train,
+            df = 3,
+            penalised = FALSE
+          )
+        }, error = function(e) e)
         if (inherits(fit, "error")) {
           warning(sprintf("royston_parmar training failed: %s", fit$message))
           next

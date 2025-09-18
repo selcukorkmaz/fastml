@@ -49,6 +49,28 @@ test_that("cox_ph survival model trains and evaluates", {
   }
 })
 
+test_that("survreg survival model returns Brier scores", {
+  data(cancer, package = "survival")
+  res <- fastml(
+    data = cancer,
+    label = c("time", "status"),
+    algorithms = c("survreg"),
+    task = "survival",
+    resampling_method = "none",
+    test_size = 0.3
+  )
+  expect_s3_class(res, "fastml")
+  perf <- res$performance[[1]]
+  expect_true(all(c("c_index", "brier_score", "logrank_p") %in% perf$.metric))
+  brier_val <- perf$.estimate[perf$.metric == "brier_score"]
+  expect_true(length(brier_val) > 0)
+  expect_true(all(is.finite(brier_val)))
+  expect_true(all(brier_val >= 0 & brier_val <= 1))
+  preds <- res$predictions[[1]]
+  expect_true("surv_prob_curve" %in% names(preds))
+  expect_true(is.numeric(attr(preds$surv_prob_curve, "eval_times")))
+})
+
 test_that("survival random forest with aorsf engine trains when available", {
   skip_if_not_installed("aorsf")
   skip_if_not_installed("censored")
