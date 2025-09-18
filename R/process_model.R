@@ -179,9 +179,17 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       }
     }
   } else if (task == "survival") {
-    time_col <- label[1]
-    status_col <- label[2]
-    surv_obj <- survival::Surv(test_data[[time_col]], test_data[[status_col]])
+    if (length(label) == 3) {
+      start_col <- label[1]
+      time_col <- label[2]
+      status_col <- label[3]
+      surv_obj <- survival::Surv(test_data[[start_col]], test_data[[time_col]], test_data[[status_col]])
+    } else {
+      start_col <- NULL
+      time_col <- label[1]
+      status_col <- label[2]
+      surv_obj <- survival::Surv(test_data[[time_col]], test_data[[status_col]])
+    }
 
     # Prepare data for prediction depending on model type
     pred_new_data <- test_data
@@ -205,6 +213,58 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         if (is.null(keep_cols)) keep_cols <- character(0)
         pred_predictors <- pred_predictors[, keep_cols, drop = FALSE]
       }
+      extra_cols <- unique(c(final_model$start_col, final_model$time_col,
+                              final_model$status_col))
+      extra_cols <- extra_cols[!is.na(extra_cols)]
+      for (ec in extra_cols) {
+        if (!(ec %in% names(pred_predictors)) && ec %in% names(test_data)) {
+          pred_predictors[[ec]] <- test_data[[ec]]
+        }
+      }
+      if (!is.null(final_model$strata_cols) && length(final_model$strata_cols) > 0) {
+        strata_levels <- NULL
+        if (!is.null(final_model$fit$xlevels)) {
+          strata_levels <- final_model$fit$xlevels
+        }
+        for (sc in final_model$strata_cols) {
+          if (!(sc %in% names(pred_predictors)) && sc %in% names(test_data)) {
+            pred_predictors[[sc]] <- test_data[[sc]]
+          }
+          if (sc %in% names(pred_predictors)) {
+            pred_predictors[[sc]] <- as.factor(pred_predictors[[sc]])
+            if (!is.null(strata_levels) && sc %in% names(strata_levels)) {
+              pred_predictors[[sc]] <- factor(pred_predictors[[sc]],
+                                              levels = strata_levels[[sc]])
+            }
+          }
+        }
+      }
+    }
+
+    default_time_val <- NA_real_
+    time_candidates <- list()
+    if (!is.null(final_model$time_col) && final_model$time_col %in% names(train_data)) {
+      time_candidates[[length(time_candidates) + 1]] <- train_data[[final_model$time_col]]
+    }
+    if (time_col %in% names(train_data)) {
+      time_candidates[[length(time_candidates) + 1]] <- train_data[[time_col]]
+    }
+    if (time_col %in% names(test_data)) {
+      time_candidates[[length(time_candidates) + 1]] <- test_data[[time_col]]
+    }
+    if (length(time_candidates) > 0) {
+      med_vals <- vapply(time_candidates, function(x) {
+        stats::median(as.numeric(x), na.rm = TRUE)
+      }, numeric(1))
+      default_time_val <- med_vals[is.finite(med_vals) & med_vals > 0]
+      if (length(default_time_val) > 0) {
+        default_time_val <- default_time_val[1]
+      } else {
+        default_time_val <- NA_real_
+      }
+    }
+    if (!is.finite(default_time_val) || default_time_val <= 0) {
+      default_time_val <- 1
     }
 
     extract_pred <- function(pred) {
@@ -786,6 +846,31 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
               pred_lp
             }
           }
+        } else if (inherits(final_model$fit, "stpm2")) {
+          if (!requireNamespace("rstpm2", quietly = TRUE)) {
+            rep(NA_real_, nrow(test_data))
+          } else {
+            rp_newdata <- pred_predictors
+            if (is.null(rp_newdata)) {
+              rp_newdata <- data.frame()
+            }
+            time_var <- final_model$time_col
+            if (!is.null(time_var)) {
+              if (!(time_var %in% names(rp_newdata)) && time_var %in% names(test_data)) {
+                rp_newdata[[time_var]] <- test_data[[time_var]]
+              }
+              if (!(time_var %in% names(rp_newdata))) {
+                rp_newdata[[time_var]] <- rep(default_time_val, nrow(test_data))
+              } else {
+                rp_newdata[[time_var]][!is.finite(rp_newdata[[time_var]])] <- default_time_val
+              }
+            }
+            if (!is.null(final_model$start_col) && !(final_model$start_col %in% names(rp_newdata)) &&
+                final_model$start_col %in% names(test_data)) {
+              rp_newdata[[final_model$start_col]] <- test_data[[final_model$start_col]]
+            }
+            as.numeric(rstpm2::predict(final_model$fit, newdata = rp_newdata, type = "link"))
+          }
         } else {
           rep(NA_real_, nrow(test_data))
         }
@@ -799,6 +884,13 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         extract_pred(predict(final_model, new_data = test_data))
       }
     })
+
+    if (length(risk) == 0) {
+      risk <- rep(NA_real_, nrow(test_data))
+    } else if (length(risk) == 1 && nrow(test_data) > 1) {
+      risk <- rep(risk, nrow(test_data))
+    }
+    risk <- as.numeric(risk)
 
     train_times <- as.numeric(train_data[[time_col]])
     test_times <- as.numeric(test_data[[time_col]])
@@ -894,6 +986,41 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
             )
             surv_prob_mat <- build_survfit_matrix(surv_fit, eval_times, n_obs)
           }
+        } else if (inherits(final_model$fit, "stpm2")) {
+          if (requireNamespace("rstpm2", quietly = TRUE) && length(eval_times) > 0) {
+            base_newdata <- newdata_survfit
+            if (is.null(base_newdata)) {
+              base_newdata <- data.frame()
+            }
+            time_var <- final_model$time_col
+            if (!is.null(time_var)) {
+              if (!(time_var %in% names(base_newdata)) && time_var %in% names(test_data)) {
+                base_newdata[[time_var]] <- test_data[[time_var]]
+              }
+              if (!(time_var %in% names(base_newdata))) {
+                base_newdata[[time_var]] <- rep(default_time_val, n_obs)
+              } else {
+                base_newdata[[time_var]][!is.finite(base_newdata[[time_var]])] <- default_time_val
+              }
+            }
+            if (!is.null(final_model$start_col) && !(final_model$start_col %in% names(base_newdata)) &&
+                final_model$start_col %in% names(test_data)) {
+              base_newdata[[final_model$start_col]] <- test_data[[final_model$start_col]]
+            }
+            surv_prob_mat <- matrix(NA_real_, nrow = n_obs, ncol = length(eval_times))
+            for (j in seq_along(eval_times)) {
+              nd <- base_newdata
+              if (!is.null(time_var)) {
+                nd[[time_var]] <- eval_times[j]
+              }
+              preds <- tryCatch({
+                as.numeric(rstpm2::predict(final_model$fit, newdata = nd, type = "surv"))
+              }, error = function(e) rep(NA_real_, n_obs))
+              if (length(preds) == n_obs) {
+                surv_prob_mat[, j] <- preds
+              }
+            }
+          }
         } else {
           surv_fit <- tryCatch(
             survival::survfit(final_model$fit, newdata = newdata_survfit),
@@ -930,6 +1057,14 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       brier <- ibs_res$ibs
       brier_curve <- ibs_res$curve
     }
+
+    if ((!any(is.finite(risk)) || all(is.na(risk))) && length(surv_prob) == n_obs && any(is.finite(surv_prob))) {
+      risk <- -log(pmax(surv_prob, .Machine$double.eps))
+    }
+    if (length(risk) != n_obs) {
+      risk <- rep(risk, length.out = n_obs)
+    }
+    risk[!is.finite(risk)] <- NA_real_
 
     surv_curve_list <- vector("list", n_obs)
     if (!is.null(surv_prob_mat) && nrow(surv_prob_mat) == n_obs && ncol(surv_prob_mat) == length(eval_times) && length(eval_times) > 0) {
@@ -998,14 +1133,26 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       .estimate = c(c_index, brier, logrank_p)
     )
 
-    data_metrics <- tibble::tibble(
-      time = test_data[[time_col]],
-      status = test_data[[status_col]],
-      risk = risk,
-      surv_prob = surv_prob,
-      surv_time = surv_time,
-      surv_prob_curve = surv_curve_list
-    )
+    if (!is.null(start_col) && start_col %in% names(test_data)) {
+      data_metrics <- tibble::tibble(
+        start = test_data[[start_col]],
+        time = test_data[[time_col]],
+        status = test_data[[status_col]],
+        risk = risk,
+        surv_prob = surv_prob,
+        surv_time = surv_time,
+        surv_prob_curve = surv_curve_list
+      )
+    } else {
+      data_metrics <- tibble::tibble(
+        time = test_data[[time_col]],
+        status = test_data[[status_col]],
+        risk = risk,
+        surv_prob = surv_prob,
+        surv_time = surv_time,
+        surv_prob_curve = surv_curve_list
+      )
+    }
     attr(data_metrics, "eval_times") <- eval_times
     attr(data_metrics, "brier_curve") <- tibble::tibble(eval_time = eval_times, brier = brier_curve)
 

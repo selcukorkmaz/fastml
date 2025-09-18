@@ -241,13 +241,39 @@ train_models <- function(train_data,
           next
         }
         prep_dat <- get_prepped_data()
-        baked_train <- prep_dat$data
+        baked_train <- as.data.frame(prep_dat$data)
         rec_prep <- prep_dat$recipe
+        rp_train <- baked_train
+        if (!(response_col %in% names(rp_train)) && response_col %in% names(train_data)) {
+          rp_train[[response_col]] <- train_data[[response_col]]
+        }
+        if (length(label_cols) < 2) {
+          warning("royston_parmar requires time and status columns; skipping.")
+          next
+        }
+        for (lc in label_cols) {
+          if (lc %in% names(train_data)) {
+            rp_train[[lc]] <- train_data[[lc]]
+          }
+        }
+        predictor_cols <- setdiff(names(rp_train), c(response_col, label_cols))
+        predictor_terms <- if (length(predictor_cols) == 0) {
+          "1"
+        } else {
+          paste(paste0("`", predictor_cols, "`"), collapse = " + ")
+        }
+        label_terms <- paste0("`", label_cols, "`")
+        surv_lhs <- if (length(label_cols) == 3) {
+          paste0("survival::Surv(", paste(label_terms, collapse = ", "), ")")
+        } else {
+          paste0("survival::Surv(", paste(label_terms[1:2], collapse = ", "), ")")
+        }
+        rp_formula <- as.formula(paste(surv_lhs, "~", predictor_terms))
         fit <- tryCatch({
           gsm_fn <- get("gsm", envir = asNamespace("rstpm2"))
           gsm_fn(
-            formula = as.formula(paste(response_col, "~ .")),
-            data = baked_train,
+            formula = rp_formula,
+            data = rp_train,
             df = 3,
             penalised = FALSE
           )
