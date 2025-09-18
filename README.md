@@ -1,3 +1,6 @@
+<img src="man/figures/fastml_hex.png" align="right" width="95"/>
+
+
 # fastml: Fast Machine Learning Model Training and Evaluation
 
 **fastml** is a streamlined R package designed to simplify the training, evaluation, and comparison of multiple machine learning models. It offers comprehensive data preprocessing, supports a wide range of algorithms with hyperparameter tuning, and provides performance metrics alongside visualization tools to facilitate efficient and effective machine learning workflows.
