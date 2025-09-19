@@ -74,6 +74,19 @@ utils::globalVariables(c("Fraction", "Performance"))
 #' @param seed An integer value specifying the random seed for reproducibility.
 #' @param verbose Logical; if TRUE, prints progress messages during the training
 #'   and evaluation process.
+#' @param eval_times Optional numeric vector of evaluation horizons for survival
+#'   models. When \code{NULL}, defaults to the median and 75th percentile of the
+#'   observed follow-up times (rounded to the dataset's time unit).
+#' @param bootstrap_ci Logical indicating whether bootstrap confidence intervals
+#'   should be computed for performance metrics. Applies to all task types.
+#' @param bootstrap_samples Integer giving the number of bootstrap resamples to
+#'   use when \code{bootstrap_ci = TRUE}. Defaults to 500.
+#' @param bootstrap_seed Optional seed passed to the bootstrap procedure used to
+#'   estimate confidence intervals.
+#' @param at_risk_threshold Numeric value between 0 and 1 used for survival
+#'   metrics to determine the last follow-up time (\eqn{t_{max}}). The maximum
+#'   time is set to the largest observed time where at least this proportion of
+#'   subjects remain at risk.
 #' @importFrom magrittr %>%
 #' @importFrom rsample initial_split training testing
 #' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake all_numeric_predictors all_predictors all_nominal_predictors all_outcomes step_zv step_rm
@@ -150,7 +163,12 @@ fastml <- function(data = NULL,
                    adaptive = FALSE,
                    learning_curve = FALSE,
                    seed = 123,
-                   verbose = FALSE) {
+                   verbose = FALSE,
+                   eval_times = NULL,
+                   bootstrap_ci = TRUE,
+                   bootstrap_samples = 500,
+                   bootstrap_seed = NULL,
+                   at_risk_threshold = 0.1) {
 
   set.seed(seed)
 
@@ -336,14 +354,14 @@ fastml <- function(data = NULL,
     } else if (task == "regression") {
       "rmse"
     } else {
-      "c_index"
+      "ibs"
     }
   }
 
   # Define allowed metrics
   allowed_metrics_classification <- c("accuracy", "kap", "sens", "spec", "precision", "f_meas", "roc_auc")
   allowed_metrics_regression <- c("rmse", "rsq", "mae")
-  allowed_metrics_survival <- c("c_index", "brier_score", "logrank_p")
+  allowed_metrics_survival <- c("c_index", "uno_c", "ibs", "rmst_diff")
 
   # Validate the metric based on the task
   if (task == "classification") {
@@ -357,9 +375,9 @@ fastml <- function(data = NULL,
                   paste(allowed_metrics_regression, collapse = ", "), "."))
     }
   } else {
-    if (!(metric %in% allowed_metrics_survival)) {
+    if (!(metric %in% allowed_metrics_survival || grepl("^brier_t", metric))) {
       stop(paste0("Invalid metric for survival task. Choose one of: ",
-                  paste(allowed_metrics_survival, collapse = ", "), "."))
+                  paste(c(allowed_metrics_survival, "brier_t*"), collapse = ", "), "."))
     }
   }
 
@@ -671,7 +689,18 @@ fastml <- function(data = NULL,
   }
 
   if (verbose) message("Evaluating models...")
-  eval_output <- evaluate_models(models, train_data, test_data, label_surv, task, metric, event_class)
+  eval_output <- evaluate_models(models,
+                                train_data,
+                                test_data,
+                                label_surv,
+                                task,
+                                metric,
+                                event_class,
+                                eval_times = eval_times,
+                                bootstrap_ci = bootstrap_ci,
+                                bootstrap_samples = bootstrap_samples,
+                                bootstrap_seed = bootstrap_seed,
+                                at_risk_threshold = at_risk_threshold)
   performance <- eval_output$performance
   predictions <- eval_output$predictions
 
@@ -708,6 +737,22 @@ fastml <- function(data = NULL,
     }
   }
 
+  survival_brier_times <- NULL
+  survival_t_max <- NULL
+  if (task == "survival") {
+    for (entry in combined_performance) {
+      if (is.data.frame(entry)) {
+        times_attr <- attr(entry, "brier_times")
+        tmax_attr <- attr(entry, "t_max")
+        if (!is.null(times_attr) || !is.null(tmax_attr)) {
+          survival_brier_times <- times_attr
+          survival_t_max <- tmax_attr
+          break
+        }
+      }
+    }
+  }
+
   # Replace models with normalized, consistently named map
   models <- model_map
 
@@ -723,16 +768,20 @@ fastml <- function(data = NULL,
   })
 
 
+  lower_is_better_metrics <- c("rmse", "mae", "ibs", "logloss", "mse")
+  lower_is_better <- (!is.null(metric)) &&
+    (metric %in% lower_is_better_metrics || grepl("^brier_t", metric))
+
   if (any(is.na(metric_values))) {
     warning("Some models did not return the specified metric.")
-    metric_values[is.na(metric_values)] <- if (task == "regression") Inf else -Inf
+    metric_values[is.na(metric_values)] <- if (lower_is_better) Inf else -Inf
   }
 
-  if (all(metric_values == if (task == "regression") Inf else -Inf)) {
+  if (all(metric_values == if (lower_is_better) Inf else -Inf)) {
     stop("None of the models returned the specified metric.")
   }
 
-  best_model_idx <- if (task == "regression" && metric != "rsq"){
+  best_model_idx <- if (lower_is_better) {
     names(metric_values[metric_values == min(metric_values)])
   } else {
     names(metric_values[metric_values == max(metric_values)])
@@ -818,7 +867,12 @@ fastml <- function(data = NULL,
         label_surv,
         task,
         metric,
-        event_class
+        event_class,
+        eval_times = eval_times,
+        bootstrap_ci = bootstrap_ci,
+        bootstrap_samples = bootstrap_samples,
+        bootstrap_seed = bootstrap_seed,
+        at_risk_threshold = at_risk_threshold
       )
 
 
@@ -870,7 +924,10 @@ fastml <- function(data = NULL,
     metric = metric,
     positive_class = positive_class,
     event_class = event_class,
-    engine_names = engine_names
+    engine_names = engine_names,
+    survival_brier_times = survival_brier_times,
+    survival_t_max = survival_t_max,
+    metric_bootstrap = list(enabled = bootstrap_ci, samples = bootstrap_samples, seed = bootstrap_seed)
   )
   class(result) <- "fastml"
   if (verbose) message("Training complete.")

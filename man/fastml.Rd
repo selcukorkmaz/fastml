@@ -37,7 +37,12 @@ fastml(
   adaptive = FALSE,
   learning_curve = FALSE,
   seed = 123,
-  verbose = FALSE
+  verbose = FALSE,
+  eval_times = NULL,
+  bootstrap_ci = TRUE,
+  bootstrap_samples = 500,
+  bootstrap_seed = NULL,
+  at_risk_threshold = 0.1
 )
 }
 \arguments{
@@ -137,6 +142,24 @@ occurs for the Bayesian strategy. Default is \code{10}.}
 
 \item{verbose}{Logical; if TRUE, prints progress messages during the training
 and evaluation process.}
+
+\item{eval_times}{Optional numeric vector of evaluation horizons for survival
+models. When \code{NULL}, defaults to the median and 75th percentile of the
+observed follow-up times (rounded to the dataset's time unit).}
+
+\item{bootstrap_ci}{Logical indicating whether bootstrap confidence intervals
+should be computed for performance metrics. Applies to all task types.}
+
+\item{bootstrap_samples}{Integer giving the number of bootstrap resamples to
+use when \code{bootstrap_ci = TRUE}. Defaults to 500.}
+
+\item{bootstrap_seed}{Optional seed passed to the bootstrap procedure used to
+estimate confidence intervals.}
+
+\item{at_risk_threshold}{Numeric value between 0 and 1 used for survival
+metrics to determine the last follow-up time (\eqn{t_{max}}). The maximum time
+is set to the largest observed time where at least this proportion of subjects
+remain at risk.}
 }
 \value{
 An object of class \code{fastml} containing the best model, performance metrics, and other information.

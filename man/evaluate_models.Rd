@@ -11,7 +11,12 @@ evaluate_models(
   label,
   task,
   metric = NULL,
-  event_class
+  event_class,
+  eval_times = NULL,
+  bootstrap_ci = TRUE,
+  bootstrap_samples = 500,
+  bootstrap_seed = NULL,
+  at_risk_threshold = 0.1
 )
 }
 \arguments{
@@ -30,6 +35,22 @@ columns.}
 \item{metric}{The performance metric to optimize (e.g., "accuracy", "rmse").}
 
 \item{event_class}{A single string. Either "first" or "second" to specify which level of truth to consider as the "event".}
+
+\item{eval_times}{Optional numeric vector of evaluation horizons for survival
+metrics. Passed through to \code{process_model}.}
+
+\item{bootstrap_ci}{Logical indicating whether bootstrap confidence intervals
+should be computed for the evaluation metrics.}
+
+\item{bootstrap_samples}{Number of bootstrap resamples used when
+\code{bootstrap_ci = TRUE}.}
+
+\item{bootstrap_seed}{Optional integer seed for the bootstrap procedure used
+in metric estimation.}
+
+\item{at_risk_threshold}{Minimum proportion of subjects that must remain at
+risk to define \eqn{t_{max}} when computing survival metrics such as the
+integrated Brier score.}
 }
 \value{
 A list with two elements:

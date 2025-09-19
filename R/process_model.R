@@ -17,7 +17,19 @@
 #'   to determine if class probabilities are supported. If `NULL`, probabilities are skipped.
 #' @param train_data A data frame containing the training data, required to refit finalized workflows.
 #' @param metric The name of the metric (e.g., `"roc_auc"`, `"accuracy"`, `"rmse"`) used for selecting the best tuning result.
-#'
+#' @param eval_times_user Optional numeric vector of time horizons at which to
+#'   evaluate survival Brier scores. When `NULL`, sensible defaults based on the
+#'   observed follow-up distribution are used.
+#' @param bootstrap_ci Logical; if `TRUE`, bootstrap confidence intervals are
+#'   estimated for survival performance metrics.
+#' @param bootstrap_samples Integer giving the number of bootstrap resamples
+#'   used when computing confidence intervals.
+#' @param bootstrap_seed Optional integer seed applied before bootstrap
+#'   resampling to make interval estimates reproducible.
+#' @param at_risk_threshold Numeric value between 0 and 1 defining the minimum
+#'   proportion of subjects required to remain at risk when determining the
+#'   maximum follow-up time used in survival metrics.
+#' 
 #' @return A list with two elements:
 #' \describe{
 #'   \item{performance}{A tibble with computed performance metrics.}
@@ -38,7 +50,12 @@
 #' @export
 
 process_model <- function(model_obj, model_id, task, test_data, label, event_class,
-                          engine, train_data, metric) {
+                          engine, train_data, metric,
+                          eval_times_user = NULL,
+                          bootstrap_ci = TRUE,
+                          bootstrap_samples = 500,
+                          bootstrap_seed = NULL,
+                          at_risk_threshold = 0.1) {
   # If the model object is a tuning result, finalize the workflow
   if (inherits(model_obj, "tune_results")) {
     best_params <- tryCatch({
@@ -636,7 +653,7 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       res
     }
 
-    compute_ibrier <- function(eval_times, surv_mat, time_vec, status_vec) {
+    compute_ibrier <- function(eval_times, surv_mat, time_vec, status_vec, tau, censor_eval_fn) {
       n <- length(time_vec)
       m <- length(eval_times)
       if (n == 0 || m == 0 || is.null(surv_mat) || nrow(surv_mat) != n || ncol(surv_mat) != m) {
@@ -652,27 +669,15 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         return(list(ibs = NA_real_, curve = rep(NA_real_, m)))
       }
 
-      censor_indicator <- 1 - status_vec[valid_idx]
-      censor_fit <- tryCatch({
-        survival::survfit(survival::Surv(time_vec[valid_idx], censor_indicator) ~ 1)
-      }, error = function(e) NULL)
-      if (is.null(censor_fit)) {
+      if (!is.function(censor_eval_fn)) {
         return(list(ibs = NA_real_, curve = rep(NA_real_, m)))
       }
 
-      censor_eval <- function(times) {
-        if (length(times) == 0) return(numeric(0))
-        if (length(censor_fit$time) == 0 || length(censor_fit$surv) == 0) {
-          return(rep(1, length(times)))
-        }
-        align_survival_curve(censor_fit$time, censor_fit$surv, times)
-      }
-
-      G_t <- censor_eval(eval_times)
+      G_t <- censor_eval_fn(eval_times)
       G_t[!is.finite(G_t) | G_t <= 0] <- NA_real_
 
       time_minus <- pmax(time_vec - 1e-08, 0)
-      G_time_minus <- censor_eval(time_minus)
+      G_time_minus <- censor_eval_fn(time_minus)
       G_time_minus[!is.finite(G_time_minus) | G_time_minus <= 0] <- NA_real_
 
       weights <- matrix(0, nrow = n, ncol = m)
@@ -709,7 +714,14 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       bs_t <- colSums(weighted, na.rm = TRUE) / n
       bs_t[!is.finite(bs_t)] <- NA_real_
 
-      valid_bs <- which(is.finite(bs_t) & is.finite(eval_times))
+      if (!is.finite(tau) || tau <= 0) {
+        tau <- suppressWarnings(max(eval_times[is.finite(eval_times)], na.rm = TRUE))
+      }
+      if (is.finite(tau)) {
+        bs_t[eval_times > tau] <- NA_real_
+      }
+
+      valid_bs <- which(is.finite(bs_t) & is.finite(eval_times) & eval_times <= tau + 1e-08)
       if (length(valid_bs) >= 2) {
         times_valid <- eval_times[valid_bs]
         bs_valid <- bs_t[valid_bs]
@@ -892,28 +904,9 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
     }
     risk <- as.numeric(risk)
 
-    train_times <- as.numeric(train_data[[time_col]])
-    test_times <- as.numeric(test_data[[time_col]])
-    t0 <- stats::median(train_times, na.rm = TRUE)
-
-    combined_times <- c(train_times, test_times)
-    combined_times <- combined_times[is.finite(combined_times) & combined_times > 0]
-    if (length(combined_times) > 0) {
-      eval_times <- sort(unique(combined_times))
-      if (length(eval_times) > 200) {
-        probs <- seq(0, 1, length.out = 200)
-        eval_times <- sort(unique(as.numeric(stats::quantile(eval_times, probs = probs, na.rm = TRUE, type = 1))))
-      }
-    } else {
-      eval_times <- numeric(0)
-    }
-    if (is.finite(t0) && t0 > 0) {
-      eval_times <- sort(unique(c(eval_times, t0)))
-    }
-
-    normalize_status <- function(status_vec) {
+    normalize_status <- function(status_vec, reference_length) {
       if (is.null(status_vec)) {
-        return(rep(0, length(test_times)))
+        return(rep(0, reference_length))
       }
       if (is.factor(status_vec) || is.character(status_vec)) {
         numeric_version <- suppressWarnings(as.numeric(as.character(status_vec)))
@@ -940,25 +933,284 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       }
     }
 
-    surv_matrix_vals <- tryCatch(as.matrix(surv_obj), error = function(e) NULL)
-    if (!is.null(surv_matrix_vals)) {
-      if ("time" %in% colnames(surv_matrix_vals)) {
-        obs_time <- as.numeric(surv_matrix_vals[, "time"])
-      } else if ("time2" %in% colnames(surv_matrix_vals)) {
-        obs_time <- as.numeric(surv_matrix_vals[, "time2"])
-      } else {
-        obs_time <- test_times
+    determine_round_digits <- function(times) {
+      times <- times[is.finite(times) & times > 0]
+      if (length(times) <= 1) {
+        return(0)
       }
-      if ("status" %in% colnames(surv_matrix_vals)) {
-        status_event <- as.numeric(surv_matrix_vals[, "status"])
+      diffs <- diff(sort(unique(times)))
+      diffs <- diffs[diffs > 0]
+      if (length(diffs) == 0) {
+        return(0)
+      }
+      min_diff <- min(diffs)
+      if (!is.finite(min_diff) || min_diff <= 0) {
+        return(0)
+      }
+      digits <- ceiling(-log10(min_diff))
+      digits <- max(0, digits)
+      digits <- min(digits, 6)
+      digits
+    }
+
+    compute_tau_limit <- function(times, threshold) {
+      times_valid <- sort(unique(times[is.finite(times) & times > 0]))
+      if (length(times_valid) == 0) {
+        return(NA_real_)
+      }
+      n <- length(times)
+      props <- vapply(times_valid, function(t) {
+        mean(times >= t, na.rm = TRUE)
+      }, numeric(1))
+      idx <- which(props >= threshold)
+      if (length(idx) == 0) {
+        max(times_valid)
       } else {
-        status_event <- normalize_status(test_data[[status_col]])
+        max(times_valid[idx])
+      }
+    }
+
+    create_censor_eval <- function(time_vec, status_vec) {
+      time_vec <- as.numeric(time_vec)
+      status_vec <- ifelse(is.na(status_vec), 0, ifelse(status_vec > 0, 1, 0))
+      valid_idx <- which(is.finite(time_vec) & time_vec >= 0)
+      if (length(valid_idx) == 0) {
+        return(function(times) rep(NA_real_, length(times)))
+      }
+      censor_indicator <- 1 - status_vec[valid_idx]
+      fit <- tryCatch({
+        survival::survfit(survival::Surv(time_vec[valid_idx], censor_indicator) ~ 1)
+      }, error = function(e) NULL)
+      if (is.null(fit)) {
+        return(function(times) rep(NA_real_, length(times)))
+      }
+      function(times) {
+        if (length(times) == 0) return(numeric(0))
+        if (length(fit$time) == 0 || length(fit$surv) == 0) {
+          return(rep(1, length(times)))
+        }
+        align_survival_curve(fit$time, fit$surv, times)
+      }
+    }
+
+    assign_risk_group <- function(risk_vec) {
+      group <- rep(NA_character_, length(risk_vec))
+      valid <- is.finite(risk_vec)
+      if (sum(valid) == 0) {
+        return(group)
+      }
+      risk_vals <- risk_vec[valid]
+      if (length(unique(risk_vals)) > 1) {
+        threshold <- stats::median(risk_vals)
+        group[valid] <- ifelse(risk_vals > threshold, "high", "low")
+      } else {
+        group[valid] <- "low"
+      }
+      group
+    }
+
+    compute_uno_c_index <- function(train_time, train_status, test_time, test_status,
+                                    risk_vec, tau, censor_eval_fn) {
+      if (!is.function(censor_eval_fn)) {
+        return(NA_real_)
+      }
+      if (!is.finite(tau) || tau <= 0) {
+        tau <- suppressWarnings(max(test_time[is.finite(test_time)], na.rm = TRUE))
+      }
+      valid <- which(is.finite(test_time) & is.finite(risk_vec))
+      if (length(valid) <= 1) {
+        return(NA_real_)
+      }
+      time_val <- test_time[valid]
+      status_val <- ifelse(is.na(test_status[valid]), 0, ifelse(test_status[valid] > 0, 1, 0))
+      risk_val <- risk_vec[valid]
+      G_vec <- censor_eval_fn(time_val)
+      if (length(G_vec) == 0) {
+        return(NA_real_)
+      }
+      G_vec[!is.finite(G_vec) | G_vec <= 0] <- NA_real_
+      event_idx <- which(status_val == 1 & is.finite(G_vec) & time_val <= tau)
+      if (length(event_idx) == 0) {
+        return(NA_real_)
+      }
+      numerator <- 0
+      denominator <- 0
+      for (ii in event_idx) {
+        w_i <- 1 / (G_vec[ii]^2)
+        if (!is.finite(w_i) || w_i <= 0) next
+        later <- which(time_val > time_val[ii] & time_val <= tau & is.finite(G_vec))
+        later <- later[G_vec[later] > 0]
+        if (length(later) == 0) next
+        denominator <- denominator + w_i * length(later)
+        diff_scores <- risk_val[ii] - risk_val[later]
+        concordant <- sum(diff_scores > 0) + 0.5 * sum(diff_scores == 0)
+        numerator <- numerator + w_i * concordant
+      }
+      if (denominator <= 0) {
+        return(NA_real_)
+      }
+      val <- numerator / denominator
+      val <- min(max(val, 0), 1)
+      val
+    }
+
+    compute_rmst_difference <- function(time_vec, status_vec, risk_vec, tau) {
+      if (!is.finite(tau) || tau <= 0) {
+        return(NA_real_)
+      }
+      risk_group <- assign_risk_group(risk_vec)
+      valid <- which(is.finite(time_vec) & !is.na(risk_group))
+      if (length(valid) < 2) {
+        return(NA_real_)
+      }
+      time_val <- time_vec[valid]
+      status_val <- ifelse(is.na(status_vec[valid]), 0, ifelse(status_vec[valid] > 0, 1, 0))
+      group_val <- risk_group[valid]
+      if (length(unique(group_val)) < 2) {
+        return(NA_real_)
+      }
+      rmst_group <- function(times, status) {
+        fit <- tryCatch({
+          survival::survfit(survival::Surv(times, status) ~ 1)
+        }, error = function(e) NULL)
+        if (is.null(fit)) {
+          return(NA_real_)
+        }
+        if (length(fit$time) == 0 || length(fit$surv) == 0) {
+          return(tau)
+        }
+        idx <- fit$time < tau
+        surv_vals <- fit$surv[idx]
+        time_vals <- fit$time[idx]
+        surv_at_tau <- align_survival_curve(fit$time, fit$surv, tau)
+        times_step <- c(0, time_vals, tau)
+        surv_step <- c(1, surv_vals, surv_at_tau)
+        sum(surv_step[-length(surv_step)] * diff(times_step))
+      }
+      low_idx <- group_val == "low"
+      high_idx <- group_val == "high"
+      if (!any(low_idx) || !any(high_idx)) {
+        return(NA_real_)
+      }
+      rmst_low <- rmst_group(time_val[low_idx], status_val[low_idx])
+      rmst_high <- rmst_group(time_val[high_idx], status_val[high_idx])
+      if (!is.finite(rmst_low) || !is.finite(rmst_high)) {
+        return(NA_real_)
+      }
+      rmst_low - rmst_high
+    }
+
+    get_surv_info <- function(surv_matrix_vals, default_time, default_status) {
+      time_out <- default_time
+      status_out <- default_status
+      if (!is.null(surv_matrix_vals)) {
+        if ("time" %in% colnames(surv_matrix_vals)) {
+          time_out <- as.numeric(surv_matrix_vals[, "time"])
+        } else if ("time2" %in% colnames(surv_matrix_vals)) {
+          time_out <- as.numeric(surv_matrix_vals[, "time2"])
+        }
+        if ("status" %in% colnames(surv_matrix_vals)) {
+          status_out <- as.numeric(surv_matrix_vals[, "status"])
+        }
+      }
+      list(time = time_out, status = status_out)
+    }
+
+    map_brier_values <- function(curve, eval_times, horizons) {
+      if (length(horizons) == 0) {
+        return(numeric(0))
+      }
+      if (length(curve) != length(eval_times)) {
+        return(rep(NA_real_, length(horizons)))
+      }
+      sapply(horizons, function(h) {
+        if (!is.finite(h)) return(NA_real_)
+        idx <- which.min(abs(eval_times - h))
+        if (length(idx) == 0) return(NA_real_)
+        if (abs(eval_times[idx] - h) > max(1e-08, 1e-06 * max(1, abs(h)))) {
+          return(NA_real_)
+        }
+        curve[idx]
+      })
+    }
+
+    clamp01 <- function(x) {
+      x <- pmax(pmin(x, 1), 0)
+      x
+    }
+
+    train_surv_matrix <- tryCatch(as.matrix(train_data$surv_obj), error = function(e) NULL)
+    train_times_raw <- as.numeric(train_data[[time_col]])
+    train_status_default <- normalize_status(train_data[[status_col]], length(train_times_raw))
+    train_info <- get_surv_info(train_surv_matrix, train_times_raw, train_status_default)
+    train_times <- train_info$time
+    train_status_event <- ifelse(is.na(train_info$status), 0, ifelse(train_info$status > 0, 1, 0))
+
+    test_surv_matrix <- tryCatch(as.matrix(surv_obj), error = function(e) NULL)
+    test_times_raw <- as.numeric(test_data[[time_col]])
+    test_status_default <- normalize_status(test_data[[status_col]], length(test_times_raw))
+    test_info <- get_surv_info(test_surv_matrix, test_times_raw, test_status_default)
+    obs_time <- test_info$time
+    status_event <- ifelse(is.na(test_info$status), 0, ifelse(test_info$status > 0, 1, 0))
+
+    t0 <- stats::median(train_times, na.rm = TRUE)
+    threshold <- min(max(at_risk_threshold, 0.01), 0.5)
+    tau_max <- compute_tau_limit(obs_time, threshold)
+    if (!is.finite(tau_max) || tau_max <= 0) {
+      tau_max <- suppressWarnings(max(obs_time[is.finite(obs_time)], na.rm = TRUE))
+    }
+    if (!is.finite(tau_max) || tau_max <= 0) {
+      tau_max <- NA_real_
+    }
+
+    digits_round <- determine_round_digits(obs_time)
+    if (is.null(eval_times_user)) {
+      eval_horizons <- unique(round(c(stats::median(obs_time, na.rm = TRUE),
+                                      as.numeric(stats::quantile(obs_time, 0.75, na.rm = TRUE, names = FALSE))),
+                                     digits_round))
+      eval_horizons <- eval_horizons[is.finite(eval_horizons) & eval_horizons > 0]
+    } else {
+      eval_horizons <- sort(unique(as.numeric(eval_times_user)))
+      eval_horizons <- eval_horizons[is.finite(eval_horizons) & eval_horizons > 0]
+    }
+    if (length(eval_horizons) > 0 && is.finite(tau_max)) {
+      too_late <- eval_horizons > tau_max
+      if (any(too_late)) {
+        eval_horizons <- eval_horizons[!too_late]
+        if (length(eval_horizons) == 0) {
+          warning("All requested eval_times exceed t_max; horizon-specific Brier scores will be omitted.")
+        } else {
+          warning("Some requested eval_times exceed t_max and were removed for Brier score computation.")
+        }
+      }
+    }
+    brier_times <- eval_horizons
+    brier_metric_names <- if (length(brier_times) > 0) paste0("brier_t", seq_along(brier_times)) else character(0)
+    brier_time_map <- if (length(brier_times) > 0) stats::setNames(brier_times, brier_metric_names) else numeric(0)
+
+    combined_times <- c(train_times, obs_time)
+    combined_times <- combined_times[is.finite(combined_times) & combined_times > 0]
+    if (length(combined_times) > 0) {
+      eval_times <- sort(unique(combined_times))
+      if (length(eval_times) > 200) {
+        probs <- seq(0, 1, length.out = 200)
+        eval_times <- sort(unique(as.numeric(stats::quantile(eval_times, probs = probs, na.rm = TRUE, type = 1))))
       }
     } else {
-      obs_time <- test_times
-      status_event <- normalize_status(test_data[[status_col]])
+      eval_times <- numeric(0)
     }
-    status_event[is.na(status_event)] <- 0
+    special_points <- c(brier_times, tau_max, t0)
+    special_points <- special_points[is.finite(special_points) & special_points > 0]
+    eval_times <- sort(unique(c(eval_times, special_points)))
+    if (is.finite(tau_max)) {
+      eval_times <- eval_times[eval_times <= tau_max + 1e-08]
+    }
+    if (length(eval_times) == 0 && is.finite(tau_max) && tau_max > 0) {
+      eval_times <- tau_max
+    }
+
+    censor_eval_test <- create_censor_eval(obs_time, status_event)
+    censor_eval_train <- create_censor_eval(train_times, train_status_event)
 
     n_obs <- nrow(test_data)
     surv_prob_mat <- NULL
@@ -1044,8 +1296,6 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
     }
 
     surv_prob <- rep(NA_real_, n_obs)
-    brier <- NA_real_
-    brier_curve <- rep(NA_real_, length(eval_times))
     if (!is.null(surv_prob_mat) && nrow(surv_prob_mat) == n_obs && ncol(surv_prob_mat) == length(eval_times) && length(eval_times) > 0) {
       idx_t0 <- 1L
       if (is.finite(t0) && t0 > 0) {
@@ -1053,9 +1303,6 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       }
       idx_t0 <- max(1L, min(idx_t0, ncol(surv_prob_mat)))
       surv_prob <- as.numeric(surv_prob_mat[, idx_t0])
-      ibs_res <- compute_ibrier(eval_times, surv_prob_mat, obs_time, status_event)
-      brier <- ibs_res$ibs
-      brier_curve <- ibs_res$curve
     }
 
     if ((!any(is.finite(risk)) || all(is.na(risk))) && length(surv_prob) == n_obs && any(is.finite(surv_prob))) {
@@ -1077,7 +1324,6 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
     }
     attr(surv_curve_list, "eval_times") <- eval_times
 
-    # Try to obtain predicted survival time where supported
     surv_time <- tryCatch({
       if (inherits(final_model, "fastml_native_survival") && requireNamespace("censored", quietly = TRUE)) {
         if (inherits(final_model$fit, "coxph")) {
@@ -1090,66 +1336,131 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
           rep(NA_real_, nrow(test_data))
         }
       } else {
-        # For workflow-based models, rely on engine-specific predict; not all expose time directly
         rep(NA_real_, nrow(test_data))
       }
     }, error = function(e) rep(NA_real_, nrow(test_data)))
 
+    risk_group <- assign_risk_group(risk)
 
+    ibs_curve_full <- rep(NA_real_, length(eval_times))
+    ibs_point <- NA_real_
+    if (!is.null(surv_prob_mat) && length(eval_times) > 0) {
+      ibs_res_full <- compute_ibrier(eval_times, surv_prob_mat, obs_time, status_event, tau_max, censor_eval_test)
+      ibs_point <- ibs_res_full$ibs
+      ibs_curve_full <- ibs_res_full$curve
+    }
+    brier_time_values <- map_brier_values(ibs_curve_full, eval_times, brier_times)
+
+    harrell_c <- NA_real_
     risk_valid <- is.finite(risk)
-    c_index <- NA_real_
-    logrank_p <- NA_real_
-    risk_group <- rep(NA_character_, length(risk))
-
     if (any(risk_valid)) {
       risk_vals <- risk[risk_valid]
-      surv_valid <- surv_obj[risk_valid]
       if (length(unique(risk_vals)) > 1) {
-        c_index <- tryCatch(
+        surv_valid <- surv_obj[risk_valid]
+        harrell_c <- tryCatch(
           survival::concordance(surv_valid ~ risk_vals)$concordance,
           error = function(e) NA_real_
         )
-        risk_threshold <- stats::median(risk_vals)
-        risk_group_vals <- ifelse(risk_vals > risk_threshold, "high", "low")
-        risk_group[risk_valid] <- risk_group_vals
-        if (length(unique(risk_group_vals)) > 1) {
-          # Handle log-rank calculation for both right-censored and counting process data
-          logrank_surv <- surv_valid
-          logrank_groups <- factor(risk_group_vals, levels = c("low", "high"))
-          surv_type <- attr(surv_valid, "type")
-          if (!is.null(surv_type) && surv_type == "counting") {
-            obs_sub <- obs_time[risk_valid]
-            status_sub <- status_event[risk_valid]
-            valid_idx <- is.finite(obs_sub) & !is.na(status_sub)
-            if (any(valid_idx)) {
-              logrank_surv <- survival::Surv(obs_sub[valid_idx], status_sub[valid_idx])
-              logrank_groups <- factor(logrank_groups[valid_idx], levels = c("low", "high"))
-            } else {
-              logrank_surv <- NULL
-            }
-          }
-          if (!is.null(logrank_surv) && length(logrank_groups) > 0 && length(unique(logrank_groups)) > 1) {
-            lr <- tryCatch(
-              survival::survdiff(logrank_surv ~ logrank_groups),
-              error = function(e) NULL
-            )
-            if (!is.null(lr) && is.finite(lr$chisq) && length(lr$n) > 1) {
-              df_lr <- length(lr$n) - 1L
-              logrank_p <- stats::pchisq(lr$chisq, df_lr, lower.tail = FALSE)
-            }
-          }
-        }
       } else {
-        risk_group[risk_valid] <- "low"
+        harrell_c <- 0.5
       }
-    } else {
-      warning(sprintf("Model %s produced no finite risk predictions; survival metrics set to NA.", model_id))
+    }
+    harrell_c <- clamp01(harrell_c)
+
+    uno_c <- compute_uno_c_index(train_times, train_status_event, obs_time, status_event, risk, tau_max, censor_eval_train)
+    uno_c <- clamp01(uno_c)
+    ibs_point <- clamp01(ibs_point)
+    if (length(brier_time_values) > 0) {
+      brier_time_values <- clamp01(brier_time_values)
+    }
+
+    rmst_diff <- compute_rmst_difference(obs_time, status_event, risk, tau_max)
+
+    metric_names <- c("c_index", "uno_c", "ibs", "rmst_diff", brier_metric_names)
+    metrics_point <- c(harrell_c, uno_c, ibs_point, rmst_diff, brier_time_values)
+    names(metrics_point) <- metric_names
+    metrics_point[is.nan(metrics_point)] <- NA_real_
+
+    compute_metrics_boot <- function(idx) {
+      idx <- as.integer(idx)
+      obs_sub <- obs_time[idx]
+      status_sub <- status_event[idx]
+      risk_sub <- risk[idx]
+      surv_sub <- surv_obj[idx]
+      surv_mat_sub <- if (!is.null(surv_prob_mat)) surv_prob_mat[idx, , drop = FALSE] else NULL
+      harrell_sub <- NA_real_
+      risk_valid_sub <- is.finite(risk_sub)
+      if (any(risk_valid_sub)) {
+        risk_vals_sub <- risk_sub[risk_valid_sub]
+        if (length(unique(risk_vals_sub)) > 1) {
+          surv_valid_sub <- surv_sub[risk_valid_sub]
+          harrell_sub <- tryCatch(
+            survival::concordance(surv_valid_sub ~ risk_vals_sub)$concordance,
+            error = function(e) NA_real_
+          )
+        } else {
+          harrell_sub <- 0.5
+        }
+      }
+      harrell_sub <- clamp01(harrell_sub)
+      uno_sub <- compute_uno_c_index(train_times, train_status_event, obs_sub, status_sub, risk_sub, tau_max, censor_eval_train)
+      uno_sub <- clamp01(uno_sub)
+      ibs_sub <- NA_real_
+      curve_sub <- rep(NA_real_, length(eval_times))
+      if (!is.null(surv_mat_sub) && nrow(surv_mat_sub) == length(idx)) {
+        ibs_sub_res <- compute_ibrier(eval_times, surv_mat_sub, obs_sub, status_sub, tau_max, censor_eval_test)
+        ibs_sub <- clamp01(ibs_sub_res$ibs)
+        curve_sub <- ibs_sub_res$curve
+      }
+      brier_sub <- map_brier_values(curve_sub, eval_times, brier_times)
+      if (length(brier_sub) > 0) {
+        brier_sub <- clamp01(brier_sub)
+      }
+      rmst_sub <- compute_rmst_difference(obs_sub, status_sub, risk_sub, tau_max)
+      vals <- c(harrell_sub, uno_sub, ibs_sub, rmst_sub, brier_sub)
+      names(vals) <- metric_names
+      vals[is.nan(vals)] <- NA_real_
+      vals
+    }
+
+    ci_lower <- rep(NA_real_, length(metric_names))
+    ci_upper <- rep(NA_real_, length(metric_names))
+    n_boot_used <- 0L
+    if (isTRUE(bootstrap_ci) && bootstrap_samples > 1 && n_obs > 1) {
+      if (!is.null(bootstrap_seed)) {
+        set.seed(bootstrap_seed)
+      }
+      boot_matrix <- matrix(NA_real_, nrow = bootstrap_samples, ncol = length(metric_names))
+      colnames(boot_matrix) <- metric_names
+      for (b in seq_len(bootstrap_samples)) {
+        idx <- sample.int(n_obs, size = n_obs, replace = TRUE)
+        boot_matrix[b, ] <- compute_metrics_boot(idx)
+      }
+      for (j in seq_along(metric_names)) {
+        vals <- boot_matrix[, j]
+        vals <- vals[is.finite(vals)]
+        if (length(vals) > 0) {
+          ci_lower[j] <- stats::quantile(vals, probs = 0.025, names = FALSE, na.rm = TRUE)
+          ci_upper[j] <- stats::quantile(vals, probs = 0.975, names = FALSE, na.rm = TRUE)
+        }
+      }
+      clamp_idx <- metric_names %in% c("c_index", "uno_c", "ibs") | grepl("^brier_t", metric_names)
+      if (any(clamp_idx)) {
+        ci_lower[clamp_idx] <- clamp01(ci_lower[clamp_idx])
+        ci_upper[clamp_idx] <- clamp01(ci_upper[clamp_idx])
+      }
+      n_boot_used <- bootstrap_samples
     }
 
     perf <- tibble::tibble(
-      .metric = c("c_index", "brier_score", "logrank_p"),
-      .estimate = c(c_index, brier, logrank_p)
+      .metric = metric_names,
+      .estimate = as.numeric(metrics_point),
+      .lower = as.numeric(ci_lower),
+      .upper = as.numeric(ci_upper),
+      .n_boot = n_boot_used
     )
+
+    perf$.estimate <- as.numeric(perf$.estimate)
 
     if (!is.null(start_col) && start_col %in% names(test_data)) {
       data_metrics <- tibble::tibble(
@@ -1157,6 +1468,7 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         time = test_data[[time_col]],
         status = test_data[[status_col]],
         risk = risk,
+        risk_group = risk_group,
         surv_prob = surv_prob,
         surv_time = surv_time,
         surv_prob_curve = surv_curve_list
@@ -1166,13 +1478,20 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         time = test_data[[time_col]],
         status = test_data[[status_col]],
         risk = risk,
+        risk_group = risk_group,
         surv_prob = surv_prob,
         surv_time = surv_time,
         surv_prob_curve = surv_curve_list
       )
     }
+
+    attr(perf, "brier_times") <- brier_time_map
+    attr(perf, "t_max") <- tau_max
+    attr(perf, "at_risk_threshold") <- threshold
     attr(data_metrics, "eval_times") <- eval_times
-    attr(data_metrics, "brier_curve") <- tibble::tibble(eval_time = eval_times, brier = brier_curve)
+    attr(data_metrics, "brier_curve") <- tibble::tibble(eval_time = eval_times, brier = ibs_curve_full)
+    attr(data_metrics, "brier_times") <- brier_time_map
+    attr(data_metrics, "t_max") <- tau_max
 
   } else {
     # Regression task

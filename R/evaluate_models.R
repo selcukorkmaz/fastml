@@ -18,13 +18,35 @@
 #' @importFrom tune select_best finalize_model
 #' @importFrom rlang sym syms
 #' @importFrom tibble tibble
+#' @param eval_times Optional numeric vector of evaluation horizons for survival
+#'   metrics. Passed through to \code{process_model}.
+#' @param bootstrap_ci Logical indicating whether bootstrap confidence intervals
+#'   should be computed for the evaluation metrics.
+#' @param bootstrap_samples Number of bootstrap resamples used when
+#'   \code{bootstrap_ci = TRUE}.
+#' @param bootstrap_seed Optional integer seed for the bootstrap procedure used
+#'   in metric estimation.
+#' @param at_risk_threshold Minimum proportion of subjects that must remain at
+#'   risk to define \eqn{t_{max}} when computing survival metrics such as the
+#'   integrated Brier score.
 #' @return A list with two elements:
 #'   \describe{
 #'     \item{performance}{A named list of performance metric tibbles for each model.}
 #'     \item{predictions}{A named list of data frames with columns including truth, predictions, and probabilities per model.}
 #'   }
 #' @export
-evaluate_models <- function(models, train_data, test_data, label, task, metric = NULL, event_class) {
+evaluate_models <- function(models,
+                            train_data,
+                            test_data,
+                            label,
+                            task,
+                            metric = NULL,
+                            event_class,
+                            eval_times = NULL,
+                            bootstrap_ci = TRUE,
+                            bootstrap_samples = 500,
+                            bootstrap_seed = NULL,
+                            at_risk_threshold = 0.1) {
   # Load required packages
   required_pkgs <- c("yardstick", "parsnip", "tune", "workflows",
                      "dplyr", "rlang", "tibble")
@@ -58,10 +80,20 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
     if (is.list(models[[algo]]) && !inherits(models[[algo]], "workflow") && !inherits(models[[algo]], "tune_results") && !inherits(models[[algo]], "fastml_native_survival")) {
       for (eng in names(models[[algo]])) {
         model_obj <- models[[algo]][[eng]]
-        result <- process_model(model_obj, model_id = paste(algo, eng, sep = "_"),
-                                task = task, test_data = test_data, label = label,
-                                event_class = event_class, engine = eng,
-                                train_data = train_data, metric = metric)
+        result <- process_model(model_obj,
+                                model_id = paste(algo, eng, sep = "_"),
+                                task = task,
+                                test_data = test_data,
+                                label = label,
+                                event_class = event_class,
+                                engine = eng,
+                                train_data = train_data,
+                                metric = metric,
+                                eval_times_user = eval_times,
+                                bootstrap_ci = bootstrap_ci,
+                                bootstrap_samples = bootstrap_samples,
+                                bootstrap_seed = bootstrap_seed,
+                                at_risk_threshold = at_risk_threshold)
         if (!is.null(result)) {
           performance[[algo]][[eng]] <- result$performance
           predictions_list[[algo]][[eng]] <- result$predictions
@@ -78,11 +110,20 @@ evaluate_models <- function(models, train_data, test_data, label, task, metric =
       } else {
         NA
       }
-      result <- process_model(models[[algo]], model_id = algo,
-                              task = task, test_data = test_data,
-                              label = label, event_class = event_class,
-                              engine = eng, train_data = train_data,
-                              metric = metric)
+      result <- process_model(models[[algo]],
+                              model_id = algo,
+                              task = task,
+                              test_data = test_data,
+                              label = label,
+                              event_class = event_class,
+                              engine = eng,
+                              train_data = train_data,
+                              metric = metric,
+                              eval_times_user = eval_times,
+                              bootstrap_ci = bootstrap_ci,
+                              bootstrap_samples = bootstrap_samples,
+                              bootstrap_seed = bootstrap_seed,
+                              at_risk_threshold = at_risk_threshold)
       if (!is.null(result)) {
         performance[[algo]] <- result$performance
         predictions_list[[algo]] <- result$predictions
