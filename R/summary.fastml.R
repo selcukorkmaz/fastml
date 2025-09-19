@@ -34,7 +34,7 @@ utils::globalVariables(c("truth", "residual", "sensitivity", "specificity", "Fal
 #' @param ... Additional arguments.
 #' @return Prints summary of fastml models.
 #'
-#' @importFrom dplyr filter select mutate bind_rows group_by summarise n starts_with
+#' @importFrom dplyr filter select mutate bind_rows group_by summarise n starts_with distinct
 #' @importFrom magrittr %>%
 #' @importFrom reshape2 melt dcast
 #' @importFrom tune extract_fit_parsnip
@@ -176,16 +176,23 @@ summary.fastml <- function(object,
   if (length(engine_names) == 1 && "LiblineaR" %in% engine_names) {
     keep_metrics <- intersect(keep_metrics, c("accuracy", "kap", "sens", "spec", "precision", "f_meas"))
   }
+  performance_numeric <- performance_sub %>%
+    dplyr::select(Model, Engine, .metric, .estimate) %>%
+    dplyr::distinct()
+
   performance_wide <- tidyr::pivot_wider(
-    performance_sub,
+    performance_numeric,
     names_from = .metric,
     values_from = .estimate
   )
-  performance_display <- tidyr::pivot_wider(
-    performance_sub,
-    names_from = .metric,
-    values_from = metric_display
-  )
+
+  performance_display <- performance_sub %>%
+    dplyr::select(Model, Engine, .metric, metric_display) %>%
+    dplyr::distinct() %>%
+    tidyr::pivot_wider(
+      names_from = .metric,
+      values_from = metric_display
+    )
   select_cols <- c("Model", "Engine", keep_metrics)
   select_cols <- intersect(select_cols, colnames(performance_wide))
   performance_wide <- dplyr::select(performance_wide, dplyr::all_of(select_cols))
