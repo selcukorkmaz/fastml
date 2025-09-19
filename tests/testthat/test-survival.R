@@ -39,6 +39,17 @@ test_that("cox_ph survival model trains and evaluates", {
   expect_identical(res$engine_names$cox_ph, "survival")
   # Summary should not error and should print
   expect_no_error(capture.output(summary(res)))
+  metrics_only <- capture.output(summary(res, type = "metrics"))
+  expect_false(any(grepl("Brier\\(t=", metrics_only, fixed = TRUE)))
+  if (length(res$survival_brier_times) > 0) {
+    first_time <- unname(res$survival_brier_times[1])
+    metrics_with_brier <- capture.output(summary(res, type = "metrics", brier_times = first_time))
+    expect_true(any(grepl("Brier\\(t=", metrics_with_brier, fixed = TRUE)))
+  }
+  metrics_no_ci <- capture.output(summary(res, type = "metrics", show_ci = FALSE))
+  expect_false(any(grepl("\([0-9.]+, [0-9.]+\)", metrics_no_ci)))
+  metrics_with_ci <- capture.output(summary(res, type = "metrics", show_ci = TRUE))
+  expect_true(any(grepl("\([0-9.]+, [0-9.]+\)", metrics_with_ci)))
   # If censored is installed, surv_time should be present and numeric
   if (requireNamespace("censored", quietly = TRUE)) {
     preds <- res$predictions[[1]]
