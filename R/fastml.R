@@ -326,17 +326,34 @@ fastml <- function(data = NULL,
       stop("For survival tasks, 'label' must contain the time/status columns present in the data (length 2 or 3).")
     }
     label_surv <- label
+    status_warning_emitted <- FALSE
+    normalize_status <- function(vec, reference_length) {
+      res <- fastml_normalize_survival_status(vec, reference_length)
+      if (res$recoded && !status_warning_emitted) {
+        warning("Detected non-standard survival status coding; recoding to 0 = censored and 1 = event.", call. = FALSE)
+        status_warning_emitted <<- TRUE
+      }
+      res$status
+    }
     if (length(label) == 2) {
       time_col <- label[1]
       status_col <- label[2]
-      surv_train <- survival::Surv(train_data[[time_col]], train_data[[status_col]])
-      surv_test  <- survival::Surv(test_data[[time_col]], test_data[[status_col]])
+      train_status <- normalize_status(train_data[[status_col]], nrow(train_data))
+      test_status  <- normalize_status(test_data[[status_col]], nrow(test_data))
+      train_data[[status_col]] <- train_status
+      test_data[[status_col]]  <- test_status
+      surv_train <- survival::Surv(train_data[[time_col]], train_status)
+      surv_test  <- survival::Surv(test_data[[time_col]], test_status)
     } else {
       start_col <- label[1]
       stop_col <- label[2]
       status_col <- label[3]
-      surv_train <- survival::Surv(train_data[[start_col]], train_data[[stop_col]], train_data[[status_col]])
-      surv_test  <- survival::Surv(test_data[[start_col]], test_data[[stop_col]], test_data[[status_col]])
+      train_status <- normalize_status(train_data[[status_col]], nrow(train_data))
+      test_status  <- normalize_status(test_data[[status_col]], nrow(test_data))
+      train_data[[status_col]] <- train_status
+      test_data[[status_col]]  <- test_status
+      surv_train <- survival::Surv(train_data[[start_col]], train_data[[stop_col]], train_status)
+      surv_test  <- survival::Surv(test_data[[start_col]], test_data[[stop_col]], test_status)
     }
     attr(surv_train, "fastml_label_cols") <- label_surv
     attr(surv_test, "fastml_label_cols") <- label_surv

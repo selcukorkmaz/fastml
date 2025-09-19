@@ -196,16 +196,32 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       }
     }
   } else if (task == "survival") {
+    status_warning_emitted <- FALSE
+    normalize_status <- function(status_vec, reference_length) {
+      res <- fastml_normalize_survival_status(status_vec, reference_length)
+      if (res$recoded && !status_warning_emitted) {
+        warning("Detected non-standard survival status coding; recoding to 0 = censored and 1 = event.", call. = FALSE)
+        status_warning_emitted <<- TRUE
+      }
+      res$status
+    }
     if (length(label) == 3) {
       start_col <- label[1]
       time_col <- label[2]
       status_col <- label[3]
-      surv_obj <- survival::Surv(test_data[[start_col]], test_data[[time_col]], test_data[[status_col]])
     } else {
       start_col <- NULL
       time_col <- label[1]
       status_col <- label[2]
-      surv_obj <- survival::Surv(test_data[[time_col]], test_data[[status_col]])
+    }
+    test_status_clean <- normalize_status(test_data[[status_col]], nrow(test_data))
+    train_status_clean <- normalize_status(train_data[[status_col]], nrow(train_data))
+    test_data[[status_col]] <- test_status_clean
+    train_data[[status_col]] <- train_status_clean
+    if (!is.null(start_col)) {
+      surv_obj <- survival::Surv(test_data[[start_col]], test_data[[time_col]], test_status_clean)
+    } else {
+      surv_obj <- survival::Surv(test_data[[time_col]], test_status_clean)
     }
 
     # Prepare data for prediction depending on model type
@@ -903,35 +919,6 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       risk <- rep(risk, nrow(test_data))
     }
     risk <- as.numeric(risk)
-
-    normalize_status <- function(status_vec, reference_length) {
-      if (is.null(status_vec)) {
-        return(rep(0, reference_length))
-      }
-      if (is.factor(status_vec) || is.character(status_vec)) {
-        numeric_version <- suppressWarnings(as.numeric(as.character(status_vec)))
-        if (!all(is.na(numeric_version))) {
-          status_vec <- numeric_version
-        } else {
-          status_levels <- unique(status_vec[!is.na(status_vec)])
-          if (length(status_levels) <= 1) {
-            return(rep(0, length(status_vec)))
-          }
-          event_level <- status_levels[length(status_levels)]
-          return(ifelse(is.na(status_vec), 0, ifelse(status_vec == event_level, 1, 0)))
-        }
-      }
-      status_vec <- as.numeric(status_vec)
-      unique_vals <- sort(unique(status_vec[!is.na(status_vec)]))
-      if (length(unique_vals) == 0) {
-        rep(0, length(status_vec))
-      } else if (min(unique_vals) <= 0) {
-        ifelse(is.na(status_vec), 0, ifelse(status_vec > 0, 1, 0))
-      } else {
-        event_val <- max(unique_vals)
-        ifelse(is.na(status_vec), 0, ifelse(status_vec == event_val, 1, 0))
-      }
-    }
 
     determine_round_digits <- function(times) {
       times <- times[is.finite(times) & times > 0]

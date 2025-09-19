@@ -154,77 +154,110 @@ summary.fastml <- function(object,
     }
     available_brier_metrics <- sort(grep("^brier_t", all_metric_names, value = TRUE))
     selected_brier_metrics <- character(0)
-    if (!is.null(brier_times) && length(brier_times) > 0) {
-      if (length(available_brier_metrics) == 0) {
-        warning("No time-specific Brier score metrics are available; `brier_times` will be ignored.")
+    tau_max <- object$survival_t_max
+    if (length(available_brier_metrics) > 0) {
+      available_time_map <- object$survival_brier_times
+      if (is.null(available_time_map) || length(available_time_map) == 0) {
+        available_time_map <- stats::setNames(rep(NA_real_, length(available_brier_metrics)), available_brier_metrics)
       } else {
-        available_time_map <- object$survival_brier_times
-        if (is.null(available_time_map) || length(available_time_map) == 0) {
-          available_time_map <- stats::setNames(rep(NA_real_, length(available_brier_metrics)), available_brier_metrics)
-        } else {
-          available_time_map <- available_time_map[intersect(names(available_time_map), available_brier_metrics)]
-          missing_names <- setdiff(available_brier_metrics, names(available_time_map))
-          if (length(missing_names) > 0) {
-            available_time_map <- c(available_time_map, stats::setNames(rep(NA_real_, length(missing_names)), missing_names))
-          }
-          available_time_map <- available_time_map[match(available_brier_metrics, names(available_time_map))]
-          names(available_time_map) <- available_brier_metrics
+        available_time_map <- available_time_map[intersect(names(available_time_map), available_brier_metrics)]
+        missing_names <- setdiff(available_brier_metrics, names(available_time_map))
+        if (length(missing_names) > 0) {
+          available_time_map <- c(available_time_map, stats::setNames(rep(NA_real_, length(missing_names)), missing_names))
         }
+        available_time_map <- available_time_map[match(available_brier_metrics, names(available_time_map))]
+        names(available_time_map) <- available_brier_metrics
+      }
 
-        unmatched_numeric <- numeric(0)
-        unmatched_labels <- character(0)
+      numeric_time_map <- suppressWarnings(as.numeric(available_time_map))
+      names(numeric_time_map) <- names(available_time_map)
+
+      order_brier_metrics <- function(metrics) {
+        if (length(metrics) <= 1) {
+          return(metrics)
+        }
+        idx <- match(metrics, names(numeric_time_map))
+        times <- numeric_time_map[idx]
+        ord <- order(ifelse(is.finite(times), times, Inf), metrics)
+        metrics[ord]
+      }
+
+      match_metric_by_time <- function(target_time) {
+        if (length(target_time) != 1 || !is.finite(target_time) || target_time <= 0) {
+          return(NA_character_)
+        }
+        if (is.finite(tau_max)) {
+          target_time <- min(target_time, tau_max)
+        }
+        valid_idx <- which(is.finite(numeric_time_map))
+        if (length(valid_idx) == 0) {
+          return(NA_character_)
+        }
+        diffs <- abs(numeric_time_map[valid_idx] - target_time)
+        best_idx <- which.min(diffs)
+        idx <- valid_idx[best_idx]
+        best_diff <- diffs[best_idx]
+        if (length(idx) != 1 || !is.finite(best_diff)) {
+          return(NA_character_)
+        }
+        names(numeric_time_map)[idx]
+      }
+
+      default_brier_selection <- function() {
+        if (length(available_brier_metrics) == 0) {
+          return(character(0))
+        }
+        numeric_vals <- numeric_time_map[is.finite(numeric_time_map)]
+        if (length(numeric_vals) > 0) {
+          quantile_targets <- stats::quantile(numeric_vals, probs = c(0.25, 0.5, 0.75),
+                                             names = FALSE, na.rm = TRUE)
+          quantile_targets <- unique(as.numeric(quantile_targets))
+          quantile_targets <- quantile_targets[is.finite(quantile_targets)]
+          if (length(quantile_targets) > 0) {
+            matched <- vapply(quantile_targets, match_metric_by_time, character(1))
+            matched <- matched[!is.na(matched) & nzchar(matched)]
+            matched <- matched[!duplicated(matched)]
+            if (length(matched) > 0) {
+              matched <- order_brier_metrics(matched)
+              return(matched[seq_len(min(3, length(matched)))])
+            }
+          }
+        }
+        fallback <- order_brier_metrics(available_brier_metrics)
+        fallback[seq_len(min(3, length(fallback)))]
+      }
+
+      if (is.null(brier_times) || length(brier_times) == 0) {
+        selected_brier_metrics <- default_brier_selection()
+      } else {
         input_list <- as.list(brier_times)
-        tolerance_value <- function(val) {
-          if (!is.finite(val)) {
-            return(1e-08)
-          }
-          max(1e-06 * max(1, abs(val)), 1e-08)
-        }
-
-        numeric_map <- suppressWarnings(as.numeric(available_time_map))
-        valid_numeric_idx <- which(is.finite(numeric_map))
-
+        matched_metrics <- character(0)
         for (bt in input_list) {
           if (is.character(bt) && length(bt) == 1 && bt %in% available_brier_metrics) {
-            selected_brier_metrics <- c(selected_brier_metrics, bt)
-            next
-          }
-
-          bt_numeric <- suppressWarnings(as.numeric(bt))
-          if (length(bt_numeric) == 1 && is.finite(bt_numeric)) {
-            if (length(valid_numeric_idx) > 0) {
-              diffs <- abs(numeric_map[valid_numeric_idx] - bt_numeric)
-              idx_rel <- which.min(diffs)
-              idx <- valid_numeric_idx[idx_rel]
-              tol <- tolerance_value(bt_numeric)
-              if (length(idx) == 1 && is.finite(diffs[idx_rel]) && diffs[idx_rel] <= tol) {
-                selected_brier_metrics <- c(selected_brier_metrics, names(available_time_map)[idx])
-              } else {
-                unmatched_numeric <- c(unmatched_numeric, bt_numeric)
-              }
-            } else {
-              unmatched_numeric <- c(unmatched_numeric, bt_numeric)
-            }
-          } else if (is.character(bt) && length(bt) == 1) {
-            unmatched_labels <- c(unmatched_labels, bt)
+            matched_metrics <- c(matched_metrics, bt)
           } else {
-            unmatched_labels <- c(unmatched_labels, as.character(bt))
+            bt_numeric <- suppressWarnings(as.numeric(bt))
+            if (length(bt_numeric) == 1 && is.finite(bt_numeric)) {
+              metric_name <- match_metric_by_time(bt_numeric)
+              if (!is.na(metric_name)) {
+                matched_metrics <- c(matched_metrics, metric_name)
+              }
+            }
           }
         }
-
-        if (length(selected_brier_metrics) > 0) {
-          selected_brier_metrics <- selected_brier_metrics[!duplicated(selected_brier_metrics)]
-          selected_brier_metrics <- selected_brier_metrics[selected_brier_metrics %in% available_brier_metrics]
-        }
-
-        if (length(unmatched_numeric) > 0) {
-          warn_vals <- unique(unmatched_numeric)
-          warning("Some requested Brier time points were not available and were omitted: ",
-                  paste(format(warn_vals, trim = TRUE, digits = 6), collapse = ", "))
-        }
-        if (length(unmatched_labels) > 0) {
-          warning("Some requested Brier metrics were not recognized and were omitted: ",
-                  paste(unique(unmatched_labels), collapse = ", "))
+        matched_metrics <- matched_metrics[!duplicated(matched_metrics)]
+        matched_metrics <- matched_metrics[matched_metrics %in% available_brier_metrics]
+        if (length(matched_metrics) == 0) {
+          defaults <- default_brier_selection()
+          if (length(defaults) > 0) {
+            message(
+              "None of the requested brier_times overlapped with the available follow-up; ",
+              "using default horizons based on observed quartiles."
+            )
+          }
+          selected_brier_metrics <- defaults
+        } else {
+          selected_brier_metrics <- order_brier_metrics(matched_metrics)
         }
       }
     }
