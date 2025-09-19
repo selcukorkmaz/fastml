@@ -20,6 +20,9 @@ utils::globalVariables(c("truth", "residual", "sensitivity", "specificity", "Fal
 #' `all` includes all of the above.
 #'
 #' If multiple algorithms are trained, the summary highlights the best model based on the optimized metric.
+#' For survival tasks, Harrell's C-index, Uno's C-index, the integrated Brier
+#' score, and (when available) the RMST difference are shown by default. Specific
+#' Brier(t) horizons can be requested through the \code{brier_times} argument.
 #'
 #'
 #' @param object An object of class \code{fastml}.
@@ -31,6 +34,11 @@ utils::globalVariables(c("truth", "residual", "sensitivity", "specificity", "Fal
 #'   \code{"conf_mat"} (confusion matrix).
 #'   Default is \code{"all"}.
 #' @param sort_metric The metric to sort by. Default uses optimized metric.
+#' @param show_ci Logical indicating whether to display 95\% confidence intervals
+#'   for performance metrics. Defaults to \code{TRUE}.
+#' @param brier_times Optional numeric or character vector that selects which
+#'   time-specific Brier scores to display for survival models. When \code{NULL}
+#'   (the default), time-specific Brier scores are omitted from the summary.
 #' @param ... Additional arguments.
 #' @return Prints summary of fastml models.
 #'
@@ -52,6 +60,8 @@ summary.fastml <- function(object,
                                  algorithm = "best",
                                  type = c("all", "metrics", "params", "conf_mat"),
                                  sort_metric = NULL,
+                                 show_ci = TRUE,
+                                 brier_times = NULL,
                                  ...) {
 
   if (!inherits(object, "fastml")) {
@@ -138,8 +148,87 @@ summary.fastml <- function(object,
   } else if (task == "regression") {
     desired_metrics <- c("rmse", "rsq", "mae")
   } else if (task == "survival") {
-    brier_metrics <- sort(grep("^brier_t", all_metric_names, value = TRUE))
-    desired_metrics <- c("c_index", "uno_c", "ibs", "rmst_diff", brier_metrics)
+    base_surv_metrics <- c("c_index", "uno_c", "ibs")
+    if ("rmst_diff" %in% all_metric_names) {
+      base_surv_metrics <- c(base_surv_metrics, "rmst_diff")
+    }
+    available_brier_metrics <- sort(grep("^brier_t", all_metric_names, value = TRUE))
+    selected_brier_metrics <- character(0)
+    if (!is.null(brier_times) && length(brier_times) > 0) {
+      if (length(available_brier_metrics) == 0) {
+        warning("No time-specific Brier score metrics are available; `brier_times` will be ignored.")
+      } else {
+        available_time_map <- object$survival_brier_times
+        if (is.null(available_time_map) || length(available_time_map) == 0) {
+          available_time_map <- stats::setNames(rep(NA_real_, length(available_brier_metrics)), available_brier_metrics)
+        } else {
+          available_time_map <- available_time_map[intersect(names(available_time_map), available_brier_metrics)]
+          missing_names <- setdiff(available_brier_metrics, names(available_time_map))
+          if (length(missing_names) > 0) {
+            available_time_map <- c(available_time_map, stats::setNames(rep(NA_real_, length(missing_names)), missing_names))
+          }
+          available_time_map <- available_time_map[match(available_brier_metrics, names(available_time_map))]
+          names(available_time_map) <- available_brier_metrics
+        }
+
+        unmatched_numeric <- numeric(0)
+        unmatched_labels <- character(0)
+        input_list <- as.list(brier_times)
+        tolerance_value <- function(val) {
+          if (!is.finite(val)) {
+            return(1e-08)
+          }
+          max(1e-06 * max(1, abs(val)), 1e-08)
+        }
+
+        numeric_map <- suppressWarnings(as.numeric(available_time_map))
+        valid_numeric_idx <- which(is.finite(numeric_map))
+
+        for (bt in input_list) {
+          if (is.character(bt) && length(bt) == 1 && bt %in% available_brier_metrics) {
+            selected_brier_metrics <- c(selected_brier_metrics, bt)
+            next
+          }
+
+          bt_numeric <- suppressWarnings(as.numeric(bt))
+          if (length(bt_numeric) == 1 && is.finite(bt_numeric)) {
+            if (length(valid_numeric_idx) > 0) {
+              diffs <- abs(numeric_map[valid_numeric_idx] - bt_numeric)
+              idx_rel <- which.min(diffs)
+              idx <- valid_numeric_idx[idx_rel]
+              tol <- tolerance_value(bt_numeric)
+              if (length(idx) == 1 && is.finite(diffs[idx_rel]) && diffs[idx_rel] <= tol) {
+                selected_brier_metrics <- c(selected_brier_metrics, names(available_time_map)[idx])
+              } else {
+                unmatched_numeric <- c(unmatched_numeric, bt_numeric)
+              }
+            } else {
+              unmatched_numeric <- c(unmatched_numeric, bt_numeric)
+            }
+          } else if (is.character(bt) && length(bt) == 1) {
+            unmatched_labels <- c(unmatched_labels, bt)
+          } else {
+            unmatched_labels <- c(unmatched_labels, as.character(bt))
+          }
+        }
+
+        if (length(selected_brier_metrics) > 0) {
+          selected_brier_metrics <- selected_brier_metrics[!duplicated(selected_brier_metrics)]
+          selected_brier_metrics <- selected_brier_metrics[selected_brier_metrics %in% available_brier_metrics]
+        }
+
+        if (length(unmatched_numeric) > 0) {
+          warn_vals <- unique(unmatched_numeric)
+          warning("Some requested Brier time points were not available and were omitted: ",
+                  paste(format(warn_vals, trim = TRUE, digits = 6), collapse = ", "))
+        }
+        if (length(unmatched_labels) > 0) {
+          warning("Some requested Brier metrics were not recognized and were omitted: ",
+                  paste(unique(unmatched_labels), collapse = ", "))
+        }
+      }
+    }
+    desired_metrics <- unique(c(base_surv_metrics, selected_brier_metrics))
   } else {
     # Fallback for any other task types
     desired_metrics <- unique(performance_df$.metric)
@@ -147,35 +236,32 @@ summary.fastml <- function(object,
   desired_metrics <- intersect(desired_metrics, all_metric_names)
   if (length(desired_metrics) == 0) desired_metrics <- main_metric
 
-  performance_sub <- performance_df[performance_df$.metric %in% desired_metrics, ] %>%
+  metrics_for_sub <- unique(c(desired_metrics, main_metric))
+  metrics_for_sub <- intersect(metrics_for_sub, all_metric_names)
+
+  performance_sub <- performance_df[performance_df$.metric %in% metrics_for_sub, ] %>%
     dplyr::select(-dplyr::any_of(".estimator"))
 
   has_ci_cols <- all(c(".lower", ".upper") %in% colnames(performance_sub))
-  if (has_ci_cols) {
-    performance_sub <- performance_sub %>%
-      dplyr::mutate(
-        metric_display = dplyr::case_when(
-          is.na(.estimate) ~ NA_character_,
-          !is.na(.lower) & !is.na(.upper) ~ sprintf("%.3f (%.3f, %.3f)", .estimate, .lower, .upper),
-          TRUE ~ sprintf("%.3f", .estimate)
-        )
+  performance_sub <- performance_sub %>%
+    dplyr::mutate(
+      metric_display = dplyr::case_when(
+        is.na(.estimate) ~ NA_character_,
+        show_ci && has_ci_cols && !is.na(.lower) && !is.na(.upper) ~
+          sprintf("%.3f (%.3f, %.3f)", .estimate, .lower, .upper),
+        TRUE ~ sprintf("%.3f", .estimate)
       )
-  } else {
-    performance_sub <- performance_sub %>%
-      dplyr::mutate(
-        metric_display = dplyr::case_when(
-          is.na(.estimate) ~ NA_character_,
-          TRUE ~ sprintf("%.3f", .estimate)
-        )
-      )
-  }
-
-
-
-  keep_metrics <- desired_metrics
+    )
+  metrics_for_numeric <- metrics_for_sub
+  keep_metrics <- metrics_for_numeric
   if (length(engine_names) == 1 && "LiblineaR" %in% engine_names) {
-    keep_metrics <- intersect(keep_metrics, c("accuracy", "kap", "sens", "spec", "precision", "f_meas"))
+    allowed_liblinear <- c("accuracy", "kap", "sens", "spec", "precision", "f_meas")
+    keep_metrics <- intersect(keep_metrics, allowed_liblinear)
+    if (!(main_metric %in% keep_metrics) && main_metric %in% metrics_for_numeric) {
+      keep_metrics <- c(keep_metrics, main_metric)
+    }
   }
+  keep_metrics <- unique(keep_metrics)
   performance_numeric <- performance_sub %>%
     dplyr::select(Model, Engine, .metric, .estimate) %>%
     dplyr::distinct()
@@ -193,11 +279,13 @@ summary.fastml <- function(object,
       names_from = .metric,
       values_from = metric_display
     )
-  select_cols <- c("Model", "Engine", keep_metrics)
-  select_cols <- intersect(select_cols, colnames(performance_wide))
-  performance_wide <- dplyr::select(performance_wide, dplyr::all_of(select_cols))
-  performance_display <- dplyr::select(performance_display, dplyr::all_of(select_cols))
-  desired_metrics <- intersect(desired_metrics, select_cols[!(select_cols %in% c("Model", "Engine"))])
+  select_cols_numeric <- c("Model", "Engine", keep_metrics)
+  select_cols_numeric <- intersect(select_cols_numeric, colnames(performance_wide))
+  performance_wide <- dplyr::select(performance_wide, dplyr::all_of(select_cols_numeric))
+  select_cols_display <- c("Model", "Engine", desired_metrics)
+  select_cols_display <- intersect(select_cols_display, colnames(performance_display))
+  performance_display <- dplyr::select(performance_display, dplyr::all_of(select_cols_display))
+  desired_metrics <- intersect(desired_metrics, select_cols_display[!(select_cols_display %in% c("Model", "Engine"))])
 
 
 
@@ -207,10 +295,15 @@ summary.fastml <- function(object,
   # Sort direction: lower-better metrics vs higher-better metrics
   brier_cols <- grep("^brier_t", colnames(performance_wide), value = TRUE)
   ascending_metrics <- unique(c("rmse", "mae", "ibs", "logloss", "mse", brier_cols))
-  if (main_metric %in% ascending_metrics) {
-    order_idx <- order(performance_wide[[main_metric]], na.last = TRUE)
+  if (main_metric %in% colnames(performance_wide)) {
+    if (main_metric %in% ascending_metrics) {
+      order_idx <- order(performance_wide[[main_metric]], na.last = TRUE)
+    } else {
+      order_idx <- order(-performance_wide[[main_metric]], na.last = TRUE)
+    }
   } else {
-    order_idx <- order(-performance_wide[[main_metric]], na.last = TRUE)
+    warning(sprintf("Main metric '%s' not available for sorting; retaining original order.", main_metric))
+    order_idx <- seq_len(nrow(performance_wide))
   }
   performance_wide <- performance_wide[order_idx, , drop = FALSE]
   performance_display <- performance_display[order_idx, , drop = FALSE]
