@@ -123,7 +123,8 @@ plot.fastml <- function(x,
   } else if (task == "regression") {
     desired_metrics <- c("rmse", "rsq", "mae")
   } else if (task == "survival") {
-    desired_metrics <- c("c_index", "brier_score", "logrank_p")
+    brier_metrics <- sort(grep("^brier_t", all_metric_names, value = TRUE))
+    desired_metrics <- c("c_index", "uno_c", "ibs", "rmst_diff", brier_metrics)
   } else {
     desired_metrics <- unique(performance_df$.metric)
   }
@@ -145,38 +146,22 @@ plot.fastml <- function(x,
     ) %>%
       dplyr::select(Model, Engine, accuracy, kap, sens, spec, precision, f_meas)
   } else {
-    if (task == "classification") {
-      performance_wide <- tidyr::pivot_wider(
-        performance_sub,
-        names_from  = .metric,
-        values_from = .estimate
-      ) %>%
-        dplyr::select(Model, Engine, accuracy, kap, sens, spec, precision, f_meas, roc_auc)
-    } else if (task == "regression") {
-      performance_wide <- tidyr::pivot_wider(
-        performance_sub,
-        names_from  = .metric,
-        values_from = .estimate
-      ) %>%
-        dplyr::select(Model, Engine, rmse, rsq, mae)
-    } else if (task == "survival") {
-      performance_wide <- tidyr::pivot_wider(
-        performance_sub,
-        names_from  = .metric,
-        values_from = .estimate
-      )
-      keep_cols <- c("Model", "Engine", intersect(c("c_index", "brier_score", "logrank_p"), colnames(performance_wide)))
-      performance_wide <- dplyr::select(performance_wide, dplyr::all_of(keep_cols))
-    } else {
-      performance_wide <- tidyr::pivot_wider(
-        performance_sub,
-        names_from  = .metric,
-        values_from = .estimate
-      )
+    keep_metrics <- desired_metrics
+    if (length(engine_names) == 1 && "LiblineaR" %in% engine_names) {
+      keep_metrics <- intersect(keep_metrics, c("accuracy", "kap", "sens", "spec", "precision", "f_meas"))
     }
+    performance_wide <- tidyr::pivot_wider(
+      performance_sub,
+      names_from  = .metric,
+      values_from = .estimate
+    )
+    select_cols <- c("Model", "Engine", keep_metrics)
+    select_cols <- intersect(select_cols, colnames(performance_wide))
+    performance_wide <- dplyr::select(performance_wide, dplyr::all_of(select_cols))
   }
 
-  ascending_metrics <- c("rmse", "mae", "brier_score", "logloss", "mse", "logrank_p")
+  brier_cols <- grep("^brier_t", colnames(performance_wide), value = TRUE)
+  ascending_metrics <- unique(c("rmse", "mae", "ibs", "logloss", "mse", brier_cols))
   if (main_metric %in% ascending_metrics) {
     performance_wide <- performance_wide[order(performance_wide[[main_metric]], na.last = TRUE), ]
   } else {
@@ -194,10 +179,32 @@ plot.fastml <- function(x,
     rsq       = "R-squared",
     mae       = "MAE",
     rmse      = "RMSE",
-    c_index   = "C-index",
-    brier_score = "Brier Score",
-    logrank_p = "Log-rank p"
+    c_index   = "Harrell C-index",
+    uno_c     = "Uno's C-index",
+    ibs       = "Integrated Brier Score",
+    rmst_diff = "RMST diff (t_max)"
   )
+  t_max_val <- x$survival_t_max
+  if (!is.null(t_max_val) && length(t_max_val) == 1 && is.finite(t_max_val) && t_max_val > 0) {
+    display_names[["rmst_diff"]] <- sprintf(
+      "RMST diff (t<=%s)",
+      format(t_max_val, trim = TRUE, digits = 4)
+    )
+  }
+  if (!is.null(x$survival_brier_times)) {
+    for (nm in names(x$survival_brier_times)) {
+      if (!is.null(x$survival_brier_times[[nm]]) && is.finite(x$survival_brier_times[[nm]])) {
+        time_label <- format(x$survival_brier_times[[nm]], trim = TRUE, digits = 4)
+      } else {
+        time_label <- nm
+      }
+      display_names[[nm]] <- sprintf("Brier(t=%s)", time_label)
+    }
+  }
+  auto_brier_cols <- setdiff(grep("^brier_t", colnames(performance_wide), value = TRUE), names(display_names))
+  if (length(auto_brier_cols) > 0) {
+    display_names[auto_brier_cols] <- auto_brier_cols
+  }
 
   # ============================
   # 1. Bar plot of metrics
@@ -229,7 +236,13 @@ plot.fastml <- function(x,
         performance_melt$Metric <- factor(performance_melt$Metric, levels = present_reg_metrics)
       }
     } else if (task == "survival") {
-      surv_order <- c("C-index", "Brier Score", "Log-rank p")
+      rmst_label <- display_names[["rmst_diff"]]
+      if (is.null(rmst_label)) {
+        rmst_label <- "RMST diff (t_max)"
+      }
+      surv_order <- c("Harrell C-index", "Uno's C-index", "Integrated Brier Score", rmst_label)
+      brier_labels <- display_names[grep("^brier_t", names(display_names))]
+      surv_order <- c(surv_order, brier_labels)
       present_surv_metrics <- intersect(surv_order, unique(performance_melt$Metric))
       if (length(present_surv_metrics) > 0) {
         performance_melt$Metric <- factor(performance_melt$Metric, levels = present_surv_metrics)

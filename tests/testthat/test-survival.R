@@ -23,11 +23,19 @@ test_that("cox_ph survival model trains and evaluates", {
   expect_s3_class(res, "fastml")
   # Ensure performance contains survival metrics
   perf <- res$performance[[1]]
-  expect_true(all(c("c_index", "brier_score", "logrank_p") %in% perf$.metric))
-  brier_val <- perf$.estimate[perf$.metric == "brier_score"]
+  expect_true(all(c("c_index", "uno_c", "ibs", "rmst_diff") %in% perf$.metric))
+  expect_true(all(c(".lower", ".upper", ".n_boot") %in% names(perf)))
+  brier_metrics <- perf$.metric[grepl("^brier_t", perf$.metric)]
+  expect_true(length(brier_metrics) >= 1)
+  brier_val <- perf$.estimate[perf$.metric %in% brier_metrics]
   expect_true(length(brier_val) > 0)
   expect_true(all(is.finite(brier_val)))
   expect_true(all(brier_val >= 0 & brier_val <= 1))
+  ibs_val <- perf$.estimate[perf$.metric == "ibs"]
+  expect_true(all(is.finite(ibs_val)))
+  expect_true(all(ibs_val >= 0 & ibs_val <= 1))
+  expect_true(length(res$survival_brier_times) >= 1)
+  expect_true(all(names(res$survival_brier_times) %in% brier_metrics))
   expect_identical(res$engine_names$cox_ph, "survival")
   # Summary should not error and should print
   expect_no_error(capture.output(summary(res)))
@@ -61,8 +69,10 @@ test_that("survreg survival model returns Brier scores", {
   )
   expect_s3_class(res, "fastml")
   perf <- res$performance[[1]]
-  expect_true(all(c("c_index", "brier_score", "logrank_p") %in% perf$.metric))
-  brier_val <- perf$.estimate[perf$.metric == "brier_score"]
+  expect_true(all(c("c_index", "uno_c", "ibs", "rmst_diff") %in% perf$.metric))
+  brier_metrics <- perf$.metric[grepl("^brier_t", perf$.metric)]
+  expect_true(length(brier_metrics) >= 1)
+  brier_val <- perf$.estimate[perf$.metric %in% brier_metrics]
   expect_true(length(brier_val) > 0)
   expect_true(all(is.finite(brier_val)))
   expect_true(all(brier_val >= 0 & brier_val <= 1))
@@ -89,15 +99,19 @@ test_that("survival random forest with aorsf engine trains when available", {
   pf <- res$performance[[nm]]
   if (is.list(pf)) {
     expect_true("aorsf" %in% names(pf))
-    expect_true(all(c("c_index", "brier_score", "logrank_p") %in% pf$aorsf$.metric))
-    brier_val <- pf$aorsf$.estimate[pf$aorsf$.metric == "brier_score"]
+    expect_true(all(c("c_index", "uno_c", "ibs", "rmst_diff") %in% pf$aorsf$.metric))
+    brier_metrics <- pf$aorsf$.metric[grepl("^brier_t", pf$aorsf$.metric)]
+    expect_true(length(brier_metrics) >= 1)
+    brier_val <- pf$aorsf$.estimate[pf$aorsf$.metric %in% brier_metrics]
     expect_true(length(brier_val) > 0)
     expect_true(all(is.finite(brier_val)))
     expect_true(all(brier_val >= 0 & brier_val <= 1))
   } else {
     # Single engine path
-    expect_true(all(c("c_index", "brier_score", "logrank_p") %in% pf$.metric))
-    brier_val <- pf$.estimate[pf$.metric == "brier_score"]
+    expect_true(all(c("c_index", "uno_c", "ibs", "rmst_diff") %in% pf$.metric))
+    brier_metrics <- pf$.metric[grepl("^brier_t", pf$.metric)]
+    expect_true(length(brier_metrics) >= 1)
+    brier_val <- pf$.estimate[pf$.metric %in% brier_metrics]
     expect_true(length(brier_val) > 0)
     expect_true(all(is.finite(brier_val)))
     expect_true(all(brier_val >= 0 & brier_val <= 1))
@@ -123,8 +137,8 @@ test_that("survival random forest can run with ranger engine when censored is av
   pf <- res$performance[[nm]]
   if (is.list(pf)) {
     expect_true("ranger" %in% names(pf))
-    expect_true(all(c("c_index", "brier_score", "logrank_p") %in% pf$ranger$.metric))
+    expect_true(all(c("c_index", "uno_c", "ibs", "rmst_diff") %in% pf$ranger$.metric))
   } else {
-    expect_true(all(c("c_index", "brier_score", "logrank_p") %in% pf$.metric))
+    expect_true(all(c("c_index", "uno_c", "ibs", "rmst_diff") %in% pf$.metric))
   }
 })

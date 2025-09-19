@@ -138,8 +138,8 @@ summary.fastml <- function(object,
   } else if (task == "regression") {
     desired_metrics <- c("rmse", "rsq", "mae")
   } else if (task == "survival") {
-    # Common survival metrics used in fastml
-    desired_metrics <- c("c_index", "brier_score", "logrank_p")
+    brier_metrics <- sort(grep("^brier_t", all_metric_names, value = TRUE))
+    desired_metrics <- c("c_index", "uno_c", "ibs", "rmst_diff", brier_metrics)
   } else {
     # Fallback for any other task types
     desired_metrics <- unique(performance_df$.metric)
@@ -147,58 +147,50 @@ summary.fastml <- function(object,
   desired_metrics <- intersect(desired_metrics, all_metric_names)
   if (length(desired_metrics) == 0) desired_metrics <- main_metric
 
-  performance_sub <- performance_df[performance_df$.metric %in% desired_metrics, ]%>%
+  performance_sub <- performance_df[performance_df$.metric %in% desired_metrics, ] %>%
     dplyr::select(-dplyr::any_of(".estimator"))
 
-
-
-    if(length(engine_names) == 1 && "LiblineaR" %in% engine_names){
-
-        performance_wide <- pivot_wider(
-          performance_sub,
-          names_from = .metric,
-          values_from = .estimate
-        ) %>%
-          dplyr::select(Model, Engine, accuracy, kap, sens, spec, precision, f_meas)
-
-    }else{
-
-      if(task == "classification"){
-
-      performance_wide <- pivot_wider(
-        performance_sub,
-        names_from = .metric,
-        values_from = .estimate
-      ) %>%
-        dplyr::select(Model, Engine, accuracy, kap, sens, spec, precision, f_meas, roc_auc)
-
-      }else if(task == "regression"){
-
-        performance_wide <- pivot_wider(
-          performance_sub,
-          names_from = .metric,
-          values_from = .estimate
-        ) %>%
-          dplyr::select(Model, Engine, rmse, rsq, mae)
-      } else if (task == "survival") {
-        performance_wide <- pivot_wider(
-          performance_sub,
-          names_from = .metric,
-          values_from = .estimate
+  has_ci_cols <- all(c(".lower", ".upper") %in% colnames(performance_sub))
+  if (has_ci_cols) {
+    performance_sub <- performance_sub %>%
+      dplyr::mutate(
+        metric_display = dplyr::case_when(
+          is.na(.estimate) ~ NA_character_,
+          !is.na(.lower) & !is.na(.upper) ~ sprintf("%.3f (%.3f, %.3f)", .estimate, .lower, .upper),
+          TRUE ~ sprintf("%.3f", .estimate)
         )
-        # Keep only available survival metrics among expected set
-        keep_cols <- c("Model", "Engine", intersect(c("c_index", "brier_score", "logrank_p"), colnames(performance_wide)))
-        performance_wide <- dplyr::select(performance_wide, dplyr::all_of(keep_cols))
-      } else {
-        # Generic fallback: keep all metrics present
-        performance_wide <- pivot_wider(
-          performance_sub,
-          names_from = .metric,
-          values_from = .estimate
+      )
+  } else {
+    performance_sub <- performance_sub %>%
+      dplyr::mutate(
+        metric_display = dplyr::case_when(
+          is.na(.estimate) ~ NA_character_,
+          TRUE ~ sprintf("%.3f", .estimate)
         )
-      }
+      )
+  }
 
-    }
+
+
+  keep_metrics <- desired_metrics
+  if (length(engine_names) == 1 && "LiblineaR" %in% engine_names) {
+    keep_metrics <- intersect(keep_metrics, c("accuracy", "kap", "sens", "spec", "precision", "f_meas"))
+  }
+  performance_wide <- tidyr::pivot_wider(
+    performance_sub,
+    names_from = .metric,
+    values_from = .estimate
+  )
+  performance_display <- tidyr::pivot_wider(
+    performance_sub,
+    names_from = .metric,
+    values_from = metric_display
+  )
+  select_cols <- c("Model", "Engine", keep_metrics)
+  select_cols <- intersect(select_cols, colnames(performance_wide))
+  performance_wide <- dplyr::select(performance_wide, dplyr::all_of(select_cols))
+  performance_display <- dplyr::select(performance_display, dplyr::all_of(select_cols))
+  desired_metrics <- intersect(desired_metrics, select_cols[!(select_cols %in% c("Model", "Engine"))])
 
 
 
@@ -206,12 +198,15 @@ summary.fastml <- function(object,
   # performance_wide <- performance_wide[, c("Model", "Engine", setdiff(colnames(performance_wide), c("Model", "Engine")))]
 
   # Sort direction: lower-better metrics vs higher-better metrics
-  ascending_metrics <- c("rmse", "mae", "brier_score", "logloss", "mse", "logrank_p")
+  brier_cols <- grep("^brier_t", colnames(performance_wide), value = TRUE)
+  ascending_metrics <- unique(c("rmse", "mae", "ibs", "logloss", "mse", brier_cols))
   if (main_metric %in% ascending_metrics) {
-    performance_wide <- performance_wide[order(performance_wide[[main_metric]], na.last = TRUE), ]
+    order_idx <- order(performance_wide[[main_metric]], na.last = TRUE)
   } else {
-    performance_wide <- performance_wide[order(-performance_wide[[main_metric]], na.last = TRUE), ]
+    order_idx <- order(-performance_wide[[main_metric]], na.last = TRUE)
   }
+  performance_wide <- performance_wide[order_idx, , drop = FALSE]
+  performance_display <- performance_display[order_idx, , drop = FALSE]
 
   display_names <- c(
     accuracy = "Accuracy",
@@ -224,10 +219,33 @@ summary.fastml <- function(object,
     rsq = "R-squared",
     mae = "MAE",
     rmse = "RMSE",
-    c_index = "C-index",
-    brier_score = "Brier Score",
-    logrank_p = "Log-rank p"
+    c_index = "Harrell C-index",
+    uno_c = "Uno's C-index",
+    ibs = "Integrated Brier Score",
+    rmst_diff = "RMST diff (t_max)"
   )
+  t_max_val <- object$survival_t_max
+  if (!is.null(t_max_val) && length(t_max_val) == 1 && is.finite(t_max_val) && t_max_val > 0) {
+    display_names[["rmst_diff"]] <- sprintf(
+      "RMST diff (t<=%s)",
+      format(t_max_val, trim = TRUE, digits = 4)
+    )
+  }
+
+  if (!is.null(object$survival_brier_times)) {
+    for (nm in names(object$survival_brier_times)) {
+      if (!is.null(object$survival_brier_times[[nm]]) && is.finite(object$survival_brier_times[[nm]])) {
+        time_label <- format(object$survival_brier_times[[nm]], trim = TRUE, digits = 4)
+      } else {
+        time_label <- nm
+      }
+      display_names[[nm]] <- sprintf("Brier(t=%s)", time_label)
+    }
+  }
+  auto_brier_cols <- setdiff(grep("^brier_t", colnames(performance_display), value = TRUE), names(display_names))
+  if (length(auto_brier_cols) > 0) {
+    display_names[auto_brier_cols] <- auto_brier_cols
+  }
 
 
 
@@ -288,20 +306,18 @@ summary.fastml <- function(object,
 
   metrics_to_print <- c("Model", "Engine", desired_metrics)
 
-  for (m in desired_metrics) {
-    performance_wide[[m]] <- format(performance_wide[[m]], digits = 7, nsmall = 7)
-  }
-
   if(all(algorithm != "best")){
 
-    performance_wide = performance_wide %>% filter(Model %in% algorithm)
+    performance_wide <- performance_wide %>% dplyr::filter(Model %in% algorithm)
+    performance_display <- performance_display %>% dplyr::filter(Model %in% algorithm)
+    best_model_idx <- get_best_model_idx(performance_wide, optimized_metric)
   }
 
   header <- c("Model", "Engine", sapply(desired_metrics, function(m) {
     if (m %in% names(display_names)) display_names[[m]] else m
   }))
 
-  data_str <- performance_wide
+  data_str <- performance_display
   data_str$Model <- as.character(data_str$Model)
 
   if(all(algorithm == "best")){
@@ -340,8 +356,8 @@ summary.fastml <- function(object,
 
   cat(line_sep, "\n")
 
-  if(algorithm == "best"){
-   cat("(*Best model)\n\n")
+  if (all(algorithm == "best")) {
+    cat("(*Best model)\n\n")
   }
 
 }
