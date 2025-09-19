@@ -243,15 +243,27 @@ summary.fastml <- function(object,
     dplyr::select(-dplyr::any_of(".estimator"))
 
   has_ci_cols <- all(c(".lower", ".upper") %in% colnames(performance_sub))
-  performance_sub <- performance_sub %>%
-    dplyr::mutate(
-      metric_display = dplyr::case_when(
-        is.na(.estimate) ~ NA_character_,
-        show_ci && has_ci_cols && !is.na(.lower) && !is.na(.upper) ~
-          sprintf("%.3f (%.3f, %.3f)", .estimate, .lower, .upper),
-        TRUE ~ sprintf("%.3f", .estimate)
+  show_ci_available <- isTRUE(show_ci) && has_ci_cols
+
+  if (show_ci_available) {
+    performance_sub <- performance_sub %>%
+      dplyr::mutate(
+        metric_display = dplyr::case_when(
+          is.na(.estimate) ~ NA_character_,
+          !is.na(.lower) & !is.na(.upper) ~
+            sprintf("%.3f (%.3f, %.3f)", .estimate, .lower, .upper),
+          TRUE ~ sprintf("%.3f", .estimate)
+        )
       )
-    )
+  } else {
+    performance_sub <- performance_sub %>%
+      dplyr::mutate(
+        metric_display = dplyr::case_when(
+          is.na(.estimate) ~ NA_character_,
+          TRUE ~ sprintf("%.3f", .estimate)
+        )
+      )
+  }
   metrics_for_numeric <- metrics_for_sub
   keep_metrics <- metrics_for_numeric
   if (length(engine_names) == 1 && "LiblineaR" %in% engine_names) {
