@@ -665,8 +665,6 @@ summary.fastml <- function(object,
     }
   }
 
-  desired_model_name <- names(desired_models)
-
   if ("metrics" %in% type) {
 
   cat("\n===== fastml Model Summary =====\n")
@@ -753,94 +751,292 @@ summary.fastml <- function(object,
 
     }
 
-    if(length(desired_models) == 1){
-      parsnip_fit <- tryCatch(extract_fit_parsnip(desired_models[[1]]), error = function(e) NULL)
-      nms_parsnip_fit <- names(parsnip_fit)
-      nms_parsnip_spec <- names(parsnip_fit$spec)
-    } else {
-      parsnip_fit <- tryCatch(lapply(desired_models, extract_fit_parsnip), error = function(e) NULL)
-      nms_parsnip_fit <- unique(unlist(lapply(parsnip_fit, names)))
-      nms_parsnip_spec <- unique(unlist(lapply(lapply(parsnip_fit, function(model) model$spec), names)))
+    format_numeric_vec <- function(x, digits = 4) {
+      if (is.null(x) || length(x) == 0) {
+        return(character())
+      }
+      x <- suppressWarnings(as.numeric(x))
+      if (length(x) == 0) {
+        return(character())
+      }
+      out <- vapply(x, function(val) {
+        if (is.na(val) || !is.finite(val)) {
+          "<NA>"
+        } else {
+          format(signif(val, digits), trim = TRUE, scientific = FALSE)
+        }
+      }, character(1))
+      out
     }
 
-    if (is.null(parsnip_fit)) {
+    format_numeric_single <- function(x, digits = 4) {
+      vec <- format_numeric_vec(x, digits = digits)
+      if (length(vec) == 0) {
+        "<NA>"
+      } else {
+        vec[[1]]
+      }
+    }
+
+    format_param_value <- function(val) {
+      if (rlang::is_quosure(val)) {
+        return(rlang::quo_text(val))
+      }
+      if (is.numeric(val)) {
+        return(paste(format_numeric_vec(val), collapse = ", "))
+      }
+      if (is.logical(val)) {
+        return(paste(ifelse(val, "TRUE", "FALSE"), collapse = ", "))
+      }
+      if (is.character(val)) {
+        return(paste(val, collapse = ", "))
+      }
+      if (is.factor(val)) {
+        return(paste(as.character(val), collapse = ", "))
+      }
+      if (length(val) == 1) {
+        return(as.character(val))
+      }
+      paste(as.character(val), collapse = ", ")
+    }
+
+    parse_model_label <- function(label) {
+      if (is.null(label)) {
+        return(list(algorithm = NA_character_, engine = NA_character_))
+      }
+      algo <- trimws(sub("\\s*\\(.*$", "", label))
+      engine <- if (grepl("\\(", label, fixed = FALSE)) {
+        sub("^.*\\(([^()]*)\\)\\s*$", "\\1", label)
+      } else {
+        NA_character_
+      }
+      list(algorithm = algo, engine = trimws(engine))
+    }
+
+    extract_survival_fit <- function(label, model_obj) {
+      candidates <- list(object$models[[label]], model_obj)
+      for (candidate in candidates) {
+        if (is.null(candidate)) {
+          next
+        }
+        fit_candidate <- tryCatch(candidate$fit$fit$fit, error = function(e) NULL)
+        if (inherits(fit_candidate, c("survreg", "coxph"))) {
+          return(fit_candidate)
+        }
+        fit_candidate <- tryCatch(candidate$fit$fit, error = function(e) NULL)
+        if (inherits(fit_candidate, c("survreg", "coxph"))) {
+          return(fit_candidate)
+        }
+        fit_candidate <- tryCatch(candidate$fit, error = function(e) NULL)
+        if (inherits(fit_candidate, c("survreg", "coxph"))) {
+          return(fit_candidate)
+        }
+      }
+      NULL
+    }
+
+    print_survreg_details <- function(fit_obj) {
+      coef_vec <- tryCatch(stats::coef(fit_obj), error = function(e) NULL)
+      if (!is.null(coef_vec) && length(coef_vec) > 0) {
+        cat("  Coefficients (coef):\n")
+        coef_fmt <- format_numeric_vec(coef_vec)
+        if (!is.null(names(coef_vec))) {
+          names(coef_fmt) <- names(coef_vec)
+        }
+        coef_mat <- matrix(coef_fmt, ncol = 1)
+        rownames(coef_mat) <- if (!is.null(names(coef_fmt))) names(coef_fmt) else rownames(coef_mat)
+        colnames(coef_mat) <- "coef"
+        print(coef_mat, quote = FALSE)
+      } else {
+        cat("  Coefficients (coef): <unavailable>\n")
+      }
+
+      scale_val <- tryCatch(fit_obj$scale, error = function(e) NA_real_)
+      cat("  Scale:", format_numeric_single(scale_val), "\n")
+
+      dist_val <- tryCatch(fit_obj$dist, error = function(e) NA_character_)
+      dist_str <- if (!is.null(dist_val) && length(dist_val) > 0 && nzchar(as.character(dist_val)[1])) {
+        as.character(dist_val)[1]
+      } else {
+        "<NA>"
+      }
+      cat("  Distribution:", dist_str, "\n")
+
+      loglik_val <- tryCatch(fit_obj$loglik, error = function(e) NULL)
+      loglik_last <- if (!is.null(loglik_val) && length(loglik_val) > 0) {
+        loglik_val[length(loglik_val)]
+      } else {
+        NA_real_
+      }
+      cat("  Log-likelihood:", format_numeric_single(loglik_last), "\n")
+      TRUE
+    }
+
+    print_coxph_details <- function(fit_obj) {
+      summary_fit <- tryCatch(summary(fit_obj), error = function(e) NULL)
+      if (is.null(summary_fit)) {
+        return(FALSE)
+      }
+
+      coef_mat_raw <- summary_fit$coefficients
+      if (is.matrix(coef_mat_raw) && nrow(coef_mat_raw) > 0) {
+        cat("  Coefficients (coef):\n")
+        coef_fmt <- format_numeric_vec(coef_mat_raw[, "coef"])
+        rownames_target <- rownames(coef_mat_raw)
+        if (!is.null(rownames_target)) {
+          names(coef_fmt) <- rownames_target
+        }
+        coef_mat <- matrix(coef_fmt, ncol = 1)
+        rownames(coef_mat) <- if (!is.null(names(coef_fmt))) names(coef_fmt) else rownames(coef_mat)
+        colnames(coef_mat) <- "coef"
+        print(coef_mat, quote = FALSE)
+      } else {
+        cat("  Coefficients (coef): <unavailable>\n")
+      }
+
+      if (is.matrix(coef_mat_raw) && nrow(coef_mat_raw) > 0 && "exp(coef)" %in% colnames(coef_mat_raw)) {
+        cat("  exp(coef):\n")
+        exp_fmt <- format_numeric_vec(coef_mat_raw[, "exp(coef)"])
+        if (!is.null(rownames(coef_mat_raw))) {
+          names(exp_fmt) <- rownames(coef_mat_raw)
+        }
+        exp_mat <- matrix(exp_fmt, ncol = 1)
+        rownames(exp_mat) <- if (!is.null(names(exp_fmt))) names(exp_fmt) else rownames(exp_mat)
+        colnames(exp_mat) <- "exp(coef)"
+        print(exp_mat, quote = FALSE)
+      } else {
+        cat("  exp(coef): <unavailable>\n")
+      }
+
+      conf_int <- summary_fit$conf.int
+      if (is.matrix(conf_int) && nrow(conf_int) > 0 && all(c("exp(coef)", "lower .95", "upper .95") %in% colnames(conf_int))) {
+        cat("  Hazard Ratios (95% CI):\n")
+        hr_fmt <- format_numeric_vec(conf_int[, "exp(coef)"])
+        lower_fmt <- format_numeric_vec(conf_int[, "lower .95"])
+        upper_fmt <- format_numeric_vec(conf_int[, "upper .95"])
+        if (!is.null(rownames(conf_int))) {
+          names(hr_fmt) <- rownames(conf_int)
+          names(lower_fmt) <- rownames(conf_int)
+          names(upper_fmt) <- rownames(conf_int)
+        }
+        hr_mat <- cbind(
+          "HR" = hr_fmt,
+          "Lower 95%" = lower_fmt,
+          "Upper 95%" = upper_fmt
+        )
+        rownames(hr_mat) <- if (!is.null(rownames(conf_int))) rownames(conf_int) else rownames(hr_mat)
+        print(hr_mat, quote = FALSE)
+      } else {
+        cat("  Hazard Ratios: <unavailable>\n")
+      }
+
+      log_test <- summary_fit$logtest
+      if (!is.null(log_test) && length(log_test) >= 3) {
+        lr_text <- paste0(
+          format_numeric_single(log_test[1]),
+          " on ",
+          format_numeric_single(log_test[2], digits = 0),
+          " df (p = ",
+          format_numeric_single(log_test[3]),
+          ")"
+        )
+        cat("  Likelihood ratio test:", lr_text, "\n")
+      } else {
+        cat("  Likelihood ratio test: <unavailable>\n")
+      }
+
+      concord <- summary_fit$concordance
+      if (!is.null(concord) && length(concord) >= 2) {
+        cat(
+          "  Concordance:",
+          format_numeric_single(concord[1]),
+          "(SE =",
+          format_numeric_single(concord[2]),
+          ")\n"
+        )
+      } else {
+        cat("  Concordance: <unavailable>\n")
+      }
+      TRUE
+    }
+
+    print_parsnip_params <- function(model_obj) {
+      parsnip_fit <- tryCatch(extract_fit_parsnip(model_obj), error = function(e) NULL)
+      if (is.null(parsnip_fit)) {
+        return(FALSE)
+      }
+      params <- tryCatch(parsnip_fit$spec$args, error = function(e) NULL)
+      if (is.null(params) || length(params) == 0) {
+        cat("  No hyperparameters found.\n")
+        return(TRUE)
+      }
+      for (pname in names(params)) {
+        val <- params[[pname]]
+        if (inherits(val, "quosure")) {
+          val <- tryCatch(
+            eval(rlang::get_expr(val), envir = rlang::get_env(val)),
+            error = function(e) val
+          )
+        }
+        cat("  ", pname, ": ", format_param_value(val), "\n", sep = "")
+      }
+      TRUE
+    }
+
+    if (is.null(desired_models) || length(desired_models) == 0) {
       cat("Could not extract final fitted model details.\n")
-    } else if ("spec" %in% nms_parsnip_fit && "args" %in% nms_parsnip_spec) {
-
-      if(length(desired_models) == 1){
-        params <- parsnip_fit$spec$args
-      } else {
-        params <- lapply(parsnip_fit, function(model) model$spec$args)
-      }
-
-      if (length(params) > 0) {
-        cleaned_params_list <- list()  # Initialize here to prevent missing object error
-
-        if(length(desired_models) == 1){
-          cleaned_params <- list()
-          for (pname in names(params)) {
-            val <- params[[pname]]
-            if (inherits(val, "quosure")) {
-              val <- tryCatch(eval(get_expr(val), envir = get_env(val)), error = function(e) val)
-            }
-            cleaned_params[[pname]] <- val
-          }
-          cleaned_params_list[[desired_model_name]] <- cleaned_params  # Store in the list to ensure availability
-        } else {
-          # Process each model's parameters
-          for (model_name in names(params)) {
-            model_params <- params[[model_name]]
-            cleaned_params <- list()
-
-            for (pname in names(model_params)) {
-              val <- model_params[[pname]]
-
-              if (inherits(val, "quosure")) {
-                val <- tryCatch(
-                  eval(rlang::get_expr(val), envir = rlang::get_env(val)),
-                  error = function(e) val # Retain quosure if evaluation fails
-                )
-              }
-
-              cleaned_params[[pname]] <- val
-            }
-            cleaned_params_list[[model_name]] <- cleaned_params
-          }
-        }
-
-        if (length(cleaned_params_list) == 0) {
-          cat("No hyperparameters found.\n")
-        } else {
-          for (model_name in names(cleaned_params_list)) {
-            cat("Model:", model_name, "\n")
-
-            cleaned_params <- cleaned_params_list[[model_name]]
-
-            for (pname in names(cleaned_params)) {
-              # val <- cleaned_params[[pname]]
-              #
-              # if (is.numeric(val)) val <- as.character(val)
-              #
-              # cat("  ", pname, ": ", val, "\n", sep = "")
-
-              val <- cleaned_params[[pname]]
-              if (rlang::is_quosure(val)) {
-                val <- rlang::quo_text(val)
-              } else if (is.numeric(val)) {
-                val <- as.character(val)
-              }
-              cat("  ", pname, ": ", val, "\n", sep = "")
-
-            }
-
-            cat("\n")
-          }
-        }
-      } else {
-        cat("No hyperparameters found.\n")
-      }
     } else {
-      cat("No hyperparameters found.\n")
+      model_labels <- names(desired_models)
+      if (is.null(model_labels) || length(model_labels) == 0) {
+        model_labels <- paste0("Model_", seq_along(desired_models))
+      }
+
+      any_success <- FALSE
+      failure_detected <- FALSE
+
+      for (idx in seq_along(desired_models)) {
+        label <- model_labels[idx]
+        model_obj <- desired_models[[idx]]
+        cat("Model:", label, "\n")
+
+        components <- parse_model_label(label)
+        algo_name <- components$algorithm
+
+        handled <- FALSE
+        success <- FALSE
+
+        if (!is.na(algo_name) && algo_name %in% c("survreg", "cox_ph")) {
+          fit_obj <- extract_survival_fit(label, model_obj)
+          if (inherits(fit_obj, "survreg")) {
+            success <- isTRUE(print_survreg_details(fit_obj))
+            handled <- TRUE
+          } else if (inherits(fit_obj, "coxph")) {
+            success <- isTRUE(print_coxph_details(fit_obj))
+            handled <- TRUE
+          } else if (!is.null(fit_obj)) {
+            # Unexpected fit type; treat as handled to avoid duplicate warnings.
+            handled <- TRUE
+          }
+        }
+
+        if (!handled) {
+          success <- isTRUE(print_parsnip_params(model_obj))
+        }
+
+        if (!success) {
+          cat("Could not extract final fitted model details.\n")
+          failure_detected <- TRUE
+        } else {
+          any_success <- TRUE
+        }
+
+        cat("\n")
+      }
+
+      if (!any_success && failure_detected) {
+        # All attempts failed; ensure user sees the generic warning once more.
+        cat("Could not extract final fitted model details.\n")
+      }
     }
   }
 
