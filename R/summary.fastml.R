@@ -83,6 +83,27 @@ summary.fastml <- function(object,
   model_count <- length(object$models)
   positive_class <- object$positive_class
   engine_names <- object$engine_names
+  brier_time_lookup <- object$survival_brier_times
+
+  resolve_engine_name <- function(model_name, default_engine = NA_character_) {
+    if (!is.null(engine_names) && !is.null(engine_names[[model_name]])) {
+      eng_candidates <- engine_names[[model_name]]
+      if (length(eng_candidates) > 0) {
+        eng_candidates <- as.character(eng_candidates)
+        eng_candidates <- eng_candidates[!is.na(eng_candidates) & eng_candidates != ""]
+        if (length(eng_candidates) > 0) {
+          return(eng_candidates[[1]])
+        }
+      }
+    }
+    if (!is.null(best_model_name) && model_name %in% names(best_model_name)) {
+      eng <- best_model_name[[model_name]]
+      if (!is.null(eng) && !is.na(eng) && eng != "") {
+        return(as.character(eng))
+      }
+    }
+    default_engine
+  }
 
   # Loop over the top-level names (e.g. "rand_forest", "logistic_reg")
   metrics_list <- lapply(names(performance), function(model_name) {
@@ -92,19 +113,6 @@ summary.fastml <- function(object,
     # Two possible structures:
     # 1) A list of engines, each containing a tibble with .metric/.estimate
     # 2) A single tibble (no engine nesting), typical when only one engine was used
-
-    # Helper to resolve engine label for a model
-    resolve_engine <- function(default_engine = NA_character_) {
-      # Prefer provided engine_names if available
-      if (!is.null(engine_names) && !is.null(engine_names[[model_name]]) && !is.na(engine_names[[model_name]])) {
-        return(engine_names[[model_name]])
-      }
-      # Fallback to best_model_name mapping if present
-      if (!is.null(best_model_name) && model_name %in% names(best_model_name)) {
-        return(as.character(best_model_name[[model_name]]))
-      }
-      default_engine
-    }
 
     if (is.list(perf_entry) && !is.data.frame(perf_entry)) {
       # Multi-engine structure
@@ -117,7 +125,7 @@ summary.fastml <- function(object,
     } else {
       # Single tibble structure (no engine-level nesting)
       combined_engines <- as.data.frame(perf_entry)
-      combined_engines$Engine <- resolve_engine()
+      combined_engines$Engine <- resolve_engine_name(model_name)
     }
 
     # Add a "Model" column
@@ -127,6 +135,13 @@ summary.fastml <- function(object,
 
   # Combine all model groups into one data.frame
   performance_df <- do.call(rbind, metrics_list)
+
+  if ("Model" %in% names(performance_df)) {
+    performance_df$Model <- as.character(performance_df$Model)
+  }
+  if ("Engine" %in% names(performance_df)) {
+    performance_df$Engine <- as.character(performance_df$Engine)
+  }
 
   all_metric_names <- unique(performance_df$.metric)
   if (is.null(sort_metric)) {
@@ -148,119 +163,339 @@ summary.fastml <- function(object,
   } else if (task == "regression") {
     desired_metrics <- c("rmse", "rsq", "mae")
   } else if (task == "survival") {
+    current_metric_names <- unique(performance_df$.metric)
     base_surv_metrics <- c("c_index", "uno_c", "ibs")
-    if ("rmst_diff" %in% all_metric_names) {
+    if ("rmst_diff" %in% current_metric_names) {
       base_surv_metrics <- c(base_surv_metrics, "rmst_diff")
     }
-    available_brier_metrics <- sort(grep("^brier_t", all_metric_names, value = TRUE))
-    selected_brier_metrics <- character(0)
     tau_max <- object$survival_t_max
-    if (length(available_brier_metrics) > 0) {
-      available_time_map <- object$survival_brier_times
-      if (is.null(available_time_map) || length(available_time_map) == 0) {
-        available_time_map <- stats::setNames(rep(NA_real_, length(available_brier_metrics)), available_brier_metrics)
+
+    compute_brier_helper <- function(perf_df, time_lookup) {
+      available <- sort(grep("^brier_t", unique(perf_df$.metric), value = TRUE))
+      if (length(available) == 0) {
+        return(list(
+          available = character(0),
+          time_map = stats::setNames(numeric(0), character(0)),
+          numeric_map = numeric(0)
+        ))
+      }
+      if (is.null(time_lookup) || length(time_lookup) == 0) {
+        time_map <- stats::setNames(rep(NA_real_, length(available)), available)
       } else {
-        available_time_map <- available_time_map[intersect(names(available_time_map), available_brier_metrics)]
-        missing_names <- setdiff(available_brier_metrics, names(available_time_map))
+        time_map <- time_lookup[intersect(names(time_lookup), available)]
+        missing_names <- setdiff(available, names(time_lookup))
         if (length(missing_names) > 0) {
-          available_time_map <- c(available_time_map, stats::setNames(rep(NA_real_, length(missing_names)), missing_names))
+          time_map <- c(time_map, stats::setNames(rep(NA_real_, length(missing_names)), missing_names))
         }
-        available_time_map <- available_time_map[match(available_brier_metrics, names(available_time_map))]
-        names(available_time_map) <- available_brier_metrics
+        time_map <- time_map[match(available, names(time_map))]
+        names(time_map) <- available
       }
+      numeric_map <- suppressWarnings(as.numeric(time_map))
+      names(numeric_map) <- names(time_map)
+      list(available = available, time_map = time_map, numeric_map = numeric_map)
+    }
 
-      numeric_time_map <- suppressWarnings(as.numeric(available_time_map))
-      names(numeric_time_map) <- names(available_time_map)
-
-      order_brier_metrics <- function(metrics) {
-        if (length(metrics) <= 1) {
-          return(metrics)
-        }
-        idx <- match(metrics, names(numeric_time_map))
-        times <- numeric_time_map[idx]
-        ord <- order(ifelse(is.finite(times), times, Inf), metrics)
-        metrics[ord]
+    order_brier_metrics <- function(metrics, numeric_map) {
+      if (length(metrics) <= 1) {
+        return(metrics)
       }
+      idx <- match(metrics, names(numeric_map))
+      times <- numeric_map[idx]
+      ord <- order(ifelse(is.finite(times), times, Inf), metrics)
+      metrics[ord]
+    }
 
-      match_metric_by_time <- function(target_time) {
-        if (length(target_time) != 1 || !is.finite(target_time) || target_time <= 0) {
-          return(NA_character_)
-        }
-        if (is.finite(tau_max)) {
-          target_time <- min(target_time, tau_max)
-        }
-        valid_idx <- which(is.finite(numeric_time_map))
-        if (length(valid_idx) == 0) {
-          return(NA_character_)
-        }
-        diffs <- abs(numeric_time_map[valid_idx] - target_time)
-        best_idx <- which.min(diffs)
-        idx <- valid_idx[best_idx]
-        best_diff <- diffs[best_idx]
-        if (length(idx) != 1 || !is.finite(best_diff)) {
-          return(NA_character_)
-        }
-        names(numeric_time_map)[idx]
+    match_metric_by_time <- function(target_time, numeric_map, tau_limit) {
+      if (length(target_time) != 1 || !is.finite(target_time) || target_time <= 0) {
+        return(NA_character_)
       }
+      if (is.finite(tau_limit)) {
+        target_time <- min(target_time, tau_limit)
+      }
+      valid_idx <- which(is.finite(numeric_map))
+      if (length(valid_idx) == 0) {
+        return(NA_character_)
+      }
+      diffs <- abs(numeric_map[valid_idx] - target_time)
+      best_idx <- which.min(diffs)
+      idx <- valid_idx[best_idx]
+      best_diff <- diffs[best_idx]
+      if (length(idx) != 1 || !is.finite(best_diff)) {
+        return(NA_character_)
+      }
+      names(numeric_map)[idx]
+    }
 
-      default_brier_selection <- function() {
-        if (length(available_brier_metrics) == 0) {
-          return(character(0))
-        }
-        numeric_vals <- numeric_time_map[is.finite(numeric_time_map)]
-        if (length(numeric_vals) > 0) {
-          quantile_targets <- stats::quantile(numeric_vals, probs = c(0.25, 0.5, 0.75),
-                                             names = FALSE, na.rm = TRUE)
-          quantile_targets <- unique(as.numeric(quantile_targets))
-          quantile_targets <- quantile_targets[is.finite(quantile_targets)]
-          if (length(quantile_targets) > 0) {
-            matched <- vapply(quantile_targets, match_metric_by_time, character(1))
-            matched <- matched[!is.na(matched) & nzchar(matched)]
-            matched <- matched[!duplicated(matched)]
-            if (length(matched) > 0) {
-              matched <- order_brier_metrics(matched)
-              return(matched[seq_len(min(3, length(matched)))])
-            }
+    default_brier_selection <- function(available_metrics, numeric_map) {
+      if (length(available_metrics) == 0) {
+        return(character(0))
+      }
+      numeric_vals <- numeric_map[is.finite(numeric_map)]
+      if (length(numeric_vals) > 0) {
+        quantile_targets <- stats::quantile(
+          numeric_vals,
+          probs = c(0.25, 0.5, 0.75),
+          names = FALSE,
+          na.rm = TRUE
+        )
+        quantile_targets <- unique(as.numeric(quantile_targets))
+        quantile_targets <- quantile_targets[is.finite(quantile_targets)]
+        if (length(quantile_targets) > 0) {
+          matched <- vapply(
+            quantile_targets,
+            function(x) match_metric_by_time(x, numeric_map, tau_max),
+            character(1)
+          )
+          matched <- matched[!is.na(matched) & nzchar(matched)]
+          matched <- matched[!duplicated(matched)]
+          if (length(matched) > 0) {
+            matched <- order_brier_metrics(matched, numeric_map)
+            return(matched[seq_len(min(3, length(matched)))])
           }
         }
-        fallback <- order_brier_metrics(available_brier_metrics)
-        fallback[seq_len(min(3, length(fallback)))]
       }
+      fallback <- order_brier_metrics(available_metrics, numeric_map)
+      fallback[seq_len(min(3, length(fallback)))]
+    }
 
-      if (is.null(brier_times) || length(brier_times) == 0) {
-        selected_brier_metrics <- default_brier_selection()
+    make_combo_key <- function(model, engine) {
+      engine_val <- ifelse(is.null(engine) || is.na(engine) || engine == "", "<NA>", engine)
+      paste(model, engine_val, sep = "||")
+    }
+
+    compute_brier_from_curve <- function(curve_df, time_point) {
+      if (is.null(curve_df) || nrow(curve_df) == 0) {
+        return(NA_real_)
+      }
+      if (!all(c("eval_time", "brier") %in% names(curve_df))) {
+        return(NA_real_)
+      }
+      times <- as.numeric(curve_df$eval_time)
+      values <- as.numeric(curve_df$brier)
+      valid <- is.finite(times) & is.finite(values)
+      times <- times[valid]
+      values <- values[valid]
+      if (length(times) == 0) {
+        return(NA_real_)
+      }
+      ord <- order(times)
+      times <- times[ord]
+      values <- values[ord]
+      tol <- max(1e-08, 1e-06 * max(1, abs(time_point)))
+      min_time <- min(times)
+      max_time <- max(times)
+      if (time_point < min_time - tol || time_point > max_time + tol) {
+        return(NA_real_)
+      }
+      clamped_time <- time_point
+      if (clamped_time < min_time) {
+        clamped_time <- min_time
+      }
+      if (clamped_time > max_time) {
+        clamped_time <- max_time
+      }
+      approx_res <- stats::approx(times, values, xout = clamped_time, ties = "ordered", rule = 1)
+      val <- approx_res$y
+      if (!is.finite(val)) {
+        idx <- which.min(abs(times - clamped_time))
+        if (length(idx) == 0) {
+          return(NA_real_)
+        }
+        val <- values[idx]
+      }
+      pmax(pmin(val, 1), 0)
+    }
+
+    make_metric_name <- function(time_val, existing_names) {
+      time_label <- format(time_val, trim = TRUE, scientific = FALSE)
+      time_label <- gsub("[^0-9]+", "_", time_label)
+      time_label <- gsub("_+", "_", time_label)
+      time_label <- gsub("^_+|_+$", "", time_label)
+      base <- if (nzchar(time_label)) {
+        paste0("brier_t_at_", time_label)
       } else {
-        input_list <- as.list(brier_times)
-        matched_metrics <- character(0)
-        for (bt in input_list) {
-          if (is.character(bt) && length(bt) == 1 && bt %in% available_brier_metrics) {
-            matched_metrics <- c(matched_metrics, bt)
-          } else {
-            bt_numeric <- suppressWarnings(as.numeric(bt))
-            if (length(bt_numeric) == 1 && is.finite(bt_numeric)) {
-              metric_name <- match_metric_by_time(bt_numeric)
-              if (!is.na(metric_name)) {
-                matched_metrics <- c(matched_metrics, metric_name)
+        "brier_t_custom"
+      }
+      candidate <- base
+      counter <- 1L
+      while (candidate %in% existing_names) {
+        candidate <- paste0(base, "_", counter)
+        counter <- counter + 1L
+      }
+      candidate
+    }
+
+    augment_performance_with_custom_brier <- function(perf_df, predictions, target_times, time_lookup, tau_limit) {
+      if (length(target_times) == 0) {
+        return(list(performance_df = perf_df, time_lookup = time_lookup, failed_times = numeric(0)))
+      }
+      combos <- unique(perf_df[, c("Model", "Engine")])
+      combos$Model <- as.character(combos$Model)
+      combos$Engine <- as.character(combos$Engine)
+      if (nrow(combos) == 0) {
+        return(list(performance_df = perf_df, time_lookup = time_lookup, failed_times = target_times))
+      }
+      brier_curve_lookup <- list()
+      if (!is.null(predictions) && length(predictions) > 0) {
+        for (model_name in names(predictions)) {
+          pred_entry <- predictions[[model_name]]
+          if (is.list(pred_entry) && !is.data.frame(pred_entry)) {
+            for (engine_name in names(pred_entry)) {
+              curve <- attr(pred_entry[[engine_name]], "brier_curve")
+              if (!is.null(curve)) {
+                brier_curve_lookup[[make_combo_key(model_name, engine_name)]] <- curve
               }
             }
+          } else if (is.data.frame(pred_entry)) {
+            engine_name <- resolve_engine_name(model_name)
+            curve <- attr(pred_entry, "brier_curve")
+            if (!is.null(curve)) {
+              brier_curve_lookup[[make_combo_key(model_name, engine_name)]] <- curve
+            }
           }
-        }
-        matched_metrics <- matched_metrics[!duplicated(matched_metrics)]
-        matched_metrics <- matched_metrics[matched_metrics %in% available_brier_metrics]
-        if (length(matched_metrics) == 0) {
-          defaults <- default_brier_selection()
-          if (length(defaults) > 0) {
-            message(
-              "None of the requested brier_times overlapped with the available follow-up; ",
-              "using default horizons based on observed quartiles."
-            )
-          }
-          selected_brier_metrics <- defaults
-        } else {
-          selected_brier_metrics <- order_brier_metrics(matched_metrics)
         }
       }
+      existing_names <- unique(perf_df$.metric)
+      failed <- numeric(0)
+      new_rows <- list()
+      for (time_val in target_times) {
+        if (!is.finite(time_val) || time_val <= 0) {
+          next
+        }
+        tol <- max(1e-08, 1e-06 * max(1, abs(time_val)))
+        if (is.finite(tau_limit) && time_val > tau_limit + tol) {
+          failed <- c(failed, time_val)
+          next
+        }
+        values <- vapply(seq_len(nrow(combos)), function(idx) {
+          key <- make_combo_key(combos$Model[idx], combos$Engine[idx])
+          curve <- brier_curve_lookup[[key]]
+          compute_brier_from_curve(curve, time_val)
+        }, numeric(1))
+        if (!any(is.finite(values))) {
+          failed <- c(failed, time_val)
+          next
+        }
+        metric_name <- make_metric_name(time_val, existing_names)
+        existing_names <- c(existing_names, metric_name)
+        row_count <- nrow(combos)
+        new_df <- data.frame(
+          .metric = rep(metric_name, row_count),
+          .estimate = values,
+          stringsAsFactors = FALSE
+        )
+        if (".lower" %in% names(perf_df)) new_df$.lower <- NA_real_
+        if (".upper" %in% names(perf_df)) new_df$.upper <- NA_real_
+        if (".n_boot" %in% names(perf_df)) new_df$.n_boot <- 0
+        other_cols <- setdiff(colnames(perf_df), names(new_df))
+        for (col_nm in other_cols) {
+          if (col_nm == "Engine") {
+            new_df[[col_nm]] <- combos$Engine
+          } else if (col_nm == "Model") {
+            new_df[[col_nm]] <- combos$Model
+          } else {
+            new_df[[col_nm]] <- NA
+          }
+        }
+        new_df <- new_df[, colnames(perf_df), drop = FALSE]
+        new_rows[[length(new_rows) + 1]] <- new_df
+        time_lookup <- c(time_lookup, stats::setNames(time_val, metric_name))
+      }
+      if (length(new_rows) > 0) {
+        perf_df <- rbind(perf_df, do.call(rbind, new_rows))
+      }
+      list(performance_df = perf_df, time_lookup = time_lookup, failed_times = failed)
     }
+
+    helper <- compute_brier_helper(performance_df, brier_time_lookup)
+    available_brier_metrics <- helper$available
+    available_time_map <- helper$time_map
+    numeric_time_map <- helper$numeric_map
+    selected_brier_metrics <- character(0)
+    matched_metrics <- character(0)
+    unmatched_numeric <- numeric(0)
+    failure_times <- numeric(0)
+
+    if (!is.null(brier_times) && length(brier_times) > 0) {
+      input_list <- as.list(brier_times)
+      for (bt in input_list) {
+        if (is.character(bt) && length(bt) == 1 && bt %in% available_brier_metrics) {
+          matched_metrics <- c(matched_metrics, bt)
+        } else {
+          bt_numeric <- suppressWarnings(as.numeric(bt))
+          if (length(bt_numeric) == 1 && is.finite(bt_numeric) && bt_numeric > 0) {
+            metric_name <- match_metric_by_time(bt_numeric, numeric_time_map, tau_max)
+            if (!is.na(metric_name)) {
+              matched_metrics <- c(matched_metrics, metric_name)
+            } else {
+              unmatched_numeric <- c(unmatched_numeric, bt_numeric)
+            }
+          }
+        }
+      }
+      unmatched_numeric <- unique(unmatched_numeric[is.finite(unmatched_numeric) & unmatched_numeric > 0])
+      matched_metrics <- matched_metrics[matched_metrics %in% available_brier_metrics]
+      matched_metrics <- matched_metrics[!duplicated(matched_metrics)]
+
+      if (length(unmatched_numeric) > 0) {
+        augment_result <- augment_performance_with_custom_brier(
+          performance_df,
+          predictions_list,
+          unmatched_numeric,
+          brier_time_lookup,
+          tau_max
+        )
+        performance_df <- augment_result$performance_df
+        brier_time_lookup <- augment_result$time_lookup
+        failure_times <- c(failure_times, augment_result$failed_times)
+
+        helper <- compute_brier_helper(performance_df, brier_time_lookup)
+        available_brier_metrics <- helper$available
+        available_time_map <- helper$time_map
+        numeric_time_map <- helper$numeric_map
+
+        to_retry <- setdiff(unmatched_numeric, failure_times)
+        if (length(to_retry) > 0) {
+          for (bt_numeric in to_retry) {
+            metric_name <- match_metric_by_time(bt_numeric, numeric_time_map, tau_max)
+            if (!is.na(metric_name)) {
+              matched_metrics <- c(matched_metrics, metric_name)
+            } else {
+              failure_times <- c(failure_times, bt_numeric)
+            }
+          }
+        }
+        matched_metrics <- matched_metrics[matched_metrics %in% available_brier_metrics]
+        matched_metrics <- matched_metrics[!duplicated(matched_metrics)]
+      }
+
+      if (length(matched_metrics) == 0) {
+        defaults <- default_brier_selection(available_brier_metrics, numeric_time_map)
+        if (length(defaults) > 0) {
+          message(
+            "None of the requested brier_times overlapped with the available follow-up; ",
+            "using default horizons based on observed quartiles."
+          )
+        }
+        selected_brier_metrics <- defaults
+      } else {
+        selected_brier_metrics <- order_brier_metrics(matched_metrics, numeric_time_map)
+      }
+
+      failure_times <- sort(unique(failure_times[is.finite(failure_times)]))
+      if (length(failure_times) > 0) {
+        warning(
+          sprintf(
+            "Some requested Brier time points were not available and were omitted: %s",
+            paste(format(failure_times, trim = TRUE, digits = 6), collapse = ", ")
+          )
+        )
+      }
+    } else {
+      selected_brier_metrics <- default_brier_selection(available_brier_metrics, numeric_time_map)
+    }
+
+    all_metric_names <- unique(performance_df$.metric)
     desired_metrics <- unique(c(base_surv_metrics, selected_brier_metrics))
   } else {
     # Fallback for any other task types
@@ -377,10 +612,10 @@ summary.fastml <- function(object,
     )
   }
 
-  if (!is.null(object$survival_brier_times)) {
-    for (nm in names(object$survival_brier_times)) {
-      if (!is.null(object$survival_brier_times[[nm]]) && is.finite(object$survival_brier_times[[nm]])) {
-        time_label <- format(object$survival_brier_times[[nm]], trim = TRUE, digits = 4)
+  if (!is.null(brier_time_lookup) && length(brier_time_lookup) > 0) {
+    for (nm in names(brier_time_lookup)) {
+      if (!is.null(brier_time_lookup[[nm]]) && is.finite(brier_time_lookup[[nm]])) {
+        time_label <- format(brier_time_lookup[[nm]], trim = TRUE, digits = 4)
       } else {
         time_label <- nm
       }
