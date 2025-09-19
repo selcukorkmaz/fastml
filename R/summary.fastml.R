@@ -35,7 +35,7 @@ utils::globalVariables(c("truth", "residual", "sensitivity", "specificity", "Fal
 #'   Default is \code{"all"}.
 #' @param sort_metric The metric to sort by. Default uses optimized metric.
 #' @param show_ci Logical indicating whether to display 95\% confidence intervals
-#'   for performance metrics. Defaults to \code{TRUE}.
+#'   for performance metrics in survival models. Defaults to \code{FALSE}.
 #' @param brier_times Optional numeric or character vector that selects which
 #'   time-specific Brier scores to display for survival models. When \code{NULL}
 #'   (the default), time-specific Brier scores are omitted from the summary.
@@ -60,7 +60,7 @@ summary.fastml <- function(object,
                                  algorithm = "best",
                                  type = c("all", "metrics", "params", "conf_mat"),
                                  sort_metric = NULL,
-                                 show_ci = TRUE,
+                                 show_ci = FALSE,
                                  brier_times = NULL,
                                  ...) {
 

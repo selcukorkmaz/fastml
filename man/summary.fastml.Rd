@@ -9,7 +9,7 @@
   algorithm = "best",
   type = c("all", "metrics", "params", "conf_mat"),
   sort_metric = NULL,
-  show_ci = TRUE,
+  show_ci = FALSE,
   brier_times = NULL,
   ...
 )
@@ -29,7 +29,7 @@ Default is \code{"all"}.}
 \item{sort_metric}{The metric to sort by. Default uses optimized metric.}
 
 \item{show_ci}{Logical indicating whether to display 95\% confidence intervals
-for performance metrics. Defaults to \code{TRUE}.}
+for performance metrics in survival models. Defaults to \code{FALSE}.}
 
 \item{brier_times}{Optional numeric or character vector that selects which
 time-specific Brier scores to display for survival models. When \code{NULL}
