@@ -13,7 +13,12 @@ process_model(
   event_class,
   engine,
   train_data,
-  metric
+  metric,
+  eval_times_user = NULL,
+  bootstrap_ci = TRUE,
+  bootstrap_samples = 500,
+  bootstrap_seed = NULL,
+  at_risk_threshold = 0.1
 )
 }
 \arguments{
@@ -37,6 +42,23 @@ to determine if class probabilities are supported. If `NULL`, probabilities are 
 \item{train_data}{A data frame containing the training data, required to refit finalized workflows.}
 
 \item{metric}{The name of the metric (e.g., `"roc_auc"`, `"accuracy"`, `"rmse"`) used for selecting the best tuning result.}
+
+\item{eval_times_user}{Optional numeric vector of time horizons at which to
+evaluate survival Brier scores. When `NULL`, sensible defaults based on the
+observed follow-up distribution are used.}
+
+\item{bootstrap_ci}{Logical; if `TRUE`, bootstrap confidence intervals are
+estimated for survival performance metrics.}
+
+\item{bootstrap_samples}{Integer giving the number of bootstrap resamples
+used when computing confidence intervals.}
+
+\item{bootstrap_seed}{Optional integer seed applied before bootstrap
+resampling to make interval estimates reproducible.}
+
+\item{at_risk_threshold}{Numeric value between 0 and 1 defining the minimum
+proportion of subjects required to remain at risk when determining the
+maximum follow-up time used in survival metrics.}
 }
 \value{
 A list with two elements:

@@ -157,9 +157,9 @@ use when \code{bootstrap_ci = TRUE}. Defaults to 500.}
 estimate confidence intervals.}
 
 \item{at_risk_threshold}{Numeric value between 0 and 1 used for survival
-metrics to determine the last follow-up time (\eqn{t_{max}}). The maximum time
-is set to the largest observed time where at least this proportion of subjects
-remain at risk.}
+metrics to determine the last follow-up time (\eqn{t_{max}}). The maximum
+time is set to the largest observed time where at least this proportion of
+subjects remain at risk.}
 }
 \value{
 An object of class \code{fastml} containing the best model, performance metrics, and other information.
