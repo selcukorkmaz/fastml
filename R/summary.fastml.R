@@ -651,8 +651,6 @@ summary.fastml <- function(object,
       } else {
         cat("\nNo valid predictions to compute confusion matrix.\n\n")
       }
-    } else {
-      cat("\nConfusion matrix is only available for classification tasks.\n\n")
     }
 
   }
