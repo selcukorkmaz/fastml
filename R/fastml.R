@@ -607,7 +607,7 @@ fastml <- function(data = NULL,
       recipe <- recipe %>% step_rm(all_of(label_surv))
     }
 
-    # Remove zero-variance predictors
+    # Remove zero-variance predictors before any additional transformations
     recipe <- recipe %>%
       step_zv(all_predictors())
 
@@ -650,6 +650,10 @@ fastml <- function(data = NULL,
     # If encoding needed
     if (encode_categoricals) {
       recipe <- recipe %>% step_dummy(all_nominal_predictors(), -all_outcomes())
+
+      # Encoding can introduce zero-variance predictors (e.g., unused levels),
+      # which would otherwise trigger warnings during subsequent scaling steps.
+      recipe <- recipe %>% step_zv(all_predictors())
     }
 
     # scaling
