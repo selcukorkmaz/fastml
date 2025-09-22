@@ -186,17 +186,55 @@ train_models <- function(train_data,
         baked_train <- prep_dat$data
         rec_prep <- prep_dat$recipe
         strata_cols_present <- character()
+        strata_base_cols <- character()
+        strata_info <- list()
         for (sc in strata_cols) {
           if (!(sc %in% names(baked_train)) && sc %in% names(train_data)) {
             baked_train[[sc]] <- train_data[[sc]]
           }
-          if (sc %in% names(baked_train) && !is.factor(baked_train[[sc]])) {
-            baked_train[[sc]] <- as.factor(baked_train[[sc]])
+          if (!(sc %in% names(baked_train))) {
+            next
           }
-          if (sc %in% names(baked_train)) {
-            strata_cols_present <- c(strata_cols_present, sc)
+          source_vals <- NULL
+          if (sc %in% names(train_data)) {
+            source_vals <- train_data[[sc]]
+          } else {
+            source_vals <- baked_train[[sc]]
+          }
+          desired_levels <- NULL
+          if (is.factor(source_vals)) {
+            desired_levels <- levels(source_vals)
+          } else if (!is.null(source_vals)) {
+            desired_levels <- sort(unique(source_vals))
+          }
+          if (is.null(desired_levels) || length(desired_levels) == 0) {
+            alt_vals <- baked_train[[sc]]
+            if (is.factor(alt_vals)) {
+              desired_levels <- levels(alt_vals)
+            } else {
+              desired_levels <- sort(unique(alt_vals))
+            }
+          }
+          desired_levels <- desired_levels[!is.na(desired_levels)]
+          if (length(desired_levels) == 0) {
+            next
+          }
+          baked_train[[sc]] <- factor(baked_train[[sc]], levels = desired_levels)
+          strata_cols_present <- c(strata_cols_present, sc)
+          base_candidate <- gsub("^strata[._]*", "", sc)
+          base_candidate <- gsub("^[._]+", "", base_candidate)
+          display_name <- if (nzchar(base_candidate)) base_candidate else sc
+          strata_info[[sc]] <- list(
+            column = sc,
+            display = display_name,
+            levels = as.character(desired_levels)
+          )
+          if (nzchar(base_candidate) && base_candidate %in% names(baked_train)) {
+            strata_base_cols <- c(strata_base_cols, base_candidate)
           }
         }
+        strata_cols_present <- unique(strata_cols_present)
+        strata_base_cols <- unique(strata_base_cols)
         if (length(strata_cols_present) == 0) {
           warning("Unable to identify usable strata columns after preprocessing; skipping stratified Cox.")
           next
@@ -215,14 +253,17 @@ train_models <- function(train_data,
           strata_dummy_cols <- unique(strata_dummy_cols)
         }
         predictor_cols <- setdiff(names(baked_train),
-                                  c(response_col, strata_cols_present, strata_dummy_cols))
+                                  c(response_col, strata_cols_present, strata_dummy_cols,
+                                    strata_base_cols))
         rhs_terms <- c(predictor_cols, paste0("strata(", strata_cols_present, ")"))
         formula_rhs <- if (length(rhs_terms) == 0) "1" else paste(rhs_terms, collapse = " + ")
         f <- as.formula(paste(response_col, "~", formula_rhs))
         fit <- survival::coxph(f, data = baked_train, ties = "efron")
         spec <- create_native_spec("stratified_cox", engine, fit, rec_prep,
                                    extras = list(strata_cols = strata_cols_present,
-                                                 strata_dummy_cols = strata_dummy_cols))
+                                                 strata_dummy_cols = strata_dummy_cols,
+                                                 strata_info = strata_info,
+                                                 strata_base_cols = strata_base_cols))
       } else if (algo == "time_varying_cox") {
         if (length(label_cols) != 3) {
           warning("time_varying_cox requires label = c(start, stop, status). Skipping.")
