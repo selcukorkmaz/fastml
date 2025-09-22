@@ -588,6 +588,11 @@ summary.fastml <- function(object,
   performance_wide <- performance_wide[order_idx, , drop = FALSE]
   performance_display <- performance_display[order_idx, , drop = FALSE]
 
+  performance_lookup <- performance_wide
+  if (all(algorithm != "best")) {
+    performance_lookup <- performance_lookup %>% dplyr::filter(Model %in% algorithm)
+  }
+
   display_names <- c(
     accuracy = "Accuracy",
     f_meas = "F1 Score",
@@ -689,6 +694,7 @@ summary.fastml <- function(object,
     performance_wide <- performance_wide %>% dplyr::filter(Model %in% algorithm)
     performance_display <- performance_display %>% dplyr::filter(Model %in% algorithm)
     best_model_idx <- get_best_model_idx(performance_wide, optimized_metric)
+    performance_lookup <- performance_wide
   }
 
   header <- c("Model", "Engine", sapply(desired_metrics, function(m) {
@@ -872,44 +878,118 @@ summary.fastml <- function(object,
       TRUE
     }
 
-    print_coxph_details <- function(fit_obj) {
+    print_coxph_details <- function(fit_obj, model_info = NULL, performance_row = NULL) {
       summary_fit <- tryCatch(summary(fit_obj), error = function(e) NULL)
       if (is.null(summary_fit)) {
         return(FALSE)
       }
 
-      coef_mat_raw <- summary_fit$coefficients
-      if (is.matrix(coef_mat_raw) && nrow(coef_mat_raw) > 0) {
-        cat("  Coefficients (coef):\n")
-        coef_fmt <- format_numeric_vec(coef_mat_raw[, "coef"])
-        rownames_target <- rownames(coef_mat_raw)
-        if (!is.null(rownames_target)) {
-          names(coef_fmt) <- rownames_target
+      remove_terms <- character()
+      strata_details <- list()
+      if (!is.null(model_info)) {
+        strata_cols <- tryCatch(model_info$strata_cols, error = function(e) NULL)
+        strata_dummy <- tryCatch(model_info$strata_dummy_cols, error = function(e) NULL)
+        strata_base <- tryCatch(model_info$strata_base_cols, error = function(e) NULL)
+        remove_terms <- unique(c(
+          remove_terms,
+          if (!is.null(strata_cols)) strata_cols else character(),
+          if (!is.null(strata_dummy)) strata_dummy else character(),
+          if (!is.null(strata_base)) strata_base else character()
+        ))
+        info_list <- tryCatch(model_info$strata_info, error = function(e) NULL)
+        if (is.list(info_list) && length(info_list) > 0) {
+          for (nm in names(info_list)) {
+            entry <- info_list[[nm]]
+            if (is.null(entry)) {
+              next
+            }
+            col_nm <- if (!is.null(entry$column)) entry$column else nm
+            display_nm <- entry$display
+            if (is.null(display_nm) || length(display_nm) == 0 || !nzchar(as.character(display_nm)[1])) {
+              display_nm <- col_nm
+            }
+            level_vals <- entry$levels
+            if (is.null(level_vals)) {
+              level_vals <- character()
+            }
+            level_vals <- as.character(level_vals)
+            strata_details[[length(strata_details) + 1]] <- list(
+              column = col_nm,
+              display = display_nm,
+              levels = level_vals
+            )
+          }
         }
-        coef_mat <- matrix(coef_fmt, ncol = 1)
-        rownames(coef_mat) <- if (!is.null(names(coef_fmt))) names(coef_fmt) else rownames(coef_mat)
-        colnames(coef_mat) <- "coef"
-        print(coef_mat, quote = FALSE)
+      }
+      remove_terms <- remove_terms[nzchar(remove_terms)]
+      remove_terms <- unique(remove_terms)
+
+      filter_matrix <- function(mat, terms_to_remove) {
+        if (!is.null(mat) && is.matrix(mat) && nrow(mat) > 0) {
+          rn <- rownames(mat)
+          if (!is.null(rn) && length(terms_to_remove) > 0) {
+            drop_idx <- rep(FALSE, length(rn))
+            for (term in terms_to_remove) {
+              drop_idx <- drop_idx |
+                rn == term |
+                startsWith(rn, paste0(term, ":")) |
+                startsWith(rn, paste0(term, "=")) |
+                rn == paste0("strata(", term, ")")
+            }
+            mat <- mat[!drop_idx, , drop = FALSE]
+          }
+        }
+        mat
+      }
+
+      coef_mat_raw <- summary_fit$coefficients
+      coef_mat <- filter_matrix(coef_mat_raw, remove_terms)
+      coef_raw_is_matrix <- is.matrix(coef_mat_raw)
+      removed_all_coef <- coef_raw_is_matrix && nrow(coef_mat_raw) > 0 &&
+        (!is.matrix(coef_mat) || nrow(coef_mat) == 0)
+      no_coef_rows <- coef_raw_is_matrix && nrow(coef_mat_raw) == 0
+
+      if (is.matrix(coef_mat) && nrow(coef_mat) > 0 && "coef" %in% colnames(coef_mat)) {
+        cat("  Coefficients (coef):\n")
+        coef_fmt <- format_numeric_vec(coef_mat[, "coef"])
+        if (!is.null(rownames(coef_mat))) {
+          names(coef_fmt) <- rownames(coef_mat)
+        }
+        coef_out <- matrix(coef_fmt, ncol = 1)
+        rownames(coef_out) <- if (!is.null(names(coef_fmt))) names(coef_fmt) else rownames(coef_out)
+        colnames(coef_out) <- "coef"
+        print(coef_out, quote = FALSE)
+      } else if (removed_all_coef || no_coef_rows) {
+        cat("  Coefficients (coef): <none>\n")
       } else {
         cat("  Coefficients (coef): <unavailable>\n")
       }
 
-      if (is.matrix(coef_mat_raw) && nrow(coef_mat_raw) > 0 && "exp(coef)" %in% colnames(coef_mat_raw)) {
+      if (is.matrix(coef_mat) && nrow(coef_mat) > 0 && "exp(coef)" %in% colnames(coef_mat)) {
         cat("  exp(coef):\n")
-        exp_fmt <- format_numeric_vec(coef_mat_raw[, "exp(coef)"])
-        if (!is.null(rownames(coef_mat_raw))) {
-          names(exp_fmt) <- rownames(coef_mat_raw)
+        exp_fmt <- format_numeric_vec(coef_mat[, "exp(coef)"])
+        if (!is.null(rownames(coef_mat))) {
+          names(exp_fmt) <- rownames(coef_mat)
         }
-        exp_mat <- matrix(exp_fmt, ncol = 1)
-        rownames(exp_mat) <- if (!is.null(names(exp_fmt))) names(exp_fmt) else rownames(exp_mat)
-        colnames(exp_mat) <- "exp(coef)"
-        print(exp_mat, quote = FALSE)
+        exp_out <- matrix(exp_fmt, ncol = 1)
+        rownames(exp_out) <- if (!is.null(names(exp_fmt))) names(exp_fmt) else rownames(exp_out)
+        colnames(exp_out) <- "exp(coef)"
+        print(exp_out, quote = FALSE)
+      } else if (removed_all_coef || no_coef_rows) {
+        cat("  exp(coef): <none>\n")
       } else {
         cat("  exp(coef): <unavailable>\n")
       }
 
-      conf_int <- summary_fit$conf.int
-      if (is.matrix(conf_int) && nrow(conf_int) > 0 && all(c("exp(coef)", "lower .95", "upper .95") %in% colnames(conf_int))) {
+      conf_int_raw <- summary_fit$conf.int
+      conf_int <- filter_matrix(conf_int_raw, remove_terms)
+      conf_raw_is_matrix <- is.matrix(conf_int_raw)
+      removed_all_conf <- conf_raw_is_matrix && nrow(conf_int_raw) > 0 &&
+        (!is.matrix(conf_int) || nrow(conf_int) == 0)
+      no_conf_rows <- conf_raw_is_matrix && nrow(conf_int_raw) == 0
+
+      if (is.matrix(conf_int) && nrow(conf_int) > 0 &&
+          all(c("exp(coef)", "lower .95", "upper .95") %in% colnames(conf_int))) {
         cat("  Hazard Ratios (95% CI):\n")
         hr_fmt <- format_numeric_vec(conf_int[, "exp(coef)"])
         lower_fmt <- format_numeric_vec(conf_int[, "lower .95"])
@@ -926,8 +1006,61 @@ summary.fastml <- function(object,
         )
         rownames(hr_mat) <- if (!is.null(rownames(conf_int))) rownames(conf_int) else rownames(hr_mat)
         print(hr_mat, quote = FALSE)
+      } else if (removed_all_conf || removed_all_coef || no_conf_rows) {
+        cat("  Hazard Ratios (95% CI): <none>\n")
       } else {
         cat("  Hazard Ratios: <unavailable>\n")
+      }
+
+      if (length(strata_details) == 0 && !is.null(model_info)) {
+        fallback_cols <- tryCatch(model_info$strata_cols, error = function(e) NULL)
+        if (!is.null(fallback_cols) && length(fallback_cols) > 0) {
+          for (sc in fallback_cols) {
+            strata_details[[length(strata_details) + 1]] <- list(
+              column = sc,
+              display = sc,
+              levels = character()
+            )
+          }
+        }
+      }
+      if (length(strata_details) > 0) {
+        xlevels <- tryCatch(fit_obj$xlevels, error = function(e) NULL)
+        if (!is.null(xlevels)) {
+          for (i in seq_along(strata_details)) {
+            col_nm <- strata_details[[i]]$column
+            if (!is.null(col_nm) && col_nm %in% names(xlevels)) {
+              level_vals <- as.character(xlevels[[col_nm]])
+              level_vals <- level_vals[!is.na(level_vals)]
+              if (length(level_vals) > 0) {
+                strata_details[[i]]$levels <- unique(level_vals)
+              }
+            }
+          }
+        }
+        cat("  Stratified by:\n")
+        for (entry in strata_details) {
+          if (is.null(entry)) {
+            next
+          }
+          display_nm <- entry$display
+          if (is.null(display_nm) || length(display_nm) == 0 || !nzchar(as.character(display_nm)[1])) {
+            display_nm <- entry$column
+          }
+          level_vals <- entry$levels
+          if (is.null(level_vals)) {
+            level_vals <- character()
+          }
+          level_vals <- as.character(level_vals)
+          level_vals <- level_vals[!is.na(level_vals) & nzchar(level_vals)]
+          level_vals <- unique(level_vals)
+          n_strata <- length(level_vals)
+          if (n_strata > 0) {
+            cat(sprintf("    %s (%d strata: %s)", display_nm, n_strata, paste(level_vals, collapse = ", ")), "\n", sep = "")
+          } else {
+            cat(sprintf("    %s (0 strata)", display_nm), "\n", sep = "")
+          }
+        }
       }
 
       log_test <- summary_fit$logtest
@@ -945,17 +1078,20 @@ summary.fastml <- function(object,
         cat("  Likelihood ratio test: <unavailable>\n")
       }
 
-      concord <- summary_fit$concordance
-      if (!is.null(concord) && length(concord) >= 2) {
-        cat(
-          "  Concordance:",
-          format_numeric_single(concord[1]),
-          "(SE =",
-          format_numeric_single(concord[2]),
-          ")\n"
-        )
+      concord_val <- NA_real_
+      if (!is.null(performance_row) && nrow(performance_row) >= 1 && "c_index" %in% colnames(performance_row)) {
+        concord_val <- suppressWarnings(as.numeric(performance_row$c_index[1]))
+      }
+      if (!is.finite(concord_val)) {
+        concord_vec <- summary_fit$concordance
+        if (!is.null(concord_vec) && length(concord_vec) >= 1) {
+          concord_val <- suppressWarnings(as.numeric(concord_vec[1]))
+        }
+      }
+      if (is.finite(concord_val)) {
+        cat("  Concordance (Harrell C-index):", format_numeric_single(concord_val), "\n")
       } else {
-        cat("  Concordance: <unavailable>\n")
+        cat("  Concordance (Harrell C-index): <unavailable>\n")
       }
       TRUE
     }
@@ -1011,7 +1147,30 @@ summary.fastml <- function(object,
             success <- isTRUE(print_survreg_details(fit_obj))
             handled <- TRUE
           } else if (inherits(fit_obj, "coxph")) {
-            success <- isTRUE(print_coxph_details(fit_obj))
+            perf_row <- NULL
+            if (!is.null(performance_lookup) &&
+                nrow(performance_lookup) > 0 &&
+                !is.na(algo_name) &&
+                "Model" %in% colnames(performance_lookup)) {
+              perf_idx <- which(performance_lookup$Model == algo_name)
+              if (length(perf_idx) > 0 && "Engine" %in% colnames(performance_lookup)) {
+                engine_val <- components$engine
+                if (!is.na(engine_val)) {
+                  perf_idx <- perf_idx[performance_lookup$Engine[perf_idx] == engine_val]
+                }
+              }
+              if (length(perf_idx) == 0) {
+                perf_idx <- which(performance_lookup$Model == algo_name)
+              }
+              if (length(perf_idx) > 0) {
+                perf_row <- performance_lookup[perf_idx[1], , drop = FALSE]
+              }
+            }
+            success <- isTRUE(print_coxph_details(
+              fit_obj,
+              model_info = model_obj,
+              performance_row = perf_row
+            ))
             handled <- TRUE
           } else if (!is.null(fit_obj)) {
             # Unexpected fit type; treat as handled to avoid duplicate warnings.

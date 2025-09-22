@@ -248,6 +248,9 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       if (!is.null(final_model$strata_dummy_cols) && length(final_model$strata_dummy_cols) > 0) {
         keep_cols <- setdiff(keep_cols, final_model$strata_dummy_cols)
       }
+      if (!is.null(final_model$strata_base_cols) && length(final_model$strata_base_cols) > 0) {
+        keep_cols <- setdiff(keep_cols, final_model$strata_base_cols)
+      }
       if (length(keep_cols) == 0) {
         pred_predictors <- pred_predictors[, 0, drop = FALSE]
       } else {

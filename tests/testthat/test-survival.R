@@ -68,6 +68,47 @@ test_that("cox_ph survival model trains and evaluates", {
   }
 })
 
+test_that("stratified Cox summary reports strata without coefficients", {
+  data(cancer, package = "survival")
+  cancer$strata_inst <- factor(cancer$inst)
+  set.seed(123)
+  res <- fastml(
+    data = cancer,
+    label = c("time", "status"),
+    algorithms = c("stratified_cox"),
+    task = "survival",
+    resampling_method = "none",
+    test_size = 0.3,
+    impute_method = "remove"
+  )
+  expect_s3_class(res, "fastml")
+  summary_lines <- capture.output(summary(res))
+  expect_true(any(grepl("^  Stratified by:", summary_lines)))
+  expect_false(any(grepl("^\\s*inst\\s+<NA>", summary_lines)))
+  spec <- res$models[[1]]
+  expect_true(inherits(spec, "fastml_native_survival"))
+  strata_info <- spec$strata_info[["strata_inst"]]
+  expect_true(is.list(strata_info))
+  expected_levels <- strata_info$levels
+  expected_levels <- expected_levels[!is.na(expected_levels) & expected_levels != ""]
+  strat_line <- summary_lines[grepl("inst \\(", summary_lines)]
+  expect_true(length(strat_line) >= 1)
+  if (length(expected_levels) > 0) {
+    printed_levels <- sub("^.*strata: ", "", strat_line[1])
+    printed_levels <- sub("\\)$", "", printed_levels)
+    printed_levels <- trimws(strsplit(printed_levels, ",")[[1]])
+    expect_setequal(printed_levels, expected_levels)
+  }
+  perf_tbl <- res$performance[[1]]
+  expect_true(is.data.frame(perf_tbl))
+  c_index <- perf_tbl$.estimate[perf_tbl$.metric == "c_index"][1]
+  conc_line <- summary_lines[grepl("^  Concordance \\(Harrell C-index\\):", summary_lines)]
+  expect_true(length(conc_line) == 1)
+  conc_value <- as.numeric(trimws(sub("^  Concordance \\(Harrell C-index\\):", "", conc_line[1])))
+  expect_true(is.finite(conc_value))
+  expect_equal(conc_value, signif(c_index, 4))
+})
+
 test_that("survreg survival model returns Brier scores", {
   data(cancer, package = "survival")
   res <- fastml(
