@@ -237,13 +237,20 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
     pred_predictors <- NULL
     if (inherits(final_model, "fastml_native_survival")) {
       pred_predictors <- as.data.frame(pred_new_data)
+      keep_cols <- names(pred_predictors)
       drop_cols <- c(final_model$response, final_model$time_col,
                      final_model$status_col, final_model$start_col)
       drop_cols <- unique(drop_cols[!is.na(drop_cols)])
-      drop_cols <- intersect(drop_cols, names(pred_predictors))
+      drop_cols <- intersect(drop_cols, keep_cols)
       if (length(drop_cols) > 0) {
-        keep_cols <- setdiff(names(pred_predictors), drop_cols)
-        if (is.null(keep_cols)) keep_cols <- character(0)
+        keep_cols <- setdiff(keep_cols, drop_cols)
+      }
+      if (!is.null(final_model$strata_dummy_cols) && length(final_model$strata_dummy_cols) > 0) {
+        keep_cols <- setdiff(keep_cols, final_model$strata_dummy_cols)
+      }
+      if (length(keep_cols) == 0) {
+        pred_predictors <- pred_predictors[, 0, drop = FALSE]
+      } else {
         pred_predictors <- pred_predictors[, keep_cols, drop = FALSE]
       }
       extra_cols <- unique(c(final_model$start_col, final_model$time_col,

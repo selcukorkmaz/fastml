@@ -201,13 +201,28 @@ train_models <- function(train_data,
           warning("Unable to identify usable strata columns after preprocessing; skipping stratified Cox.")
           next
         }
-        predictor_cols <- setdiff(names(baked_train), c(response_col, strata_cols_present))
+        strata_dummy_cols <- character(0)
+        if (length(strata_cols_present) > 0) {
+          for (sc in strata_cols_present) {
+            prefix_underscore <- paste0(sc, "_")
+            prefix_dot <- paste0(sc, ".")
+            matches <- names(baked_train)[startsWith(names(baked_train), prefix_underscore) |
+                                            startsWith(names(baked_train), prefix_dot)]
+            if (length(matches) > 0) {
+              strata_dummy_cols <- c(strata_dummy_cols, matches)
+            }
+          }
+          strata_dummy_cols <- unique(strata_dummy_cols)
+        }
+        predictor_cols <- setdiff(names(baked_train),
+                                  c(response_col, strata_cols_present, strata_dummy_cols))
         rhs_terms <- c(predictor_cols, paste0("strata(", strata_cols_present, ")"))
         formula_rhs <- if (length(rhs_terms) == 0) "1" else paste(rhs_terms, collapse = " + ")
         f <- as.formula(paste(response_col, "~", formula_rhs))
         fit <- survival::coxph(f, data = baked_train, ties = "efron")
         spec <- create_native_spec("stratified_cox", engine, fit, rec_prep,
-                                   extras = list(strata_cols = strata_cols_present))
+                                   extras = list(strata_cols = strata_cols_present,
+                                                 strata_dummy_cols = strata_dummy_cols))
       } else if (algo == "time_varying_cox") {
         if (length(label_cols) != 3) {
           warning("time_varying_cox requires label = c(start, stop, status). Skipping.")
