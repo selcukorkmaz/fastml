@@ -484,6 +484,9 @@ fastml <- function(data = NULL,
 
     if (!is.null(impute_method) && impute_method %in% c("mice", "missForest", "custom")) {
 
+      outcome_cols <- unique(c(label, if (task == "survival") label_surv else character()))
+      outcome_cols <- outcome_cols[outcome_cols %in% names(train_data)]
+
       # If 'custom', user must provide a function
       if (impute_method == "custom") {
         if (!is.function(impute_custom_function)) {
@@ -495,69 +498,80 @@ fastml <- function(data = NULL,
 
         warning("Missing values in the training and test set have been imputed using the 'custom' method.")
 
-
-        } else if (impute_method == "mice") {
-          if (!requireNamespace("mice", quietly = TRUE)) {
-            stop("impute_method='mice' requires the 'mice' package to be installed.")
-          }
-          # Perform MICE on train_data only. Typically, you do MICE on training and apply
-          # some approach to test, but for simplicity, we'll do them separately:
-          # 1) For train_data:
-          train_cols <- names(train_data)
-          matrix_cols_train <- vapply(train_data, is.matrix, logical(1))
+      } else if (impute_method == "mice") {
+        if (!requireNamespace("mice", quietly = TRUE)) {
+          stop("impute_method='mice' requires the 'mice' package to be installed.")
+        }
+        # Perform MICE on predictors only to avoid leaking outcome information.
+        train_predictor_cols <- setdiff(names(train_data), outcome_cols)
+        if (length(train_predictor_cols) > 0) {
+          train_predictors <- train_data[, train_predictor_cols, drop = FALSE]
+          matrix_cols_train <- vapply(train_predictors, is.matrix, logical(1))
           if (any(matrix_cols_train)) {
-            train_matrix <- train_data[, matrix_cols_train, drop = FALSE]
-            train_non_matrix <- train_data[, !matrix_cols_train, drop = FALSE]
-            train_data_mice <- mice(train_non_matrix)
-            train_non_matrix <- complete(train_data_mice)
-            train_data <- cbind(train_non_matrix, train_matrix)
-            train_data <- train_data[, train_cols]
-          } else {
-            train_data_mice <- mice(train_data)  # Basic usage
-            train_data <- complete(train_data_mice)
-          }
-
-          warning("Missing values in the training set have been imputed using the 'mice' method.")
-
-          # 2) For test_data:
-          # There's no built-in perfect approach for test_data in MICE. For simplicity,
-          # we do a quick single pass (though in practice you might combine with train).
-          # We'll create a temporary combined approach or re-run MICE on test alone.
-          # This is simplistic but workable for demonstration.
-          if (anyNA(test_data)) {
-            test_cols <- names(test_data)
-            matrix_cols_test <- vapply(test_data, is.matrix, logical(1))
-            if (any(matrix_cols_test)) {
-              test_matrix <- test_data[, matrix_cols_test, drop = FALSE]
-              test_non_matrix <- test_data[, !matrix_cols_test, drop = FALSE]
-              test_data_mice <- mice(test_non_matrix)
-              test_non_matrix <- complete(test_data_mice)
-              test_data <- cbind(test_non_matrix, test_matrix)
-              test_data <- test_data[, test_cols]
-            } else {
-              test_data_mice <- mice(test_data)
-              test_data <- complete(test_data_mice)
+            train_matrix <- train_predictors[, matrix_cols_train, drop = FALSE]
+            train_non_matrix <- train_predictors[, !matrix_cols_train, drop = FALSE]
+            if (ncol(train_non_matrix) > 0) {
+              train_data_mice <- mice(train_non_matrix)
+              train_non_matrix <- complete(train_data_mice)
             }
+            train_predictors <- cbind(train_non_matrix, train_matrix)
+            train_predictors <- train_predictors[, train_predictor_cols, drop = FALSE]
+          } else {
+            train_data_mice <- mice(train_predictors)
+            train_predictors <- complete(train_data_mice)
+          }
+          train_data[, train_predictor_cols] <- train_predictors[, train_predictor_cols, drop = FALSE]
+        }
 
-            warning("Missing values in the test set have been imputed using the 'mice' method.")
+        warning("Missing values in the training set have been imputed using the 'mice' method.")
 
+        # Repeat for test predictors when needed
+        if (anyNA(test_data)) {
+          test_predictor_cols <- setdiff(names(test_data), outcome_cols)
+          if (length(test_predictor_cols) > 0) {
+            test_predictors <- test_data[, test_predictor_cols, drop = FALSE]
+            matrix_cols_test <- vapply(test_predictors, is.matrix, logical(1))
+            if (any(matrix_cols_test)) {
+              test_matrix <- test_predictors[, matrix_cols_test, drop = FALSE]
+              test_non_matrix <- test_predictors[, !matrix_cols_test, drop = FALSE]
+              if (ncol(test_non_matrix) > 0) {
+                test_data_mice <- mice(test_non_matrix)
+                test_non_matrix <- complete(test_data_mice)
+              }
+              test_predictors <- cbind(test_non_matrix, test_matrix)
+              test_predictors <- test_predictors[, test_predictor_cols, drop = FALSE]
+            } else {
+              test_data_mice <- mice(test_predictors)
+              test_predictors <- complete(test_data_mice)
+            }
+            test_data[, test_predictor_cols] <- test_predictors[, test_predictor_cols, drop = FALSE]
           }
 
-        } else if (impute_method == "missForest") {
+          warning("Missing values in the test set have been imputed using the 'mice' method.")
+
+        }
+
+      } else if (impute_method == "missForest") {
         if (!requireNamespace("missForest", quietly = TRUE)) {
           stop("impute_method='missForest' requires the 'missForest' package to be installed.")
         }
-        # Perform missForest on train_data
-        train_data_imp <- missForest(train_data, verbose = FALSE)
-        train_data <- train_data_imp$ximp
+        train_predictor_cols <- setdiff(names(train_data), outcome_cols)
+        if (length(train_predictor_cols) > 0) {
+          train_data_imp <- missForest(train_data[, train_predictor_cols, drop = FALSE], verbose = FALSE)
+          imputed_train <- train_data_imp$ximp
+          train_data[, train_predictor_cols] <- imputed_train[, train_predictor_cols, drop = FALSE]
+        }
 
         warning("Missing values in the training set have been imputed using the 'missForest' method.")
 
-
         # Similarly for test_data if needed
         if (anyNA(test_data)) {
-          test_data_imp <- missForest(test_data, verbose = FALSE)
-          test_data <- test_data_imp$ximp
+          test_predictor_cols <- setdiff(names(test_data), outcome_cols)
+          if (length(test_predictor_cols) > 0) {
+            test_data_imp <- missForest(test_data[, test_predictor_cols, drop = FALSE], verbose = FALSE)
+            imputed_test <- test_data_imp$ximp
+            test_data[, test_predictor_cols] <- imputed_test[, test_predictor_cols, drop = FALSE]
+          }
 
           warning("Missing values in the test set have been imputed using the 'missForest' method.")
 
