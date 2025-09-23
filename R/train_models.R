@@ -764,9 +764,10 @@ train_models <- function(train_data,
               yardstick::roc_auc(data, truth = {{truth}}, ...)
             }
 
-            # Assign the same class as roc_auc()
+            # Assign the same metadata as roc_auc() so metric ids stay consistent
             class(roc_auc_h2o) <- class(roc_auc)
-            attr(roc_auc_h2o, "direction") <- "maximize"
+            attr(roc_auc_h2o, "direction") <- attr(yardstick::roc_auc, "direction")
+            attr(roc_auc_h2o, "metric_name") <- attr(yardstick::roc_auc, "metric_name")
 
             my_metrics <- metric_set(accuracy, kap, sens, spec, precision, f_meas, roc_auc_h2o)
 
