@@ -788,10 +788,27 @@ fastml <- function(data = NULL,
     }
   })
 
+  lower_is_better_metrics <- c("rmse", "mae", "ibs", "logloss", "mse", "brier_score")
 
-  lower_is_better_metrics <- c("rmse", "mae", "ibs", "logloss", "mse")
-  lower_is_better <- (!is.null(metric)) &&
-    (metric %in% lower_is_better_metrics || grepl("^brier_t", metric))
+  lower_is_better <- FALSE
+  if (!is.null(metric)) {
+    direction <- tryCatch({
+      if (requireNamespace("yardstick", quietly = TRUE) &&
+          exists(metric, envir = asNamespace("yardstick"), inherits = FALSE)) {
+        attr(get(metric, envir = asNamespace("yardstick")), "direction", exact = TRUE)
+      } else {
+        NA_character_
+      }
+    }, error = function(e) NA_character_)
+
+    if (!is.na(direction) && !is.null(direction)) {
+      lower_is_better <- identical(direction, "minimize")
+    } else {
+      lower_is_better <- metric %in% lower_is_better_metrics ||
+        grepl("^brier_t", metric) ||
+        grepl("brier", metric, fixed = TRUE)
+    }
+  }
 
   if (any(is.na(metric_values))) {
     warning("Some models did not return the specified metric.")
