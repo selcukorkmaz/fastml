@@ -903,7 +903,34 @@ summary.fastml <- function(object,
         if (is.null(val) || length(val) == 0) {
           return(NA_character_)
         }
-        as.character(val[1])
+        scalar_val <- val[[1]]
+        if (is.null(scalar_val) || (length(scalar_val) == 1 && is.na(scalar_val))) {
+          return(NA_character_)
+        }
+        chr_val <- tryCatch(as.character(scalar_val), error = function(e) NA_character_)
+        if (length(chr_val) == 0) {
+          return(NA_character_)
+        }
+        chr_val <- chr_val[1]
+        if (!nzchar(chr_val) || identical(chr_val, "NA")) {
+          return(NA_character_)
+        }
+        chr_val
+      }
+
+      extract_numeric_info <- function(name) {
+        if (is.null(model_info)) {
+          return(NA_real_)
+        }
+        val <- tryCatch(model_info[[name]], error = function(e) NULL)
+        if (is.null(val) || length(val) == 0) {
+          return(NA_real_)
+        }
+        num_val <- suppressWarnings(as.numeric(val[1]))
+        if (!is.finite(num_val)) {
+          return(NA_real_)
+        }
+        num_val
       }
 
       if (!is.null(model_info)) {
@@ -911,7 +938,7 @@ summary.fastml <- function(object,
         time_col <- extract_column("time_col")
         status_col <- extract_column("status_col")
 
-        if (nzchar(start_col)) {
+        if (!is.na(start_col) && nzchar(start_col)) {
           cat("  Start time column: ", start_col, "\n", sep = "")
           printed_any <- TRUE
         }
@@ -997,10 +1024,13 @@ summary.fastml <- function(object,
         }
       }
 
-      loglik_val <- tryCatch({
-        val <- stats::logLik(fit_obj)
-        if (length(val) > 0) as.numeric(val)[1] else NA_real_
-      }, error = function(e) NA_real_)
+      loglik_val <- extract_numeric_info("loglik")
+      if (!is.finite(loglik_val)) {
+        loglik_val <- tryCatch({
+          val <- stats::logLik(fit_obj)
+          if (length(val) > 0) as.numeric(val)[1] else NA_real_
+        }, error = function(e) NA_real_)
+      }
       if (!is.finite(loglik_val) && requireNamespace("rstpm2", quietly = TRUE)) {
         loglik_val <- tryCatch({
           val <- rstpm2::logLik(fit_obj)
@@ -1014,7 +1044,10 @@ summary.fastml <- function(object,
         cat("  Log-likelihood: <unavailable>\n")
       }
 
-      aic_val <- tryCatch(stats::AIC(fit_obj), error = function(e) NA_real_)
+      aic_val <- extract_numeric_info("aic")
+      if (!is.finite(aic_val)) {
+        aic_val <- tryCatch(stats::AIC(fit_obj), error = function(e) NA_real_)
+      }
       if (!is.finite(aic_val) && requireNamespace("rstpm2", quietly = TRUE)) {
         aic_val <- tryCatch(rstpm2::AIC(fit_obj), error = function(e) NA_real_)
       }
@@ -1025,7 +1058,10 @@ summary.fastml <- function(object,
         cat("  AIC: <unavailable>\n")
       }
 
-      bic_val <- tryCatch(stats::BIC(fit_obj), error = function(e) NA_real_)
+      bic_val <- extract_numeric_info("bic")
+      if (!is.finite(bic_val)) {
+        bic_val <- tryCatch(stats::BIC(fit_obj), error = function(e) NA_real_)
+      }
       if (!is.finite(bic_val) && requireNamespace("rstpm2", quietly = TRUE)) {
         bic_val <- tryCatch(rstpm2::BIC(fit_obj), error = function(e) NA_real_)
       }
