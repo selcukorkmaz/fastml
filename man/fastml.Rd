@@ -84,13 +84,14 @@ Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.}
 pair. Example: \code{list(rand_forest = list(ranger = list(mtry = c(1, 3))))}
 will override the defaults for the ranger engine. Default is \code{NULL}.}
 
-\item{engine_params}{A named list of fixed engine-level arguments that are
-passed directly to the underlying fitting call for each algorithm/engine
-combination (e.g. \code{list(royston_parmar = list(rstpm2 = list(link = "PO")))},
+\item{engine_params}{A named list of engine-level arguments to pass directly
+to the underlying model fitting functions. Use this for fixed settings that
+should apply whenever an engine is fitted (for example,
+\code{list(royston_parmar = list(rstpm2 = list(link = "PO")))},
 \code{list(cox_ph = list(survival = list(ties = "breslow")))}, or
 \code{list(rand_forest = list(ranger = list(importance = "impurity")))}).
-These values are distinct from \code{tune_params}, which describe ranges for
-hyperparameter tuning.}
+These arguments are distinct from \code{tune_params}, which define ranges of
+hyperparameters to explore during tuning. Default is an empty list.}
 
 \item{metric}{The performance metric to optimize during training.}
 

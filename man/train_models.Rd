@@ -49,11 +49,11 @@ will be used instead of those created internally.}
 list of engine-specific parameter values, e.g.
 \code{list(rand_forest = list(ranger = list(mtry = c(1, 3)))).}}
 
-\item{engine_params}{A named list of fixed engine-level arguments supplied
-directly to the underlying model fitting functions for each algorithm and
-engine. Use this for options such as \code{ties = "breslow"} in Cox models or
-\code{importance = "impurity"} for the ranger engine. Unlike
-\code{tune_params}, these values are not tuned.}
+\item{engine_params}{A named list of fixed engine-level arguments passed
+directly to the model fitting call for each algorithm/engine combination.
+Use this to control options like \code{ties = "breslow"} for Cox models or
+\code{importance = "impurity"} for ranger. Unlike \code{tune_params}, these
+values are not tuned over a grid.}
 
 \item{metric}{The performance metric to optimize.}
 
