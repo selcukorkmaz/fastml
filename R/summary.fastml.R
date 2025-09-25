@@ -1482,7 +1482,13 @@ summary.fastml <- function(object,
       } else {
         "<unknown>"
       }
-      cat("  Objective:", objective, "\n")
+      if (identical(objective, "survival:cox")) {
+        cat("  Objective: survival:cox — risk ranking only\n")
+      } else if (identical(objective, "survival:aft")) {
+        cat("  Objective: survival:aft — full survival modeling\n")
+      } else {
+        cat("  Objective:", objective, "\n")
+      }
       booster <- tryCatch(fit_obj$booster, error = function(e) NULL)
       rounds <- NA_real_
       if (!is.null(booster)) {
@@ -1495,23 +1501,19 @@ summary.fastml <- function(object,
       if (feat_count > 0) {
         cat("  Predictors:", format_numeric_single(feat_count, digits = 0), "\n")
       }
-      if (identical(objective, "survival:cox")) {
-        baseline_info <- tryCatch(fit_obj$baseline, error = function(e) NULL)
-        has_baseline <- !is.null(baseline_info) && is.data.frame(baseline_info) && nrow(baseline_info) > 0
-        cat("  Baseline hazard:", if (has_baseline) "Breslow (stored)" else "<not available>", "\n")
-      } else if (identical(objective, "survival:aft")) {
+      if (identical(objective, "survival:aft")) {
         dist_val <- tryCatch(fit_obj$aft_distribution, error = function(e) NULL)
         dist_str <- if (!is.null(dist_val) && length(dist_val) > 0 && nzchar(as.character(dist_val)[1])) {
           as.character(dist_val)[1]
         } else {
           "<unknown>"
         }
-        cat("  AFT distribution:", dist_str, "\n")
+        cat("  Distribution:", dist_str, "\n")
         scale_val <- tryCatch(as.numeric(fit_obj$aft_scale), error = function(e) NA_real_)
         if (is.finite(scale_val)) {
-          cat("  AFT scale:", format_numeric_single(scale_val), "\n")
+          cat("  Scale:", format_numeric_single(scale_val), "\n")
         } else {
-          cat("  AFT scale: <unavailable>\n")
+          cat("  Scale: <unavailable>\n")
         }
       }
       TRUE

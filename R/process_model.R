@@ -1442,6 +1442,9 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
 
     n_obs <- nrow(test_data)
     surv_prob_mat <- NULL
+    aft_quantile_mat <- NULL
+    aft_probs <- numeric(0)
+    aft_mu <- NULL
     if (length(eval_times) > 0 && n_obs > 0) {
       if (inherits(final_model, "fastml_native_survival")) {
         newdata_survfit <- pred_predictors
@@ -1502,13 +1505,14 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
             }
           }
         } else if (inherits(final_model$fit, "fastml_xgb_survival")) {
-          lp_vals <- fastml_xgb_predict_lp(final_model$fit, pred_predictors)
           if (identical(final_model$fit$objective, "survival:cox")) {
-            surv_prob_mat <- fastml_xgb_survival_matrix_cox(final_model$fit, lp_vals, eval_times)
+            surv_prob_mat <- NULL
           } else {
-            dist_name <- final_model$fit$aft_distribution
-            scale_val <- final_model$fit$aft_scale
-            surv_prob_mat <- fastml_aft_survival_prob(eval_times, lp_vals, dist_name, scale_val)
+            aft_pred <- fastml_xgb_aft_predict(final_model$fit, pred_predictors, eval_times = eval_times)
+            surv_prob_mat <- aft_pred$surv
+            aft_quantile_mat <- aft_pred$quantiles
+            aft_probs <- aft_pred$probs
+            aft_mu <- aft_pred$mu
           }
         } else {
           surv_fit <- tryCatch(
@@ -1565,6 +1569,14 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
     }
     attr(surv_curve_list, "eval_times") <- eval_times
 
+    limited_metrics <- identical(survival_model_type, "xgboost_cox")
+    if (limited_metrics) {
+      attr(surv_curve_list, "eval_times") <- numeric(0)
+      brier_times <- numeric(0)
+      brier_metric_names <- character(0)
+      brier_time_map <- numeric(0)
+    }
+
     surv_time <- tryCatch({
       if (inherits(final_model, "fastml_native_survival") && requireNamespace("censored", quietly = TRUE)) {
         if (inherits(final_model$fit, "coxph")) {
@@ -1581,16 +1593,41 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       }
     }, error = function(e) rep(NA_real_, nrow(test_data)))
 
+    if (identical(survival_model_type, "xgboost_aft")) {
+      if (!is.null(aft_quantile_mat) && nrow(aft_quantile_mat) == n_obs && length(aft_probs) > 0) {
+        median_idx <- which.min(abs(aft_probs - 0.5))
+        if (length(median_idx) == 0) {
+          median_idx <- ceiling(length(aft_probs) / 2)
+        } else {
+          median_idx <- median_idx[1]
+        }
+        median_vals <- as.numeric(aft_quantile_mat[, median_idx, drop = TRUE])
+        surv_time <- median_vals
+        surv_time[!is.finite(surv_time)] <- NA_real_
+      } else if (!is.null(aft_mu) && length(aft_mu) == n_obs) {
+        surv_time <- exp(as.numeric(aft_mu))
+        surv_time[!is.finite(surv_time)] <- NA_real_
+      }
+    } else if (identical(survival_model_type, "xgboost_cox")) {
+      surv_time <- rep(NA_real_, n_obs)
+    }
+
     risk_group <- assign_risk_group(risk)
 
     ibs_curve_full <- rep(NA_real_, length(eval_times))
     ibs_point <- NA_real_
-    if (!is.null(surv_prob_mat) && length(eval_times) > 0) {
+    brier_time_values <- if (length(brier_metric_names) > 0) rep(NA_real_, length(brier_metric_names)) else numeric(0)
+    rmst_diff <- NA_real_
+    if (!limited_metrics && !is.null(surv_prob_mat) && length(eval_times) > 0) {
       ibs_res_full <- compute_ibrier(eval_times, surv_prob_mat, obs_time, status_event, tau_max, censor_eval_test)
       ibs_point <- ibs_res_full$ibs
       ibs_curve_full <- ibs_res_full$curve
+      brier_time_values <- map_brier_values(ibs_curve_full, eval_times, brier_times)
+      rmst_diff <- compute_rmst_difference(obs_time, status_event, risk, tau_max,
+                                           surv_mat = surv_prob_mat,
+                                           eval_times_full = eval_times,
+                                           model_type = survival_model_type)
     }
-    brier_time_values <- map_brier_values(ibs_curve_full, eval_times, brier_times)
 
     harrell_c <- NA_real_
     risk_valid <- is.finite(risk)
@@ -1610,18 +1647,20 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
 
     uno_c <- compute_uno_c_index(train_times, train_status_event, obs_time, status_event, risk, tau_max, censor_eval_train)
     uno_c <- clamp01(uno_c)
-    ibs_point <- clamp01(ibs_point)
-    if (length(brier_time_values) > 0) {
-      brier_time_values <- clamp01(brier_time_values)
+    if (!limited_metrics) {
+      ibs_point <- clamp01(ibs_point)
+      if (length(brier_time_values) > 0) {
+        brier_time_values <- clamp01(brier_time_values)
+      }
     }
 
-    rmst_diff <- compute_rmst_difference(obs_time, status_event, risk, tau_max,
-                                         surv_mat = surv_prob_mat,
-                                         eval_times_full = eval_times,
-                                         model_type = survival_model_type)
-
-    metric_names <- c("c_index", "uno_c", "ibs", "rmst_diff", brier_metric_names)
-    metrics_point <- c(harrell_c, uno_c, ibs_point, rmst_diff, brier_time_values)
+    if (limited_metrics) {
+      metric_names <- c("c_index", "uno_c")
+      metrics_point <- c(harrell_c, uno_c)
+    } else {
+      metric_names <- c("c_index", "uno_c", "ibs", "rmst_diff", brier_metric_names)
+      metrics_point <- c(harrell_c, uno_c, ibs_point, rmst_diff, brier_time_values)
+    }
     names(metrics_point) <- metric_names
     metrics_point[is.nan(metrics_point)] <- NA_real_
 
@@ -1649,6 +1688,12 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       harrell_sub <- clamp01(harrell_sub)
       uno_sub <- compute_uno_c_index(train_times, train_status_event, obs_sub, status_sub, risk_sub, tau_max, censor_eval_train)
       uno_sub <- clamp01(uno_sub)
+      if (limited_metrics) {
+        vals <- c(harrell_sub, uno_sub)
+        names(vals) <- metric_names
+        vals[is.nan(vals)] <- NA_real_
+        return(vals)
+      }
       ibs_sub <- NA_real_
       curve_sub <- rep(NA_real_, length(eval_times))
       if (!is.null(surv_mat_sub) && nrow(surv_mat_sub) == length(idx)) {
@@ -1735,9 +1780,14 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
     attr(perf, "brier_times") <- brier_time_map
     attr(perf, "t_max") <- tau_max
     attr(perf, "at_risk_threshold") <- threshold
-    attr(data_metrics, "eval_times") <- eval_times
-    attr(data_metrics, "brier_curve") <- tibble::tibble(eval_time = eval_times, brier = ibs_curve_full)
-    attr(data_metrics, "brier_times") <- brier_time_map
+    attr(data_metrics, "eval_times") <- if (limited_metrics) numeric(0) else eval_times
+    if (limited_metrics) {
+      attr(data_metrics, "brier_curve") <- NULL
+      attr(data_metrics, "brier_times") <- numeric(0)
+    } else {
+      attr(data_metrics, "brier_curve") <- tibble::tibble(eval_time = eval_times, brier = ibs_curve_full)
+      attr(data_metrics, "brier_times") <- brier_time_map
+    }
     attr(data_metrics, "t_max") <- tau_max
 
   } else {

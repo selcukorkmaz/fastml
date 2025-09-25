@@ -111,7 +111,7 @@ get_default_engine <- function(algo, task = NULL) {
     return("survival")
   }
   if (algo == "xgboost" && !is.null(task) && task == "survival") {
-    return("cox")
+    return("aft")
   }
 
   switch(algo,
