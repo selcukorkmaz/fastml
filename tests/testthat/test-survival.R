@@ -10,7 +10,7 @@ test_that("get_default_engine works for survival algorithms", {
   expect_identical(get_default_engine("rand_forest", task = "survival"), "aorsf")
   expect_identical(get_default_engine("cox_ph", task = "survival"), "survival")
   expect_identical(get_default_engine("penalized_cox", task = "survival"), "glmnet")
-  expect_identical(get_default_engine("xgboost", task = "survival"), "cox")
+  expect_identical(get_default_engine("xgboost", task = "survival"), "aft")
 })
 
 test_that("xgboost Cox survival model trains and predicts", {
@@ -33,13 +33,11 @@ test_that("xgboost Cox survival model trains and predicts", {
 
   expect_s3_class(res, "fastml")
   perf <- res$performance[[1]]
-  expect_true(all(c("c_index", "uno_c", "ibs") %in% perf$.metric))
+  expect_setequal(perf$.metric, c("c_index", "uno_c"))
   harrell <- perf$.estimate[perf$.metric == "c_index"]
   uno <- perf$.estimate[perf$.metric == "uno_c"]
-  ibs_val <- perf$.estimate[perf$.metric == "ibs"]
   expect_true(all(is.finite(harrell)) && all(harrell >= 0 & harrell <= 1))
   expect_true(all(is.finite(uno)) && all(uno >= 0 & uno <= 1))
-  expect_true(all(is.finite(ibs_val)) && all(ibs_val >= 0))
 
   spec <- res$models[[1]]
   newdata <- lung[1:5, setdiff(names(lung), c("time", "status")), drop = FALSE]
@@ -47,12 +45,10 @@ test_that("xgboost Cox survival model trains and predicts", {
   expect_length(risk_vals, nrow(newdata))
   expect_true(all(is.finite(risk_vals)))
 
-  eval_times <- seq(100, 400, length.out = 4)
-  surv_mat <- predict_survival(spec, newdata = newdata, times = eval_times)
-  expect_equal(dim(surv_mat), c(nrow(newdata), length(eval_times)))
-  expect_true(all(is.finite(surv_mat)))
-  expect_true(all(surv_mat >= 0 & surv_mat <= 1))
-  apply(surv_mat, 1, function(row) expect_true(all(diff(row) <= 1e-8)))
+  expect_error(
+    predict_survival(spec, newdata = newdata, times = c(100, 200)),
+    "risk ranking only"
+  )
 })
 
 test_that("xgboost AFT survival model trains and predicts", {
@@ -71,7 +67,7 @@ test_that("xgboost AFT survival model trains and predicts", {
     test_size = 0.3,
     impute_method = "remove",
     algorithm_engines = list(xgboost = "aft"),
-    engine_params = list(xgboost = list(aft = list(params = list(aft_loss_distribution = "normal", aft_loss_distribution_scale = 1.2))))
+    engine_params = list(xgboost = list(aft = list(aft_loss_distribution = "normal", aft_loss_distribution_scale = 1.2)))
   )
 
   expect_s3_class(res, "fastml")

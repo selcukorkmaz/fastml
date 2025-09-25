@@ -237,6 +237,128 @@ fastml_aft_survival_prob <- function(times, mu_vec, dist, scale) {
   mat
 }
 
+fastml_aft_quantile_times <- function(probs, mu_vec, dist, scale) {
+  if (length(mu_vec) == 0 || length(probs) == 0) {
+    return(matrix(numeric(), nrow = length(mu_vec), ncol = length(probs)))
+  }
+  scale <- ifelse(is.finite(scale) && scale > 0, scale, 1)
+  probs <- as.numeric(probs)
+  probs <- probs[is.finite(probs) & probs > 0 & probs < 1]
+  if (length(probs) == 0) {
+    return(matrix(numeric(), nrow = length(mu_vec), ncol = 0))
+  }
+  n <- length(mu_vec)
+  k <- length(probs)
+  z_vals <- switch(tolower(dist),
+                   "logistic" = log(probs / (1 - probs)),
+                   "extreme" = -log(-log(probs)),
+                   "normal" = stats::qnorm(probs),
+                   stats::qnorm(probs))
+  z_vals[!is.finite(z_vals)] <- NA_real_
+  log_time <- outer(mu_vec, rep(1, k)) + scale * matrix(z_vals, nrow = n, ncol = k, byrow = TRUE)
+  times <- exp(log_time)
+  times[!is.finite(times) | times <= 0] <- NA_real_
+  colnames(times) <- format(probs, trim = TRUE, scientific = FALSE)
+  times
+}
+
+fastml_aft_survival_from_quantiles <- function(times, quantile_mat, probs) {
+  if (length(times) == 0) {
+    return(matrix(numeric(), nrow = nrow(quantile_mat), ncol = 0))
+  }
+  n <- if (is.null(quantile_mat)) 0 else nrow(quantile_mat)
+  if (n == 0) {
+    return(matrix(numeric(), nrow = 0, ncol = length(times)))
+  }
+  if (is.null(probs) || length(probs) == 0) {
+    return(matrix(NA_real_, nrow = n, ncol = length(times)))
+  }
+  probs <- as.numeric(probs)
+  ord <- order(probs)
+  probs_ord <- probs[ord]
+  quant_ord <- quantile_mat[, ord, drop = FALSE]
+  res <- matrix(NA_real_, nrow = n, ncol = length(times))
+  for (i in seq_len(n)) {
+    q_row <- as.numeric(quant_ord[i, ])
+    valid <- is.finite(q_row)
+    if (!any(valid)) {
+      next
+    }
+    q_vals <- q_row[valid]
+    p_vals <- probs_ord[valid]
+    if (length(q_vals) < 1) {
+      next
+    }
+    if (length(q_vals) > 1) {
+      q_vals <- cummax(q_vals)
+    }
+    for (j in seq_along(times)) {
+      tval <- times[j]
+      if (!is.finite(tval) || tval <= 0) {
+        next
+      }
+      idx <- findInterval(tval, q_vals)
+      if (idx <= 0) {
+        surv <- 1
+      } else if (idx >= length(q_vals)) {
+        surv <- 1 - tail(p_vals, 1)
+      } else {
+        q_low <- q_vals[idx]
+        q_high <- q_vals[idx + 1]
+        p_low <- p_vals[idx]
+        p_high <- p_vals[idx + 1]
+        if (!is.finite(q_low) || !is.finite(q_high) || q_high <= q_low) {
+          surv <- 1 - p_high
+        } else {
+          weight <- (tval - q_low) / (q_high - q_low)
+          weight <- min(max(weight, 0), 1)
+          p_interp <- p_low + weight * (p_high - p_low)
+          surv <- 1 - p_interp
+        }
+      }
+      res[i, j] <- surv
+    }
+  }
+  res[res < 0] <- 0
+  res[res > 1] <- 1
+  if (ncol(res) > 1) {
+    res <- t(apply(res, 1, function(row) {
+      row[!is.finite(row)] <- NA_real_
+      cummin(pmin(pmax(row, 0), 1))
+    }))
+  }
+  res
+}
+
+fastml_xgb_aft_predict <- function(fit_obj, predictors, eval_times = NULL, quantile_probs = NULL) {
+  if (is.null(fit_obj) || is.null(fit_obj$booster)) {
+    return(list(mu = numeric(0), quantiles = NULL, probs = numeric(0), surv = NULL))
+  }
+  mu_vec <- fastml_xgb_predict_lp(fit_obj, predictors = predictors)
+  dist <- tryCatch(fit_obj$aft_distribution, error = function(e) "logistic")
+  scale <- tryCatch(as.numeric(fit_obj$aft_scale), error = function(e) 1)
+  if (!is.finite(scale) || scale <= 0) {
+    scale <- 1
+  }
+  if (is.null(quantile_probs)) {
+    quantile_probs <- tryCatch(fit_obj$aft_quantiles, error = function(e) NULL)
+  }
+  quantile_probs <- quantile_probs[is.finite(quantile_probs) & quantile_probs > 0 & quantile_probs < 1]
+  if (length(quantile_probs) == 0) {
+    quantile_probs <- c(0.25, 0.5, 0.75)
+  }
+  quantile_probs <- sort(unique(as.numeric(quantile_probs)))
+  quantile_mat <- fastml_aft_quantile_times(quantile_probs, mu_vec, dist, scale)
+  surv_mat <- NULL
+  if (!is.null(eval_times)) {
+    surv_mat <- fastml_aft_survival_from_quantiles(eval_times, quantile_mat, quantile_probs)
+    if (is.null(surv_mat) || ncol(surv_mat) != length(eval_times)) {
+      surv_mat <- fastml_aft_survival_prob(eval_times, mu_vec, dist, scale)
+    }
+  }
+  list(mu = mu_vec, quantiles = quantile_mat, probs = quantile_probs, surv = surv_mat)
+}
+
 #' Predict risk scores from a survival model
 #'
 #' Provides a uniform interface for obtaining linear predictors / risk scores
@@ -488,13 +610,15 @@ predict_survival.fastml_native_survival <- function(fit, newdata, times, ...) {
     return(matrix(NA_real_, nrow = n, ncol = length(times)))
   }
   if (inherits(fit$fit, "fastml_xgb_survival")) {
-    lp <- fastml_xgb_predict_lp(fit$fit, predictors)
     if (identical(fit$fit$objective, "survival:cox")) {
-      return(fastml_xgb_survival_matrix_cox(fit$fit, lp, times))
+      stop("XGBoost survival:cox provides risk ranking only; survival curve predictions are unavailable.")
     }
-    dist <- fit$fit$aft_distribution
-    scale <- fit$fit$aft_scale
-    return(fastml_aft_survival_prob(times, lp, dist, scale))
+    aft_pred <- fastml_xgb_aft_predict(fit$fit, predictors, eval_times = times)
+    if (is.null(aft_pred$surv)) {
+      n_obs <- if (is.null(predictors)) 0L else nrow(predictors)
+      return(matrix(NA_real_, nrow = n_obs, ncol = length(times)))
+    }
+    return(aft_pred$surv)
   }
   stop("Survival prediction not implemented for this native engine.")
 }

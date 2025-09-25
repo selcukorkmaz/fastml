@@ -264,22 +264,23 @@ train_models <- function(train_data,
           next
         }
         dtrain <- xgboost::xgb.DMatrix(data = train_mat)
-        engine_lower <- tolower(engine)
-        objective <- if (grepl("aft", engine_lower, fixed = TRUE)) {
-          "survival:aft"
+        engine_lower <- if (length(engine) == 0 || is.na(engine)) "" else tolower(engine)
+        objective <- NULL
+        if (grepl("aft", engine_lower, fixed = TRUE)) {
+          objective <- "survival:aft"
         } else if (grepl("cox", engine_lower, fixed = TRUE)) {
-          "survival:cox"
-        } else {
-          if (!is.null(engine_args$objective)) {
-            engine_args_obj <- tolower(as.character(engine_args$objective))
-            if (identical(engine_args_obj, "survival:aft")) {
-              "survival:aft"
-            } else {
-              "survival:cox"
-            }
-          } else {
-            "survival:cox"
+          objective <- "survival:cox"
+        }
+        if (is.null(objective) && !is.null(engine_args$objective)) {
+          engine_args_obj <- tolower(as.character(engine_args$objective))
+          if (identical(engine_args_obj, "survival:aft")) {
+            objective <- "survival:aft"
+          } else if (identical(engine_args_obj, "survival:cox")) {
+            objective <- "survival:cox"
           }
+        }
+        if (is.null(objective)) {
+          objective <- "survival:aft"
         }
         defaults <- get_default_params("xgboost", task, num_predictors = ncol(train_mat), engine = engine)
         params_list <- list(
@@ -294,9 +295,19 @@ train_models <- function(train_data,
         if (!is.null(defaults$mtry) && ncol(train_mat) > 0) {
           params_list$colsample_bytree <- min(1, max(1, defaults$mtry) / ncol(train_mat))
         }
+        aft_quantiles <- NULL
         if (identical(objective, "survival:aft")) {
           params_list$aft_loss_distribution <- "logistic"
           params_list$aft_loss_distribution_scale <- 1
+        }
+        special_param_names <- c("aft_loss_distribution", "aft_loss_distribution_scale", "aft_quantiles")
+        for (nm in intersect(names(engine_args), special_param_names)) {
+          if (identical(nm, "aft_quantiles")) {
+            aft_quantiles <- suppressWarnings(as.numeric(engine_args[[nm]]))
+          } else {
+            params_list[[nm]] <- engine_args[[nm]]
+          }
+          engine_args[[nm]] <- NULL
         }
         params_list <- params_list[!vapply(params_list, is.null, logical(1))]
         nrounds_default <- defaults$trees
@@ -335,16 +346,20 @@ train_models <- function(train_data,
           next
         }
         baseline_df <- NULL
-        if (identical(objective, "survival:cox")) {
-          lp_train <- tryCatch({
-            xgboost::predict(booster, newdata = dtrain, outputmargin = TRUE)
-          }, error = function(e) NULL)
-          if (!is.null(lp_train)) {
-            baseline_df <- fastml_compute_breslow_baseline(time_vec, status_vec, lp_train)
-          }
-        }
         aft_dist <- if (!is.null(final_params$aft_loss_distribution)) final_params$aft_loss_distribution else "logistic"
         aft_scale <- if (!is.null(final_params$aft_loss_distribution_scale)) final_params$aft_loss_distribution_scale else 1
+        if (identical(objective, "survival:aft")) {
+          if (is.null(aft_quantiles) || length(aft_quantiles) == 0 || all(!is.finite(aft_quantiles))) {
+            aft_quantiles <- seq(0.01, 0.99, by = 0.01)
+          }
+          aft_quantiles <- aft_quantiles[is.finite(aft_quantiles) & aft_quantiles > 0 & aft_quantiles < 1]
+          if (length(aft_quantiles) == 0) {
+            aft_quantiles <- c(0.25, 0.5, 0.75)
+          }
+          aft_quantiles <- sort(unique(as.numeric(aft_quantiles)))
+        } else {
+          aft_quantiles <- numeric(0)
+        }
         fit_obj <- list(
           booster = booster,
           objective = if (!is.null(final_params$objective)) final_params$objective else objective,
@@ -352,6 +367,7 @@ train_models <- function(train_data,
           baseline = baseline_df,
           aft_distribution = aft_dist,
           aft_scale = aft_scale,
+          aft_quantiles = aft_quantiles,
           train_time = time_vec,
           train_status = status_vec
         )
