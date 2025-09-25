@@ -220,6 +220,144 @@ train_models <- function(train_data,
         )
         spec <- spec_info$model_spec
         fit_engine_args <- spec_info$fit_args
+      } else if (algo == "xgboost") {
+        if (!requireNamespace("xgboost", quietly = TRUE)) {
+          warning("Package 'xgboost' not installed; skipping xgboost survival model.")
+          next
+        }
+        if (length(label_cols) != 2) {
+          warning("xgboost survival currently supports only right-censored data (time/status). Skipping.")
+          next
+        }
+        prep_dat <- get_prepped_data()
+        baked_train <- prep_dat$data
+        rec_prep <- prep_dat$recipe
+        if (!(response_col %in% names(baked_train))) {
+          warning("Unable to locate survival response column in preprocessed data; skipping xgboost.")
+          next
+        }
+        predictors <- baked_train
+        predictors[[response_col]] <- NULL
+        if (ncol(predictors) == 0) {
+          warning("No predictors available after preprocessing; skipping xgboost survival.")
+          next
+        }
+        for (nm in names(predictors)) {
+          col <- predictors[[nm]]
+          if (is.factor(col) || is.logical(col)) {
+            predictors[[nm]] <- as.numeric(col)
+          } else if (!is.numeric(col)) {
+            predictors[[nm]] <- suppressWarnings(as.numeric(col))
+          }
+        }
+        train_mat <- as.matrix(predictors)
+        storage.mode(train_mat) <- "numeric"
+        feature_names <- colnames(train_mat)
+        if (length(feature_names) == 0) {
+          warning("Predictor matrix for xgboost survival has no columns; skipping.")
+          next
+        }
+        time_vec <- as.numeric(train_data[[time_col]])
+        status_vec <- ifelse(is.na(train_data[[status_col]]), 0, ifelse(train_data[[status_col]] > 0, 1, 0))
+        if (!all(is.finite(time_vec))) {
+          warning("Non-finite survival times detected; skipping xgboost survival.")
+          next
+        }
+        dtrain <- xgboost::xgb.DMatrix(data = train_mat)
+        engine_lower <- tolower(engine)
+        objective <- if (grepl("aft", engine_lower, fixed = TRUE)) {
+          "survival:aft"
+        } else if (grepl("cox", engine_lower, fixed = TRUE)) {
+          "survival:cox"
+        } else {
+          if (!is.null(engine_args$objective)) {
+            engine_args_obj <- tolower(as.character(engine_args$objective))
+            if (identical(engine_args_obj, "survival:aft")) {
+              "survival:aft"
+            } else {
+              "survival:cox"
+            }
+          } else {
+            "survival:cox"
+          }
+        }
+        defaults <- get_default_params("xgboost", task, num_predictors = ncol(train_mat), engine = engine)
+        params_list <- list(
+          objective = objective,
+          eval_metric = if (identical(objective, "survival:cox")) "cox-nloglik" else "aft-nloglik",
+          eta = defaults$learn_rate,
+          max_depth = defaults$tree_depth,
+          subsample = defaults$sample_size,
+          gamma = defaults$loss_reduction,
+          min_child_weight = defaults$min_n
+        )
+        if (!is.null(defaults$mtry) && ncol(train_mat) > 0) {
+          params_list$colsample_bytree <- min(1, max(1, defaults$mtry) / ncol(train_mat))
+        }
+        if (identical(objective, "survival:aft")) {
+          params_list$aft_loss_distribution <- "logistic"
+          params_list$aft_loss_distribution_scale <- 1
+        }
+        params_list <- params_list[!vapply(params_list, is.null, logical(1))]
+        nrounds_default <- defaults$trees
+        if (is.null(nrounds_default) || !is.finite(nrounds_default)) {
+          nrounds_default <- 100L
+        }
+        base_args <- list(
+          data = dtrain,
+          nrounds = as.integer(nrounds_default),
+          params = params_list,
+          verbose = 0
+        )
+        if (identical(objective, "survival:cox")) {
+          xgboost::setinfo(dtrain, "label", time_vec)
+          xgboost::setinfo(dtrain, "label_lower_bound", status_vec)
+        } else {
+          log_time <- log(pmax(time_vec, .Machine$double.eps))
+          lower <- log_time
+          upper <- log_time
+          cens <- status_vec == 0
+          upper[cens] <- Inf
+          xgboost::setinfo(dtrain, "label", log_time)
+          xgboost::setinfo(dtrain, "label_lower_bound", lower)
+          xgboost::setinfo(dtrain, "label_upper_bound", upper)
+        }
+        combined_args <- c(base_args, engine_args)
+        if (!is.null(engine_args$params) && is.list(engine_args$params)) {
+          combined_args$params <- utils::modifyList(params_list, engine_args$params, keep.null = TRUE)
+        }
+        final_params <- combined_args$params
+        booster <- tryCatch({
+          do.call(xgboost::xgb.train, combined_args)
+        }, error = function(e) e)
+        if (inherits(booster, "error")) {
+          warning(sprintf("xgboost survival training failed: %s", booster$message))
+          next
+        }
+        baseline_df <- NULL
+        if (identical(objective, "survival:cox")) {
+          lp_train <- tryCatch({
+            xgboost::predict(booster, newdata = dtrain, outputmargin = TRUE)
+          }, error = function(e) NULL)
+          if (!is.null(lp_train)) {
+            baseline_df <- fastml_compute_breslow_baseline(time_vec, status_vec, lp_train)
+          }
+        }
+        aft_dist <- if (!is.null(final_params$aft_loss_distribution)) final_params$aft_loss_distribution else "logistic"
+        aft_scale <- if (!is.null(final_params$aft_loss_distribution_scale)) final_params$aft_loss_distribution_scale else 1
+        fit_obj <- list(
+          booster = booster,
+          objective = if (!is.null(final_params$objective)) final_params$objective else objective,
+          feature_names = feature_names,
+          baseline = baseline_df,
+          aft_distribution = aft_dist,
+          aft_scale = aft_scale,
+          train_time = time_vec,
+          train_status = status_vec
+        )
+        class(fit_obj) <- c("fastml_xgb_survival", "fastml_native_survival_fit")
+        spec <- create_native_spec("xgboost", engine, fit_obj, rec_prep,
+                                   extras = list(feature_names = feature_names))
       } else if (algo == "stratified_cox") {
         if (!requireNamespace("survival", quietly = TRUE)) {
           stop("The 'survival' package is required for stratified Cox. Please install it.")

@@ -59,6 +59,7 @@ availableMethods <- function(type = c("classification", "regression", "survival"
     } else {
       c(
         "rand_forest",
+        "xgboost",
         "cox_ph",
         "penalized_cox",
         "stratified_cox",
@@ -108,6 +109,9 @@ get_default_engine <- function(algo, task = NULL) {
   }
   if (algo == "aft" && !is.null(task) && task == "survival") {
     return("survival")
+  }
+  if (algo == "xgboost" && !is.null(task) && task == "survival") {
+    return("cox")
   }
 
   switch(algo,
