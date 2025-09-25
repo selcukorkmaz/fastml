@@ -19,6 +19,7 @@ fastml(
   exclude = NULL,
   recipe = NULL,
   tune_params = NULL,
+  engine_params = list(),
   metric = NULL,
   algorithm_engines = NULL,
   n_cores = 1,
@@ -82,6 +83,14 @@ Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.}
 \item{tune_params}{A named list of tuning ranges for each algorithm and engine
 pair. Example: \code{list(rand_forest = list(ranger = list(mtry = c(1, 3))))}
 will override the defaults for the ranger engine. Default is \code{NULL}.}
+
+\item{engine_params}{A named list of fixed engine-level arguments that are
+passed directly to the underlying fitting call for each algorithm/engine
+combination (e.g. \code{list(royston_parmar = list(rstpm2 = list(link = "PO")))},
+\code{list(cox_ph = list(survival = list(ties = "breslow")))}, or
+\code{list(rand_forest = list(ranger = list(importance = "impurity")))}).
+These values are distinct from \code{tune_params}, which describe ranges for
+hyperparameter tuning.}
 
 \item{metric}{The performance metric to optimize during training.}
 

@@ -189,6 +189,65 @@ test_that("checks for impute_method", {
   )
 })
 
+test_that("engine_params are forwarded to ranger", {
+  skip_if_not_installed("ranger")
+
+  rf_recipe <- recipes::recipe(Species ~ ., data = iris)
+
+  models <- train_models(
+    train_data = iris,
+    label = "Species",
+    task = "classification",
+    algorithms = c("rand_forest"),
+    resampling_method = "none",
+    folds = 3,
+    repeats = NA,
+    resamples = NULL,
+    tune_params = NULL,
+    engine_params = list(rand_forest = list(ranger = list(importance = "impurity"))),
+    metric = "accuracy",
+    summaryFunction = NULL,
+    seed = 123,
+    recipe = rf_recipe,
+    use_default_tuning = FALSE,
+    tuning_strategy = "none",
+    tuning_iterations = 10,
+    early_stopping = FALSE,
+    adaptive = FALSE,
+    algorithm_engines = NULL
+  )
+
+  rf_workflow <- models$rand_forest$ranger
+  rf_fit <- tune::extract_fit_parsnip(rf_workflow)
+  expect_equal(rf_fit$fit$importance.mode, "impurity")
+})
+
+test_that("engine_params configure Cox model ties", {
+  skip_if_not_installed("survival")
+
+  data(cancer)
+  cancer$status <- ifelse(cancer$status == 2, 1, 0)
+
+  cox_result <- suppressWarnings(
+    fastml(
+      data = cancer,
+      label = c("time", "status"),
+      algorithms = c("cox_ph"),
+      task = "survival",
+      test_size = 0.3,
+      resampling_method = "none",
+      tune_params = NULL,
+      engine_params = list(cox_ph = list(survival = list(ties = "breslow"))),
+      use_default_tuning = FALSE,
+      tuning_strategy = "none",
+      bootstrap_ci = FALSE
+    )
+  )
+
+  expect_s3_class(cox_result$models$cox_ph$fit, "coxph")
+  expect_identical(cox_result$models$cox_ph$fit$method, "breslow")
+})
+
 test_that("stop if recipe is not correctly specified.", {
   expect_error({
     fastml(

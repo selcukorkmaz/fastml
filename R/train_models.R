@@ -15,6 +15,11 @@
 #' @param tune_params A named list of tuning ranges. For each algorithm, supply a
 #'   list of engine-specific parameter values, e.g.
 #'   \code{list(rand_forest = list(ranger = list(mtry = c(1, 3)))).}
+#' @param engine_params A named list of fixed engine-level arguments passed
+#'   directly to the model fitting call for each algorithm/engine combination.
+#'   Use this to control options like \code{ties = "breslow"} for Cox models or
+#'   \code{importance = "impurity"} for ranger. Unlike \code{tune_params}, these
+#'   values are not tuned over a grid.
 #' @param metric The performance metric to optimize.
 #' @param summaryFunction A custom summary function for model evaluation. Default is \code{NULL}.
 #' @param seed An integer value specifying the random seed for reproducibility.
@@ -55,6 +60,7 @@ train_models <- function(train_data,
                          repeats,
                          resamples = NULL,
                          tune_params,
+                         engine_params = list(),
                          metric,
                          summaryFunction = NULL,
                          seed = 123,
@@ -142,6 +148,7 @@ train_models <- function(train_data,
 
     for (algo in algorithms) {
       engine <- get_engine(algo, get_default_engine(algo, task))
+      engine_args <- resolve_engine_params(engine_params, algo, engine)
 
       if (algo == "rand_forest") {
         if (identical(engine, "aorsf") && !requireNamespace("aorsf", quietly = TRUE)) {
@@ -169,9 +176,15 @@ train_models <- function(train_data,
         prep_dat <- get_prepped_data()
         baked_train <- prep_dat$data
         rec_prep <- prep_dat$recipe
-        fit <- survival::coxph(as.formula(paste(response_col, "~ .")),
-                               data = baked_train,
-                               ties = "efron")
+        fit <- call_with_engine_params(
+          survival::coxph,
+          list(
+            formula = as.formula(paste(response_col, "~ .")),
+            data = baked_train,
+            ties = "efron"
+          ),
+          engine_args
+        )
         spec <- create_native_spec("cox_ph", engine, fit, rec_prep)
       } else if (algo == "stratified_cox") {
         if (!requireNamespace("survival", quietly = TRUE)) {
@@ -258,7 +271,15 @@ train_models <- function(train_data,
         rhs_terms <- c(predictor_cols, paste0("strata(", strata_cols_present, ")"))
         formula_rhs <- if (length(rhs_terms) == 0) "1" else paste(rhs_terms, collapse = " + ")
         f <- as.formula(paste(response_col, "~", formula_rhs))
-        fit <- survival::coxph(f, data = baked_train, ties = "efron")
+        fit <- call_with_engine_params(
+          survival::coxph,
+          list(
+            formula = f,
+            data = baked_train,
+            ties = "efron"
+          ),
+          engine_args
+        )
         spec <- create_native_spec("stratified_cox", engine, fit, rec_prep,
                                    extras = list(strata_cols = strata_cols_present,
                                                  strata_dummy_cols = strata_dummy_cols,
@@ -275,9 +296,15 @@ train_models <- function(train_data,
         prep_dat <- get_prepped_data()
         baked_train <- prep_dat$data
         rec_prep <- prep_dat$recipe
-        fit <- survival::coxph(as.formula(paste(response_col, "~ .")),
-                               data = baked_train,
-                               ties = "efron")
+        fit <- call_with_engine_params(
+          survival::coxph,
+          list(
+            formula = as.formula(paste(response_col, "~ .")),
+            data = baked_train,
+            ties = "efron"
+          ),
+          engine_args
+        )
         spec <- create_native_spec("time_varying_cox", engine, fit, rec_prep)
       } else if (algo == "survreg") {
         if (!requireNamespace("survival", quietly = TRUE)) {
@@ -286,9 +313,15 @@ train_models <- function(train_data,
         prep_dat <- get_prepped_data()
         baked_train <- prep_dat$data
         rec_prep <- prep_dat$recipe
-        fit <- survival::survreg(as.formula(paste(response_col, "~ .")),
-                                 data = baked_train,
-                                 dist = "weibull")
+        fit <- call_with_engine_params(
+          survival::survreg,
+          list(
+            formula = as.formula(paste(response_col, "~ .")),
+            data = baked_train,
+            dist = "weibull"
+          ),
+          engine_args
+        )
         spec <- create_native_spec("survreg", engine, fit, rec_prep,
                                    extras = list(distribution = "weibull"))
       } else if (algo == "royston_parmar") {
@@ -327,11 +360,15 @@ train_models <- function(train_data,
         rp_formula <- as.formula(paste(surv_lhs, "~", predictor_terms))
         fit <- tryCatch({
           gsm_fn <- get("gsm", envir = asNamespace("rstpm2"))
-          gsm_fn(
-            formula = rp_formula,
-            data = rp_train,
-            df = 3,
-            penalised = FALSE
+          call_with_engine_params(
+            gsm_fn,
+            list(
+              formula = rp_formula,
+              data = rp_train,
+              df = 3,
+              penalised = FALSE
+            ),
+            engine_args
           )
         }, error = function(e) e)
         if (inherits(fit, "error")) {
@@ -370,7 +407,10 @@ train_models <- function(train_data,
         wf <- workflows::workflow() %>%
           workflows::add_recipe(recipe) %>%
           workflows::add_model(spec)
-        models[[algo]] <- parsnip::fit(wf, data = train_data)
+        models[[algo]] <- do.call(
+          parsnip::fit,
+          c(list(object = wf, data = train_data), engine_args)
+        )
       }
     }
 
@@ -554,6 +594,7 @@ train_models <- function(train_data,
 
     # Loop over each engine provided
     for (engine in engines) {
+      engine_args <- resolve_engine_params(engine_params, algo, engine)
 
       # Get default parameters for this engine
       if (use_default_tuning) {
@@ -815,50 +856,68 @@ train_models <- function(train_data,
 
           # Select tuning function based on strategy
           if (tuning_strategy == "bayes") {
-            model_tuned <- tune_bayes(
-              workflow_spec,
-              resamples = resamples,
-              param_info = tune_params_model,
-              iter = tuning_iterations,
-              metrics = if(!is.null(my_metrics)) my_metrics else metrics,
-              control = ctrl_bayes
+            model_tuned <- do.call(
+              tune_bayes,
+              c(list(
+                object = workflow_spec,
+                resamples = resamples,
+                param_info = tune_params_model,
+                iter = tuning_iterations,
+                metrics = if(!is.null(my_metrics)) my_metrics else metrics,
+                control = ctrl_bayes
+              ), engine_args)
             )
           } else if (adaptive) {
-            model_tuned <- tune_race_anova(
-              workflow_spec,
-              resamples = resamples,
-              param_info = tune_params_model,
-              grid = if (is.null(tune_grid)) 20 else tune_grid,
-              metrics = if(!is.null(my_metrics)) my_metrics else metrics,
-              control = ctrl_race
+            model_tuned <- do.call(
+              tune_race_anova,
+              c(list(
+                object = workflow_spec,
+                resamples = resamples,
+                param_info = tune_params_model,
+                grid = if (is.null(tune_grid)) 20 else tune_grid,
+                metrics = if(!is.null(my_metrics)) my_metrics else metrics,
+                control = ctrl_race
+              ), engine_args)
             )
           } else if (tuning_strategy == "grid") {
             if (is.null(tune_grid)) {
               tune_grid <- grid_regular(tune_params_model, levels = 3)
             }
-            model_tuned <- tune_grid(
-              workflow_spec,
-              resamples = resamples,
-              grid = tune_grid,
-              metrics = if(!is.null(my_metrics)) my_metrics else metrics,
-              control = ctrl_grid
+            model_tuned <- do.call(
+              tune_grid,
+              c(list(
+                object = workflow_spec,
+                resamples = resamples,
+                grid = tune_grid,
+                metrics = if(!is.null(my_metrics)) my_metrics else metrics,
+                control = ctrl_grid
+              ), engine_args)
             )
           } else {
-            model_tuned <- tune_grid(
-              workflow_spec,
-              resamples = resamples,
-              grid = if (is.null(tune_grid)) 5 else tune_grid,
-              metrics = if(!is.null(my_metrics)) my_metrics else metrics,
-              control = ctrl_grid
+            model_tuned <- do.call(
+              tune_grid,
+              c(list(
+                object = workflow_spec,
+                resamples = resamples,
+                grid = if (is.null(tune_grid)) 5 else tune_grid,
+                metrics = if(!is.null(my_metrics)) my_metrics else metrics,
+                control = ctrl_grid
+              ), engine_args)
             )
           }
 
           best_params <- select_best(model_tuned, metric = metric)
           final_workflow <- finalize_workflow(workflow_spec, best_params)
-          model <- fit(final_workflow, data = train_data)
+          model <- do.call(
+            parsnip::fit,
+            c(list(object = final_workflow, data = train_data), engine_args)
+          )
         } else {
           # If no tuning is required, simply fit the workflow.
-          model <- fit(workflow_spec, data = train_data)
+          model <- do.call(
+            parsnip::fit,
+            c(list(object = workflow_spec, data = train_data), engine_args)
+          )
         }
         # Save the fitted model in the nested list under the current engine
         models[[algo]][[engine]] <- model

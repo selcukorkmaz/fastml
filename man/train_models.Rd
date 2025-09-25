@@ -14,6 +14,7 @@ train_models(
   repeats,
   resamples = NULL,
   tune_params,
+  engine_params = list(),
   metric,
   summaryFunction = NULL,
   seed = 123,
@@ -47,6 +48,12 @@ will be used instead of those created internally.}
 \item{tune_params}{A named list of tuning ranges. For each algorithm, supply a
 list of engine-specific parameter values, e.g.
 \code{list(rand_forest = list(ranger = list(mtry = c(1, 3)))).}}
+
+\item{engine_params}{A named list of fixed engine-level arguments supplied
+directly to the underlying model fitting functions for each algorithm and
+engine. Use this for options such as \code{ties = "breslow"} in Cox models or
+\code{importance = "impurity"} for the ranger engine. Unlike
+\code{tune_params}, these values are not tuned.}
 
 \item{metric}{The performance metric to optimize.}
 
