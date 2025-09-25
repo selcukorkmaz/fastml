@@ -2,97 +2,18 @@ library(testthat)
 library(survival)
 
 test_that("available survival methods include core algorithms", {
-  expect_true(all(c("rand_forest", "cox_ph", "penalized_cox") %in% availableMethods("survival")))
-  expect_true("xgboost" %in% availableMethods("survival"))
+  methods <- availableMethods("survival")
+  expect_true(all(c("rand_forest", "cox_ph", "penalized_cox") %in% methods))
+  expect_false("xgboost" %in% methods)
 })
 
 test_that("get_default_engine works for survival algorithms", {
   expect_identical(get_default_engine("rand_forest", task = "survival"), "aorsf")
   expect_identical(get_default_engine("cox_ph", task = "survival"), "survival")
   expect_identical(get_default_engine("penalized_cox", task = "survival"), "glmnet")
-  expect_identical(get_default_engine("xgboost", task = "survival"), "aft")
+  expect_error(get_default_engine("xgboost", task = "survival"), "not supported")
 })
 
-test_that("xgboost Cox survival model trains and predicts", {
-  skip_if_not_installed("xgboost")
-
-  data(lung, package = "survival")
-  lung <- lung[complete.cases(lung[, c("time", "status", "age", "sex", "ph.ecog")]), ]
-
-  set.seed(123)
-  res <- fastml(
-    data = lung,
-    label = c("time", "status"),
-    algorithms = "xgboost",
-    task = "survival",
-    resampling_method = "none",
-    test_size = 0.3,
-    impute_method = "remove",
-    algorithm_engines = list(xgboost = "cox")
-  )
-
-  expect_s3_class(res, "fastml")
-  perf <- res$performance[[1]]
-  expect_setequal(perf$.metric, c("c_index", "uno_c"))
-  harrell <- perf$.estimate[perf$.metric == "c_index"]
-  uno <- perf$.estimate[perf$.metric == "uno_c"]
-  expect_true(all(is.finite(harrell)) && all(harrell >= 0 & harrell <= 1))
-  expect_true(all(is.finite(uno)) && all(uno >= 0 & uno <= 1))
-
-  spec <- res$models[[1]]
-  newdata <- lung[1:5, setdiff(names(lung), c("time", "status")), drop = FALSE]
-  risk_vals <- predict_risk(spec, newdata = newdata)
-  expect_length(risk_vals, nrow(newdata))
-  expect_true(all(is.finite(risk_vals)))
-
-  expect_error(
-    predict_survival(spec, newdata = newdata, times = c(100, 200)),
-    "risk ranking only"
-  )
-})
-
-test_that("xgboost AFT survival model trains and predicts", {
-  skip_if_not_installed("xgboost")
-
-  data(heart, package = "survival")
-  heart <- heart[complete.cases(heart[, c("start", "stop", "event")]), ]
-
-  set.seed(321)
-  res <- fastml(
-    data = heart,
-    label = c("stop", "event"),
-    algorithms = "xgboost",
-    task = "survival",
-    resampling_method = "none",
-    test_size = 0.3,
-    impute_method = "remove",
-    algorithm_engines = list(xgboost = "aft"),
-    engine_params = list(xgboost = list(aft = list(aft_loss_distribution = "normal", aft_loss_distribution_scale = 1.2)))
-  )
-
-  expect_s3_class(res, "fastml")
-  perf <- res$performance[[1]]
-  expect_true(all(c("c_index", "uno_c", "ibs") %in% perf$.metric))
-  harrell <- perf$.estimate[perf$.metric == "c_index"]
-  uno <- perf$.estimate[perf$.metric == "uno_c"]
-  ibs_val <- perf$.estimate[perf$.metric == "ibs"]
-  expect_true(all(is.finite(harrell)) && all(harrell >= 0 & harrell <= 1))
-  expect_true(all(is.finite(uno)) && all(uno >= 0 & uno <= 1))
-  expect_true(all(is.finite(ibs_val)) && all(ibs_val >= 0))
-
-  spec <- res$models[[1]]
-  newdata <- heart[1:4, setdiff(names(heart), c("stop", "event")), drop = FALSE]
-  risk_vals <- predict_risk(spec, newdata = newdata)
-  expect_length(risk_vals, nrow(newdata))
-  expect_true(all(is.finite(risk_vals)))
-
-  eval_times <- seq(10, 40, length.out = 3)
-  surv_mat <- predict_survival(spec, newdata = newdata, times = eval_times)
-  expect_equal(dim(surv_mat), c(nrow(newdata), length(eval_times)))
-  expect_true(all(is.finite(surv_mat)))
-  expect_true(all(surv_mat >= 0 & surv_mat <= 1))
-  apply(surv_mat, 1, function(row) expect_true(all(diff(row) <= 1e-8)))
-})
 
 test_that("cox_ph survival model trains and evaluates", {
   data(cancer, package = "survival")
