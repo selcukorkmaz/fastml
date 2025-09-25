@@ -361,6 +361,118 @@ train_models <- function(train_data,
         )
         spec <- create_native_spec("survreg", engine, fit, rec_prep,
                                    extras = list(distribution = "weibull"))
+      } else if (algo == "parametric_surv") {
+        if (!requireNamespace("flexsurv", quietly = TRUE)) {
+          warning("Package 'flexsurv' not installed; skipping parametric_surv.")
+          next
+        }
+        prep_dat <- get_prepped_data()
+        baked_train <- prep_dat$data
+        rec_prep <- prep_dat$recipe
+        dist_arg <- engine_args$dist
+        if (!is.null(dist_arg)) {
+          engine_args$dist <- NULL
+        }
+        if (is.null(dist_arg)) {
+          dist_arg <- "weibull"
+        }
+        dist_arg <- as.character(dist_arg)[1]
+        dist_arg <- tolower(dist_arg)
+        dist_map <- c(
+          weibull = "weibull",
+          loglogistic = "loglogistic",
+          lognormal = "lognormal",
+          exponential = "exp",
+          exp = "exp"
+        )
+        label_map <- c(
+          weibull = "weibull",
+          loglogistic = "loglogistic",
+          lognormal = "lognormal",
+          exponential = "exponential",
+          exp = "exponential"
+        )
+        if (!(dist_arg %in% names(dist_map))) {
+          stop("Unsupported distribution for parametric_surv. Choose one of 'weibull', 'loglogistic', 'lognormal', or 'exponential'.")
+        }
+        dist_flex <- dist_map[[dist_arg]]
+        dist_label <- label_map[[dist_arg]]
+        base_args <- list(
+          formula = as.formula(paste(response_col, "~ .")),
+          data = baked_train,
+          dist = dist_flex
+        )
+        fit <- call_with_engine_params(
+          flexsurv::flexsurvreg,
+          base_args,
+          engine_args
+        )
+        extras <- list(
+          distribution = dist_flex,
+          distribution_label = dist_label
+        )
+        if (!is.null(time_col) && time_col %in% names(train_data)) {
+          extras$train_times <- train_data[[time_col]]
+        }
+        if (!is.null(status_col) && status_col %in% names(train_data)) {
+          extras$train_status <- train_data[[status_col]]
+        }
+        spec <- create_native_spec(
+          "parametric_surv",
+          engine,
+          fit,
+          rec_prep,
+          extras = extras
+        )
+      } else if (algo == "piecewise_exp") {
+        if (!requireNamespace("flexsurv", quietly = TRUE)) {
+          warning("Package 'flexsurv' not installed; skipping piecewise_exp.")
+          next
+        }
+        prep_dat <- get_prepped_data()
+        baked_train <- prep_dat$data
+        rec_prep <- prep_dat$recipe
+        breaks_val <- engine_args$breaks
+        if (!is.null(breaks_val)) {
+          engine_args$breaks <- NULL
+          breaks_val <- as.numeric(breaks_val)
+          breaks_val <- breaks_val[is.finite(breaks_val) & breaks_val > 0]
+          breaks_val <- sort(unique(breaks_val))
+          if (length(breaks_val) == 0) {
+            breaks_val <- NULL
+          }
+        }
+        base_args <- list(
+          formula = as.formula(paste(response_col, "~ .")),
+          data = baked_train,
+          dist = "exp"
+        )
+        if (!is.null(breaks_val)) {
+          base_args$breaks <- breaks_val
+        }
+        fit <- call_with_engine_params(
+          flexsurv::flexsurvreg,
+          base_args,
+          engine_args
+        )
+        extras <- list(
+          distribution = "exp",
+          distribution_label = "piecewise exponential",
+          breaks = breaks_val
+        )
+        if (!is.null(time_col) && time_col %in% names(train_data)) {
+          extras$train_times <- train_data[[time_col]]
+        }
+        if (!is.null(status_col) && status_col %in% names(train_data)) {
+          extras$train_status <- train_data[[status_col]]
+        }
+        spec <- create_native_spec(
+          "piecewise_exp",
+          engine,
+          fit,
+          rec_prep,
+          extras = extras
+        )
       } else if (algo == "royston_parmar") {
         if (!requireNamespace("rstpm2", quietly = TRUE)) {
           warning("Package 'rstpm2' not installed; skipping royston_parmar.")

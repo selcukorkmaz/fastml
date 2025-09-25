@@ -437,6 +437,25 @@ predict_risk.fastml_native_survival <- function(fit, newdata, ...) {
     res <- tryCatch(stats::predict(fit$fit, newdata = predictors, type = "lp"), error = function(e) NULL)
     return(as.numeric(res))
   }
+  if (inherits(fit$fit, "flexsurvreg")) {
+    default_time <- NA_real_
+    if (!is.null(fit$train_times)) {
+      default_time <- stats::median(as.numeric(fit$train_times), na.rm = TRUE)
+    }
+    if (!is.finite(default_time) || default_time <= 0) {
+      default_time <- 1
+    }
+    pred_data <- predictors
+    if ((is.null(pred_data) || nrow(pred_data) != nrow(newdata)) && nrow(newdata) > 0) {
+      pred_data <- data.frame(matrix(nrow = nrow(newdata), ncol = 0))
+    }
+    surv_mat <- fastml_flexsurv_survival_matrix(fit$fit, pred_data, default_time)
+    if (is.null(surv_mat) || nrow(surv_mat) != nrow(newdata) || ncol(surv_mat) == 0) {
+      return(rep(NA_real_, nrow(newdata)))
+    }
+    surv_vals <- as.numeric(surv_mat[, ncol(surv_mat), drop = TRUE])
+    return(1 - pmin(pmax(surv_vals, 0), 1))
+  }
   if (inherits(fit$fit, "glmnet")) {
     if (!requireNamespace("glmnet", quietly = TRUE)) {
       return(rep(NA_real_, nrow(predictors)))
@@ -654,6 +673,17 @@ predict_survival.fastml_native_survival <- function(fit, newdata, times, ...) {
       return(mat)
     }
     return(matrix(NA_real_, nrow = n, ncol = length(times)))
+  }
+  if (inherits(fit$fit, "flexsurvreg")) {
+    pred_data <- predictors
+    if ((is.null(pred_data) || nrow(pred_data) != nrow(newdata)) && nrow(newdata) > 0) {
+      pred_data <- data.frame(matrix(nrow = nrow(newdata), ncol = 0))
+    }
+    surv_mat <- fastml_flexsurv_survival_matrix(fit$fit, pred_data, times)
+    if (is.null(surv_mat) || nrow(surv_mat) != nrow(newdata)) {
+      return(matrix(NA_real_, nrow = nrow(newdata), ncol = length(times)))
+    }
+    return(surv_mat)
   }
   if (inherits(fit$fit, "fastml_xgb_survival")) {
     if (identical(fit$fit$objective, "survival:cox")) {

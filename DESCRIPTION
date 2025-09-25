@@ -65,6 +65,7 @@ Imports:
     mice,
     missForest,
     survival,
+    flexsurv,
     rstpm2
 Suggests:
     testthat (>= 3.0.0),

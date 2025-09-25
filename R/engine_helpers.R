@@ -65,7 +65,9 @@ availableMethods <- function(type = c("classification", "regression", "survival"
         "stratified_cox",
         "time_varying_cox",
         "survreg",
-        "royston_parmar"
+        "royston_parmar",
+        "parametric_surv",
+        "piecewise_exp"
       )
     }
 
@@ -106,6 +108,12 @@ get_default_engine <- function(algo, task = NULL) {
   }
   if (algo == "royston_parmar" && !is.null(task) && task == "survival") {
     return("rstpm2")
+  }
+  if (algo == "parametric_surv" && !is.null(task) && task == "survival") {
+    return("flexsurvreg")
+  }
+  if (algo == "piecewise_exp" && !is.null(task) && task == "survival") {
+    return("flexsurvreg")
   }
   if (algo == "aft" && !is.null(task) && task == "survival") {
     return("survival")

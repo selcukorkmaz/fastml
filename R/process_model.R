@@ -273,6 +273,8 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         model_type <- "rstpm2"
       } else if (inherits(fit_obj, "survreg")) {
         model_type <- "survreg"
+      } else if (inherits(fit_obj, "flexsurvreg")) {
+        model_type <- "flexsurv"
       } else if (inherits(fit_obj, "glmnet")) {
         model_type <- "glmnet"
       } else if (inherits(fit_obj, "fastml_xgb_survival")) {
@@ -783,6 +785,34 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
           as.numeric(stats::predict(final_model$fit, newdata = pred_predictors, type = "lp"))
         } else if (inherits(final_model$fit, "survreg")) {
           as.numeric(stats::predict(final_model$fit, newdata = pred_predictors, type = "lp"))
+        } else if (inherits(final_model$fit, "flexsurvreg")) {
+          pred_data <- pred_predictors
+          if (is.null(pred_data) || nrow(pred_data) != nrow(test_data)) {
+            pred_data <- tryCatch({
+              if (is.null(pred_new_data)) {
+                NULL
+              } else {
+                drop_cols <- c(final_model$response, final_model$time_col, final_model$status_col, final_model$start_col)
+                drop_cols <- drop_cols[!is.na(drop_cols)]
+                keep_cols <- setdiff(names(pred_new_data), drop_cols)
+                pred_new_data[, keep_cols, drop = FALSE]
+              }
+            }, error = function(e) NULL)
+          }
+          if (is.null(pred_data) && nrow(test_data) > 0) {
+            pred_data <- data.frame(matrix(nrow = nrow(test_data), ncol = 0))
+          }
+          eval_time <- default_time_val
+          if (!is.finite(eval_time) || eval_time <= 0) {
+            eval_time <- 1
+          }
+          surv_mat <- fastml_flexsurv_survival_matrix(final_model$fit, pred_data, eval_time)
+          if (is.null(surv_mat) || nrow(surv_mat) != nrow(test_data) || ncol(surv_mat) == 0) {
+            rep(NA_real_, nrow(test_data))
+          } else {
+            surv_vals <- as.numeric(surv_mat[, ncol(surv_mat), drop = TRUE])
+            1 - pmin(pmax(surv_vals, 0), 1)
+          }
         } else if (inherits(final_model$fit, "glmnet")) {
           if (!requireNamespace("glmnet", quietly = TRUE)) {
             rep(NA_real_, nrow(test_data))
@@ -1469,6 +1499,11 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
             )
             surv_prob_mat <- build_survfit_matrix(surv_fit, eval_times, n_obs)
           }
+        } else if (inherits(final_model$fit, "flexsurvreg")) {
+          if (is.null(newdata_survfit) && n_obs > 0) {
+            newdata_survfit <- data.frame(matrix(nrow = n_obs, ncol = 0))
+          }
+          surv_prob_mat <- fastml_flexsurv_survival_matrix(final_model$fit, newdata_survfit, eval_times)
         } else if (inherits(final_model$fit, "stpm2")) {
           if (requireNamespace("rstpm2", quietly = TRUE) && length(eval_times) > 0) {
             base_newdata <- newdata_survfit
