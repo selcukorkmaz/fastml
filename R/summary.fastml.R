@@ -826,19 +826,174 @@ summary.fastml <- function(object,
           next
         }
         fit_candidate <- tryCatch(candidate$fit$fit$fit, error = function(e) NULL)
-        if (inherits(fit_candidate, c("survreg", "coxph"))) {
+        if (inherits(fit_candidate, c("survreg", "coxph", "stpm2", "pstpm2"))) {
           return(fit_candidate)
         }
         fit_candidate <- tryCatch(candidate$fit$fit, error = function(e) NULL)
-        if (inherits(fit_candidate, c("survreg", "coxph"))) {
+        if (inherits(fit_candidate, c("survreg", "coxph", "stpm2", "pstpm2"))) {
           return(fit_candidate)
         }
         fit_candidate <- tryCatch(candidate$fit, error = function(e) NULL)
-        if (inherits(fit_candidate, c("survreg", "coxph"))) {
+        if (inherits(fit_candidate, c("survreg", "coxph", "stpm2", "pstpm2"))) {
           return(fit_candidate)
         }
       }
       NULL
+    }
+
+    print_stpm2_details <- function(fit_obj, model_info = NULL) {
+      if (!inherits(fit_obj, c("stpm2", "pstpm2"))) {
+        return(FALSE)
+      }
+
+      if (!requireNamespace("rstpm2", quietly = TRUE)) {
+        cat("  Package 'rstpm2' is required to summarize Royston-Parmar models.\n")
+        return(FALSE)
+      }
+
+      collapse_call <- function(call_obj) {
+        call_str <- tryCatch(paste(deparse(call_obj), collapse = " "), error = function(e) "")
+        trimws(call_str)
+      }
+
+      printed_any <- FALSE
+
+      call_expr <- tryCatch(fit_obj@Call, error = function(e) NULL)
+      if (is.null(call_expr)) {
+        call_expr <- tryCatch(fit_obj@call.formula, error = function(e) NULL)
+      }
+      call_str <- if (!is.null(call_expr)) collapse_call(call_expr) else ""
+      if (nzchar(call_str)) {
+        cat("  Model call: ", call_str, "\n", sep = "")
+        printed_any <- TRUE
+      }
+
+      link_type <- tryCatch(fit_obj@args$link.type, error = function(e) NULL)
+      if (is.null(link_type) || length(link_type) == 0) {
+        link_type <- tryCatch(fit_obj@args$link, error = function(e) NULL)
+      }
+      if (!is.null(link_type) && length(link_type) > 0) {
+        link_char <- as.character(link_type[1])
+        if (nzchar(link_char)) {
+          cat("  Link function: ", link_char, "\n", sep = "")
+          printed_any <- TRUE
+        }
+      }
+
+      spline_df <- tryCatch({
+        val <- fit_obj@args$df
+        if (length(val) == 0) {
+          val <- NULL
+        }
+        val
+      }, error = function(e) NULL)
+      if (is.null(spline_df) && !is.null(model_info)) {
+        spline_df <- tryCatch(model_info$spline_df, error = function(e) NULL)
+      }
+      if (!is.null(spline_df) && length(spline_df) > 0) {
+        spline_val <- suppressWarnings(as.numeric(spline_df[1]))
+        if (is.finite(spline_val)) {
+          cat("  Spline degrees of freedom: ", format_numeric_single(spline_val), "\n", sep = "")
+          printed_any <- TRUE
+        }
+      }
+
+      extract_column <- function(name) {
+        val <- tryCatch(model_info[[name]], error = function(e) NULL)
+        if (is.null(val) || length(val) == 0) {
+          return(NA_character_)
+        }
+        as.character(val[1])
+      }
+
+      if (!is.null(model_info)) {
+        start_col <- extract_column("start_col")
+        time_col <- extract_column("time_col")
+        status_col <- extract_column("status_col")
+
+        if (nzchar(start_col)) {
+          cat("  Start time column: ", start_col, "\n", sep = "")
+          printed_any <- TRUE
+        }
+        if (nzchar(time_col)) {
+          cat("  Event time column: ", time_col, "\n", sep = "")
+          printed_any <- TRUE
+        }
+        if (nzchar(status_col)) {
+          cat("  Status column: ", status_col, "\n", sep = "")
+          printed_any <- TRUE
+        }
+      }
+
+      frailty_flag <- tryCatch(fit_obj@frailty, error = function(e) NULL)
+      if (!is.null(frailty_flag)) {
+        cat("  Frailty model: ", if (isTRUE(frailty_flag)) "Yes" else "No", "\n", sep = "")
+        printed_any <- TRUE
+      }
+
+      summary_fit <- tryCatch(suppressWarnings(summary(fit_obj)), error = function(e) NULL)
+      if (is.null(summary_fit)) {
+        cat("  Unable to compute summary statistics for the Royston-Parmar fit.\n")
+        return(printed_any)
+      }
+
+      coef_mat <- tryCatch(coef(summary_fit), error = function(e) NULL)
+      if (is.matrix(coef_mat) && nrow(coef_mat) > 0) {
+        cat("  Coefficients:\n")
+        coef_lines <- utils::capture.output(stats::printCoefmat(coef_mat, digits = 4))
+        for (ln in coef_lines) {
+          cat("    ", ln, "\n", sep = "")
+        }
+        printed_any <- TRUE
+      } else {
+        cat("  Coefficients: <unavailable>\n")
+      }
+
+      theta_info <- tryCatch(summary_fit@theta, error = function(e) NULL)
+      if (is.list(theta_info) && length(theta_info) > 0) {
+        theta_vals <- tryCatch(unlist(theta_info, use.names = TRUE), error = function(e) NULL)
+        if (!is.null(theta_vals) && length(theta_vals) > 0) {
+          cat("  Theta estimates:\n")
+          theta_fmt <- vapply(theta_vals, function(x) format_numeric_single(as.numeric(x)), character(1))
+          for (nm in names(theta_fmt)) {
+            cat("    ", nm, ": ", theta_fmt[[nm]], "\n", sep = "")
+          }
+          printed_any <- TRUE
+        }
+      }
+
+      loglik_val <- tryCatch(as.numeric(stats::logLik(fit_obj)), error = function(e) NA_real_)
+      if (is.finite(loglik_val)) {
+        cat("  Log-likelihood: ", format_numeric_single(loglik_val), "\n", sep = "")
+        printed_any <- TRUE
+      } else {
+        cat("  Log-likelihood: <unavailable>\n")
+      }
+
+      aic_val <- tryCatch(stats::AIC(fit_obj), error = function(e) NA_real_)
+      if (is.finite(aic_val)) {
+        cat("  AIC: ", format_numeric_single(aic_val), "\n", sep = "")
+        printed_any <- TRUE
+      } else {
+        cat("  AIC: <unavailable>\n")
+      }
+
+      bic_val <- tryCatch(stats::BIC(fit_obj), error = function(e) NA_real_)
+      if (is.finite(bic_val)) {
+        cat("  BIC: ", format_numeric_single(bic_val), "\n", sep = "")
+        printed_any <- TRUE
+      }
+
+      n_obs <- tryCatch(stats::nobs(fit_obj), error = function(e) NA_real_)
+      if (!is.finite(n_obs)) {
+        n_obs <- tryCatch(attr(stats::logLik(fit_obj), "nobs"), error = function(e) NA_real_)
+      }
+      if (is.finite(n_obs)) {
+        cat("  Number of observations: ", format_numeric_single(n_obs, digits = 0), "\n", sep = "")
+        printed_any <- TRUE
+      }
+
+      printed_any
     }
 
     print_survreg_details <- function(fit_obj) {
@@ -1170,6 +1325,12 @@ summary.fastml <- function(object,
               fit_obj,
               model_info = model_obj,
               performance_row = perf_row
+            ))
+            handled <- TRUE
+          } else if (inherits(fit_obj, c("stpm2", "pstpm2"))) {
+            success <- isTRUE(print_stpm2_details(
+              fit_obj,
+              model_info = model_obj
             ))
             handled <- TRUE
           } else if (!is.null(fit_obj)) {
