@@ -859,6 +859,85 @@ summary.fastml <- function(object,
         return(FALSE)
       }
 
+      format_compact_call <- function(obj) {
+        args_list <- tryCatch(obj@args, error = function(e) NULL)
+        if (is.null(args_list) || length(args_list) == 0) {
+          return(NULL)
+        }
+
+        formula_expr <- tryCatch(args_list$formula, error = function(e) NULL)
+        formula_txt <- NULL
+        if (!is.null(formula_expr)) {
+          formula_txt <- tryCatch(paste(deparse(formula_expr), collapse = " "), error = function(e) NULL)
+        }
+
+        disallowed <- c(
+          "formula", "data", "call", "call.orig", "Call", "call.formula",
+          "mf", "model.frame", "frame", "x", "y", "args", "weights",
+          "offset", "init", "control", "start", "surv", "timeVar",
+          "timePoint", "logH", "linpred", "beta", "gamma", "mle2",
+          "logli", "model"
+        )
+        arg_candidates <- setdiff(names(args_list), disallowed)
+        if (length(arg_candidates) == 0) {
+          arg_candidates <- character()
+        }
+
+        keep_args <- list()
+        for (nm in arg_candidates) {
+          if (!nzchar(nm)) {
+            next
+          }
+          val <- args_list[[nm]]
+          if (is.null(val)) {
+            next
+          }
+          if (is.environment(val) || is.function(val)) {
+            next
+          }
+          if (is.language(val)) {
+            next
+          }
+          if (methods::is(val, "formula")) {
+            next
+          }
+          if (is.list(val) && length(val) > 0 && !all(vapply(val, is.atomic, logical(1)))) {
+            next
+          }
+          keep_args[[nm]] <- val
+        }
+
+        if (length(keep_args) == 0 && is.null(formula_txt)) {
+          return(NULL)
+        }
+
+        if (length(keep_args) > 0) {
+          name_map <- c("penalized" = "penalised", "link.type" = "link")
+          arg_strs <- character()
+          for (nm in names(keep_args)) {
+            label <- if (nm %in% names(name_map)) name_map[[nm]] else nm
+            val_txt <- format_param_value(keep_args[[nm]])
+            arg_strs <- c(arg_strs, paste0(label, " = ", val_txt))
+          }
+        } else {
+          arg_strs <- character()
+        }
+
+        call_components <- c()
+        if (!is.null(formula_txt) && nzchar(formula_txt)) {
+          call_components <- c(call_components, formula_txt)
+        }
+        if (length(arg_strs) > 0) {
+          call_components <- c(call_components, arg_strs)
+        }
+
+        if (length(call_components) == 0) {
+          return(NULL)
+        }
+
+        paste0("stpm2(", paste(call_components, collapse = ", "), ")")
+      }
+
       collapse_call <- function(call_obj) {
         call_str <- tryCatch(paste(deparse(call_obj), collapse = " "), error = function(e) "")
         trimws(call_str)
@@ -873,16 +952,19 @@ summary.fastml <- function(object,
 
       printed_any <- FALSE
 
-      call_candidates <- c("call", "call.orig", "Call", "call.formula")
-      call_expr <- NULL
-      for (slot_nm in call_candidates) {
-        call_expr <- extract_call_slot(fit_obj, slot_nm)
-        if (!is.null(call_expr) && !is.function(call_expr)) {
-          break
-        }
+      call_str <- format_compact_call(fit_obj)
+      if (is.null(call_str)) {
+        call_candidates <- c("call", "call.orig", "Call", "call.formula")
         call_expr <- NULL
+        for (slot_nm in call_candidates) {
+          call_expr <- extract_call_slot(fit_obj, slot_nm)
+          if (!is.null(call_expr) && !is.function(call_expr)) {
+            break
+          }
+          call_expr <- NULL
+        }
+        call_str <- if (!is.null(call_expr)) collapse_call(call_expr) else ""
       }
-      call_str <- if (!is.null(call_expr)) collapse_call(call_expr) else ""
       if (nzchar(call_str)) {
         cat("  Model call: ", call_str, "\n", sep = "")
         printed_any <- TRUE
@@ -1063,6 +1145,13 @@ summary.fastml <- function(object,
       if (!is.finite(loglik_val) && requireNamespace("rstpm2", quietly = TRUE)) {
         loglik_val <- tryCatch({
           val <- rstpm2::logLik(fit_obj)
+          if (length(val) > 0) as.numeric(val)[1] else NA_real_
+        }, error = function(e) NA_real_)
+      }
+      if (!is.finite(loglik_val)) {
+        loglik_val <- tryCatch({
+          mle2_obj <- methods::slot(fit_obj, "mle2")
+          val <- stats::logLik(mle2_obj)
           if (length(val) > 0) as.numeric(val)[1] else NA_real_
         }, error = function(e) NA_real_)
       }
