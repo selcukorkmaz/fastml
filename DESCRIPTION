@@ -64,7 +64,8 @@ Imports:
     purrr,
     mice,
     missForest,
-    survival
+    survival,
+    rstpm2
 Suggests:
     testthat (>= 3.0.0),
     C50,
@@ -86,7 +87,6 @@ Suggests:
     ceterisParibus,
     pdp,
     patchwork,
-    GGally,
-    rstpm2
+    GGally
 RoxygenNote: 7.3.2
 Config/testthat/edition: 3

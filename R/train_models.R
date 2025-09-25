@@ -338,8 +338,25 @@ train_models <- function(train_data,
           warning(sprintf("royston_parmar training failed: %s", fit$message))
           next
         }
+        loglik_val <- tryCatch({
+          val <- stats::logLik(fit)
+          if (length(val) > 0) as.numeric(val)[1] else NA_real_
+        }, error = function(e) NA_real_)
+        aic_val <- tryCatch({
+          val <- stats::AIC(fit)
+          if (length(val) > 0) as.numeric(val)[1] else NA_real_
+        }, error = function(e) NA_real_)
+        bic_val <- tryCatch({
+          val <- stats::BIC(fit)
+          if (length(val) > 0) as.numeric(val)[1] else NA_real_
+        }, error = function(e) NA_real_)
         spec <- create_native_spec("royston_parmar", engine, fit, rec_prep,
-                                   extras = list(spline_df = 3))
+                                   extras = list(
+                                     spline_df = 3,
+                                     loglik = loglik_val,
+                                     aic = aic_val,
+                                     bic = bic_val
+                                   ))
       } else if (algo == "aft") {
         warning("Survival 'aft' requires censored survival model specs not available in your setup. Skipping.")
         next
