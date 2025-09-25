@@ -937,7 +937,42 @@ summary.fastml <- function(object,
         return(printed_any)
       }
 
-      coef_mat <- tryCatch(coef(summary_fit), error = function(e) NULL)
+      extract_component <- function(obj, name) {
+        res <- NULL
+        if (methods::is(obj, "S4") && methods::hasSlot(obj, name)) {
+          res <- tryCatch(methods::slot(obj, name), error = function(e) NULL)
+        }
+        if (is.null(res)) {
+          res <- tryCatch(obj[[name]], error = function(e) NULL)
+        }
+        res
+      }
+
+      coef_mat <- NULL
+      coef_candidates <- c("coef3", "coef.table", "coefficients", "coef")
+      for (nm in coef_candidates) {
+        comp <- extract_component(summary_fit, nm)
+        if (is.null(comp)) {
+          next
+        }
+        if (is.data.frame(comp)) {
+          comp <- as.matrix(comp)
+        }
+        if (is.matrix(comp) && nrow(comp) > 0) {
+          coef_mat <- comp
+          break
+        }
+      }
+
+      if (is.null(coef_mat)) {
+        coef_vec <- tryCatch(stats::coef(fit_obj), error = function(e) NULL)
+        if (!is.null(coef_vec)) {
+          coef_mat <- matrix(coef_vec, ncol = 1)
+          rownames(coef_mat) <- names(coef_vec)
+          colnames(coef_mat) <- "coef"
+        }
+      }
+
       if (is.matrix(coef_mat) && nrow(coef_mat) > 0) {
         cat("  Coefficients:\n")
         coef_lines <- utils::capture.output(stats::printCoefmat(coef_mat, digits = 4))
@@ -949,7 +984,7 @@ summary.fastml <- function(object,
         cat("  Coefficients: <unavailable>\n")
       }
 
-      theta_info <- tryCatch(summary_fit@theta, error = function(e) NULL)
+      theta_info <- extract_component(summary_fit, "theta")
       if (is.list(theta_info) && length(theta_info) > 0) {
         theta_vals <- tryCatch(unlist(theta_info, use.names = TRUE), error = function(e) NULL)
         if (!is.null(theta_vals) && length(theta_vals) > 0) {
@@ -962,7 +997,16 @@ summary.fastml <- function(object,
         }
       }
 
-      loglik_val <- tryCatch(as.numeric(stats::logLik(fit_obj)), error = function(e) NA_real_)
+      loglik_val <- tryCatch({
+        val <- stats::logLik(fit_obj)
+        if (length(val) > 0) as.numeric(val)[1] else NA_real_
+      }, error = function(e) NA_real_)
+      if (!is.finite(loglik_val) && requireNamespace("rstpm2", quietly = TRUE)) {
+        loglik_val <- tryCatch({
+          val <- rstpm2::logLik(fit_obj)
+          if (length(val) > 0) as.numeric(val)[1] else NA_real_
+        }, error = function(e) NA_real_)
+      }
       if (is.finite(loglik_val)) {
         cat("  Log-likelihood: ", format_numeric_single(loglik_val), "\n", sep = "")
         printed_any <- TRUE
@@ -971,6 +1015,9 @@ summary.fastml <- function(object,
       }
 
       aic_val <- tryCatch(stats::AIC(fit_obj), error = function(e) NA_real_)
+      if (!is.finite(aic_val) && requireNamespace("rstpm2", quietly = TRUE)) {
+        aic_val <- tryCatch(rstpm2::AIC(fit_obj), error = function(e) NA_real_)
+      }
       if (is.finite(aic_val)) {
         cat("  AIC: ", format_numeric_single(aic_val), "\n", sep = "")
         printed_any <- TRUE
@@ -979,6 +1026,9 @@ summary.fastml <- function(object,
       }
 
       bic_val <- tryCatch(stats::BIC(fit_obj), error = function(e) NA_real_)
+      if (!is.finite(bic_val) && requireNamespace("rstpm2", quietly = TRUE)) {
+        bic_val <- tryCatch(rstpm2::BIC(fit_obj), error = function(e) NA_real_)
+      }
       if (is.finite(bic_val)) {
         cat("  BIC: ", format_numeric_single(bic_val), "\n", sep = "")
         printed_any <- TRUE
