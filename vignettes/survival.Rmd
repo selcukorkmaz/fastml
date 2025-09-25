@@ -12,23 +12,93 @@ vignette: >
 knitr::opts_chunk$set(comment = "#>")
 ```
 
-This vignette demonstrates using `fastml` for a simple survival analysis task
-with the `lung` dataset from the `survival` package.
+This vignette demonstrates using `fastml` for survival analysis with several
+engines. We highlight how `engine_params` control engine-specific arguments
+while `tune_params` govern hyper-parameter search spaces.
 
 ```{r}
 library(fastml)
 library(survival)
+```
 
-head(cancer)
+## Gradient boosting (Cox) on `lung`
 
-set.seed(42)
-model <- fastml(
-  data = cancer,
+We start with the `lung` dataset and fit the native xgboost Cox model. Engine
+parameters configure the booster, whereas tuning parameters remain as ranges
+for search (here we accept defaults).
+
+```{r}
+set.seed(123)
+lung_fit <- fastml(
+  data = lung,
   label = c("time", "status"),
-  algorithms = "rand_forest",
+  algorithms = "xgboost",
   task = "survival",
-  test_size = 0.3
+  resampling_method = "none",
+  test_size = 0.3,
+  impute_method = "remove",
+  algorithm_engines = list(xgboost = "cox"),
+  engine_params = list(
+    xgboost = list(
+      cox = list(params = list(eta = 0.05, max_depth = 3, subsample = 0.8))
+    )
+  )
 )
 
-model$performance
+lung_fit$performance
+```
+
+## Penalized Cox with tuning on `cancer`
+
+Next, we illustrate tuning by supplying `tune_params`. These specify ranges for
+`parsnip::proportional_hazards()` when fitting penalized Cox models.
+
+```{r}
+set.seed(456)
+cancer_fit <- fastml(
+  data = cancer,
+  label = c("time", "status"),
+  algorithms = "penalized_cox",
+  task = "survival",
+  resampling_method = "cv",
+  folds = 3,
+  test_size = 0.25,
+  tune_params = list(
+    penalized_cox = list(
+      penalty = dials::penalty(range = c(-4, -1)),
+      mixture = dials::mixture()
+    )
+  )
+)
+
+cancer_fit$performance
+```
+
+## Gradient boosting (AFT) on `heart`
+
+Finally, we model the `heart` transplant data using the xgboost AFT objective.
+We supply engine-level distribution choices through `engine_params`.
+
+```{r}
+set.seed(789)
+heart_fit <- fastml(
+  data = heart,
+  label = c("stop", "event"),
+  algorithms = "xgboost",
+  task = "survival",
+  resampling_method = "none",
+  test_size = 0.3,
+  impute_method = "remove",
+  algorithm_engines = list(xgboost = "aft"),
+  engine_params = list(
+    xgboost = list(
+      aft = list(params = list(
+        aft_loss_distribution = "logistic",
+        aft_loss_distribution_scale = 1.1
+      ))
+    )
+  )
+)
+
+heart_fit$performance
 ```

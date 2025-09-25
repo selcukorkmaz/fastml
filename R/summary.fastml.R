@@ -827,15 +827,15 @@ summary.fastml <- function(object,
           next
         }
         fit_candidate <- tryCatch(candidate$fit$fit$fit, error = function(e) NULL)
-        if (inherits(fit_candidate, c("survreg", "coxph", "stpm2", "pstpm2"))) {
+        if (inherits(fit_candidate, c("survreg", "coxph", "stpm2", "pstpm2", "fastml_xgb_survival"))) {
           return(fit_candidate)
         }
         fit_candidate <- tryCatch(candidate$fit$fit, error = function(e) NULL)
-        if (inherits(fit_candidate, c("survreg", "coxph", "stpm2", "pstpm2"))) {
+        if (inherits(fit_candidate, c("survreg", "coxph", "stpm2", "pstpm2", "fastml_xgb_survival"))) {
           return(fit_candidate)
         }
         fit_candidate <- tryCatch(candidate$fit, error = function(e) NULL)
-        if (inherits(fit_candidate, c("survreg", "coxph", "stpm2", "pstpm2"))) {
+        if (inherits(fit_candidate, c("survreg", "coxph", "stpm2", "pstpm2", "fastml_xgb_survival"))) {
           return(fit_candidate)
         }
       }
@@ -1472,6 +1472,51 @@ summary.fastml <- function(object,
       TRUE
     }
 
+    print_xgb_survival_details <- function(fit_obj) {
+      if (!inherits(fit_obj, "fastml_xgb_survival")) {
+        return(FALSE)
+      }
+      objective <- tryCatch(fit_obj$objective, error = function(e) NULL)
+      objective <- if (!is.null(objective) && length(objective) > 0 && nzchar(as.character(objective)[1])) {
+        as.character(objective)[1]
+      } else {
+        "<unknown>"
+      }
+      cat("  Objective:", objective, "\n")
+      booster <- tryCatch(fit_obj$booster, error = function(e) NULL)
+      rounds <- NA_real_
+      if (!is.null(booster)) {
+        rounds <- tryCatch(as.numeric(booster$niter), error = function(e) NA_real_)
+      }
+      if (is.finite(rounds) && rounds > 0) {
+        cat("  Boosting rounds:", format_numeric_single(rounds, digits = 0), "\n")
+      }
+      feat_count <- length(tryCatch(fit_obj$feature_names, error = function(e) NULL))
+      if (feat_count > 0) {
+        cat("  Predictors:", format_numeric_single(feat_count, digits = 0), "\n")
+      }
+      if (identical(objective, "survival:cox")) {
+        baseline_info <- tryCatch(fit_obj$baseline, error = function(e) NULL)
+        has_baseline <- !is.null(baseline_info) && is.data.frame(baseline_info) && nrow(baseline_info) > 0
+        cat("  Baseline hazard:", if (has_baseline) "Breslow (stored)" else "<not available>", "\n")
+      } else if (identical(objective, "survival:aft")) {
+        dist_val <- tryCatch(fit_obj$aft_distribution, error = function(e) NULL)
+        dist_str <- if (!is.null(dist_val) && length(dist_val) > 0 && nzchar(as.character(dist_val)[1])) {
+          as.character(dist_val)[1]
+        } else {
+          "<unknown>"
+        }
+        cat("  AFT distribution:", dist_str, "\n")
+        scale_val <- tryCatch(as.numeric(fit_obj$aft_scale), error = function(e) NA_real_)
+        if (is.finite(scale_val)) {
+          cat("  AFT scale:", format_numeric_single(scale_val), "\n")
+        } else {
+          cat("  AFT scale: <unavailable>\n")
+        }
+      }
+      TRUE
+    }
+
     print_parsnip_params <- function(model_obj) {
       parsnip_fit <- tryCatch(extract_fit_parsnip(model_obj), error = function(e) NULL)
       if (is.null(parsnip_fit)) {
@@ -1517,7 +1562,7 @@ summary.fastml <- function(object,
         handled <- FALSE
         success <- FALSE
 
-        if (!is.na(algo_name) && algo_name %in% c("survreg", "cox_ph", "penalized_cox", "stratified_cox", "time_varying_cox", "royston_parmar")) {
+        if (!is.na(algo_name) && algo_name %in% c("survreg", "cox_ph", "penalized_cox", "stratified_cox", "time_varying_cox", "royston_parmar", "xgboost")) {
           fit_obj <- extract_survival_fit(label, model_obj)
           if (inherits(fit_obj, "survreg")) {
             success <- isTRUE(print_survreg_details(fit_obj))
@@ -1553,6 +1598,9 @@ summary.fastml <- function(object,
               fit_obj,
               model_info = model_obj
             ))
+            handled <- TRUE
+          } else if (inherits(fit_obj, "fastml_xgb_survival")) {
+            success <- isTRUE(print_xgb_survival_details(fit_obj))
             handled <- TRUE
           } else if (!is.null(fit_obj)) {
             # Unexpected fit type; treat as handled to avoid duplicate warnings.

@@ -227,7 +227,6 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
     # Prepare data for prediction depending on model type
     pred_new_data <- test_data
     if (inherits(final_model, "fastml_native_survival")) {
-      # Use baked test data from the stored recipe
       pred_new_data <- tryCatch(
         recipes::bake(final_model$recipe, new_data = test_data),
         error = function(e) test_data
@@ -236,52 +235,11 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
 
     pred_predictors <- NULL
     if (inherits(final_model, "fastml_native_survival")) {
-      pred_predictors <- as.data.frame(pred_new_data)
-      keep_cols <- names(pred_predictors)
-      drop_cols <- c(final_model$response, final_model$time_col,
-                     final_model$status_col, final_model$start_col)
-      drop_cols <- unique(drop_cols[!is.na(drop_cols)])
-      drop_cols <- intersect(drop_cols, keep_cols)
-      if (length(drop_cols) > 0) {
-        keep_cols <- setdiff(keep_cols, drop_cols)
-      }
-      if (!is.null(final_model$strata_dummy_cols) && length(final_model$strata_dummy_cols) > 0) {
-        keep_cols <- setdiff(keep_cols, final_model$strata_dummy_cols)
-      }
-      if (!is.null(final_model$strata_base_cols) && length(final_model$strata_base_cols) > 0) {
-        keep_cols <- setdiff(keep_cols, final_model$strata_base_cols)
-      }
-      if (length(keep_cols) == 0) {
-        pred_predictors <- pred_predictors[, 0, drop = FALSE]
-      } else {
-        pred_predictors <- pred_predictors[, keep_cols, drop = FALSE]
-      }
-      extra_cols <- unique(c(final_model$start_col, final_model$time_col,
-                              final_model$status_col))
-      extra_cols <- extra_cols[!is.na(extra_cols)]
-      for (ec in extra_cols) {
-        if (!(ec %in% names(pred_predictors)) && ec %in% names(test_data)) {
-          pred_predictors[[ec]] <- test_data[[ec]]
-        }
-      }
-      if (!is.null(final_model$strata_cols) && length(final_model$strata_cols) > 0) {
-        strata_levels <- NULL
-        if (!is.null(final_model$fit$xlevels)) {
-          strata_levels <- final_model$fit$xlevels
-        }
-        for (sc in final_model$strata_cols) {
-          if (!(sc %in% names(pred_predictors)) && sc %in% names(test_data)) {
-            pred_predictors[[sc]] <- test_data[[sc]]
-          }
-          if (sc %in% names(pred_predictors)) {
-            pred_predictors[[sc]] <- as.factor(pred_predictors[[sc]])
-            if (!is.null(strata_levels) && sc %in% names(strata_levels)) {
-              pred_predictors[[sc]] <- factor(pred_predictors[[sc]],
-                                              levels = strata_levels[[sc]])
-            }
-          }
-        }
-      }
+      pred_predictors <- fastml_prepare_native_survival_predictors(
+        final_model,
+        pred_new_data,
+        test_data
+      )
     }
 
     identify_survival_model <- function(obj) {
@@ -317,6 +275,15 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         model_type <- "survreg"
       } else if (inherits(fit_obj, "glmnet")) {
         model_type <- "glmnet"
+      } else if (inherits(fit_obj, "fastml_xgb_survival")) {
+        objective <- tryCatch(fit_obj$objective, error = function(e) NULL)
+        if (identical(objective, "survival:aft")) {
+          model_type <- "xgboost_aft"
+        } else if (identical(objective, "survival:cox")) {
+          model_type <- "xgboost_cox"
+        } else {
+          model_type <- "xgboost_survival"
+        }
       }
 
       list(type = model_type, fit = fit_obj)
@@ -925,6 +892,13 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
               pred_lp
             }
           }
+        } else if (inherits(final_model$fit, "fastml_xgb_survival")) {
+          lp_vals <- fastml_xgb_predict_lp(final_model$fit, pred_predictors)
+          if (identical(final_model$fit$objective, "survival:aft")) {
+            as.numeric(-lp_vals)
+          } else {
+            as.numeric(lp_vals)
+          }
         } else if (inherits(final_model$fit, c("stpm2", "pstpm2"))) {
           if (!requireNamespace("rstpm2", quietly = TRUE)) {
             rep(NA_real_, nrow(test_data))
@@ -1526,6 +1500,15 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
                 surv_prob_mat[, j] <- preds
               }
             }
+          }
+        } else if (inherits(final_model$fit, "fastml_xgb_survival")) {
+          lp_vals <- fastml_xgb_predict_lp(final_model$fit, pred_predictors)
+          if (identical(final_model$fit$objective, "survival:cox")) {
+            surv_prob_mat <- fastml_xgb_survival_matrix_cox(final_model$fit, lp_vals, eval_times)
+          } else {
+            dist_name <- final_model$fit$aft_distribution
+            scale_val <- final_model$fit$aft_scale
+            surv_prob_mat <- fastml_aft_survival_prob(eval_times, lp_vals, dist_name, scale_val)
           }
         } else {
           surv_fit <- tryCatch(
