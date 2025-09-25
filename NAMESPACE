@@ -2,8 +2,10 @@
 
 S3method(plot,fastml)
 S3method(predict,fastml)
+S3method(predict_risk,default)
 S3method(predict_risk,fastml_native_survival)
 S3method(predict_risk,workflow)
+S3method(predict_survival,default)
 S3method(predict_survival,fastml_native_survival)
 S3method(predict_survival,workflow)
 S3method(summary,fastml)
