@@ -1254,6 +1254,103 @@ summary.fastml <- function(object,
       TRUE
     }
 
+    print_flexsurv_details <- function(fit_obj, model_info = NULL) {
+      dist_val <- tryCatch(fit_obj$dist, error = function(e) NULL)
+      dist_label <- NULL
+      if (!is.null(model_info)) {
+        dist_label <- tryCatch(model_info$distribution_label, error = function(e) NULL)
+      }
+      if (is.null(dist_label) || !nzchar(as.character(dist_label)[1])) {
+        if (is.character(dist_val) && length(dist_val) > 0) {
+          dist_label <- dist_val[1]
+        } else if (is.list(dist_val) && !is.null(dist_val$dist)) {
+          dist_label <- dist_val$dist
+        }
+      }
+      if (is.null(dist_label) || !nzchar(as.character(dist_label)[1])) {
+        dist_label <- "<unknown>"
+      }
+      cat("  Distribution:", dist_label, "\n")
+
+      coef_vec <- tryCatch(fit_obj$coefficients, error = function(e) NULL)
+      if (!is.null(coef_vec) && length(coef_vec) > 0) {
+        cat("  Coefficients:\n")
+        coef_fmt <- format_numeric_vec(coef_vec)
+        coef_mat <- matrix(coef_fmt, ncol = 1)
+        rownames(coef_mat) <- if (!is.null(names(coef_vec))) names(coef_vec) else rownames(coef_mat)
+        colnames(coef_mat) <- "coef"
+        print(coef_mat, quote = FALSE)
+      } else {
+        cat("  Coefficients: <unavailable>\n")
+      }
+
+      res_list <- tryCatch(fit_obj$res, error = function(e) NULL)
+      if (is.list(res_list) && length(res_list) > 0) {
+        cat("  Parameter estimates:\n")
+        for (nm in names(res_list)) {
+          entry <- res_list[[nm]]
+          est_val <- NA_real_
+          se_val <- NA_real_
+          if (is.data.frame(entry) && nrow(entry) >= 1) {
+            if ("est" %in% names(entry)) {
+              est_val <- entry$est[1]
+            }
+            if ("se" %in% names(entry)) {
+              se_val <- entry$se[1]
+            }
+          } else if (is.numeric(entry) && length(entry) >= 1) {
+            est_val <- entry[1]
+          }
+          cat("    ", nm, ": ", format_numeric_single(est_val), sep = "")
+          if (is.finite(se_val)) {
+            cat(" (SE ", format_numeric_single(se_val), ")", sep = "")
+          }
+          cat("\n")
+        }
+      } else {
+        cat("  Parameter estimates: <unavailable>\n")
+      }
+
+      breaks_info <- NULL
+      if (!is.null(model_info)) {
+        breaks_info <- tryCatch(model_info$breaks, error = function(e) NULL)
+      }
+      if (!is.null(breaks_info) && length(breaks_info) > 0) {
+        cat("  Piecewise breaks:", paste(format_numeric_vec(breaks_info), collapse = ", "), "\n")
+      }
+
+      loglik_val <- tryCatch(fit_obj$loglik, error = function(e) NULL)
+      loglik_last <- if (!is.null(loglik_val) && length(loglik_val) > 0) {
+        as.numeric(loglik_val[length(loglik_val)])
+      } else {
+        NA_real_
+      }
+      cat("  Log-likelihood:", format_numeric_single(loglik_last), "\n")
+
+      aic_val <- tryCatch(fit_obj$AIC, error = function(e) NA_real_)
+      if (is.finite(aic_val)) {
+        cat("  AIC: ", format_numeric_single(aic_val), "\n", sep = "")
+      }
+
+      npars <- tryCatch(fit_obj$npars, error = function(e) NA_real_)
+      n_obs <- tryCatch(fit_obj$N, error = function(e) NA_real_)
+      if (!is.finite(n_obs)) {
+        n_obs <- tryCatch(attr(stats::logLik(fit_obj), "nobs"), error = function(e) NA_real_)
+      }
+      bic_val <- tryCatch(fit_obj$BIC, error = function(e) NA_real_)
+      if (!is.finite(bic_val) && is.finite(loglik_last) && is.finite(npars) && is.finite(n_obs) && n_obs > 0) {
+        bic_val <- -2 * loglik_last + log(n_obs) * npars
+      }
+      if (is.finite(bic_val)) {
+        cat("  BIC: ", format_numeric_single(bic_val), "\n", sep = "")
+      }
+      if (is.finite(n_obs)) {
+        cat("  Number of observations: ", format_numeric_single(n_obs, digits = 0), "\n", sep = "")
+      }
+
+      TRUE
+    }
+
     print_coxph_details <- function(fit_obj, model_info = NULL, performance_row = NULL) {
       summary_fit <- tryCatch(summary(fit_obj), error = function(e) NULL)
       if (is.null(summary_fit)) {
@@ -1564,7 +1661,7 @@ summary.fastml <- function(object,
         handled <- FALSE
         success <- FALSE
 
-        if (!is.na(algo_name) && algo_name %in% c("survreg", "cox_ph", "penalized_cox", "stratified_cox", "time_varying_cox", "royston_parmar")) {
+        if (!is.na(algo_name) && algo_name %in% c("survreg", "cox_ph", "penalized_cox", "stratified_cox", "time_varying_cox", "royston_parmar", "parametric_surv", "piecewise_exp")) {
           fit_obj <- extract_survival_fit(label, model_obj)
           if (inherits(fit_obj, "survreg")) {
             success <- isTRUE(print_survreg_details(fit_obj))
@@ -1597,6 +1694,12 @@ summary.fastml <- function(object,
             handled <- TRUE
           } else if (inherits(fit_obj, c("stpm2", "pstpm2"))) {
             success <- isTRUE(print_stpm2_details(
+              fit_obj,
+              model_info = model_obj
+            ))
+            handled <- TRUE
+          } else if (inherits(fit_obj, "flexsurvreg")) {
+            success <- isTRUE(print_flexsurv_details(
               fit_obj,
               model_info = model_obj
             ))
