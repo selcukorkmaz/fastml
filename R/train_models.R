@@ -359,34 +359,73 @@ train_models <- function(train_data,
         }
         rp_formula <- as.formula(paste(surv_lhs, "~", predictor_terms))
         fit <- tryCatch({
-          gsm_fn <- get("gsm", envir = asNamespace("rstpm2"))
-          call_with_engine_params(
-            gsm_fn,
-            list(
-              formula = rp_formula,
-              data = rp_train,
-              df = 3,
-              penalised = FALSE
-            ),
+          stpm2_fn <- get("stpm2", envir = asNamespace("rstpm2"))
+          base_args <- list(
+            formula = rp_formula,
+            data = rp_train,
+            df = 3,
+            penalised = FALSE
+          )
+          fit_obj <- call_with_engine_params(
+            stpm2_fn,
+            base_args,
             engine_args
           )
+          fit_obj
         }, error = function(e) e)
         if (inherits(fit, "error")) {
           warning(sprintf("royston_parmar training failed: %s", fit$message))
+          next
+        }
+        if (!inherits(fit, c("stpm2", "pstpm2"))) {
+          warning("rstpm2::stpm2 did not return an 'stpm2' compatible object; skipping royston_parmar.")
           next
         }
         loglik_val <- tryCatch({
           val <- stats::logLik(fit)
           if (length(val) > 0) as.numeric(val)[1] else NA_real_
         }, error = function(e) NA_real_)
+        if (!is.finite(loglik_val)) {
+          loglik_val <- tryCatch({
+            val <- rstpm2::logLik(fit)
+            if (length(val) > 0) as.numeric(val)[1] else NA_real_
+          }, error = function(e) NA_real_)
+        }
+        if (!is.finite(loglik_val)) {
+          loglik_val <- tryCatch({
+            mle2_obj <- methods::slot(fit, "mle2")
+            val <- stats::logLik(mle2_obj)
+            if (length(val) > 0) as.numeric(val)[1] else NA_real_
+          }, error = function(e) NA_real_)
+        }
         aic_val <- tryCatch({
           val <- stats::AIC(fit)
           if (length(val) > 0) as.numeric(val)[1] else NA_real_
         }, error = function(e) NA_real_)
+        if (!is.finite(aic_val)) {
+          aic_val <- tryCatch(rstpm2::AIC(fit), error = function(e) NA_real_)
+        }
+        if (!is.finite(aic_val)) {
+          aic_val <- tryCatch({
+            mle2_obj <- methods::slot(fit, "mle2")
+            val <- stats::AIC(mle2_obj)
+            if (length(val) > 0) as.numeric(val)[1] else NA_real_
+          }, error = function(e) NA_real_)
+        }
         bic_val <- tryCatch({
           val <- stats::BIC(fit)
           if (length(val) > 0) as.numeric(val)[1] else NA_real_
         }, error = function(e) NA_real_)
+        if (!is.finite(bic_val)) {
+          bic_val <- tryCatch(rstpm2::BIC(fit), error = function(e) NA_real_)
+        }
+        if (!is.finite(bic_val)) {
+          bic_val <- tryCatch({
+            mle2_obj <- methods::slot(fit, "mle2")
+            val <- stats::BIC(mle2_obj)
+            if (length(val) > 0) as.numeric(val)[1] else NA_real_
+          }, error = function(e) NA_real_)
+        }
         spec <- create_native_spec("royston_parmar", engine, fit, rec_prep,
                                    extras = list(
                                      spline_df = 3,
