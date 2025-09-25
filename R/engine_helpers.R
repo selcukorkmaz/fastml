@@ -138,6 +138,85 @@ get_default_engine <- function(algo, task = NULL) {
   )
 }
 
+resolve_engine_params <- function(engine_params, algo, engine) {
+  if (is.null(engine_params)) {
+    return(list())
+  }
+  if (!is.list(engine_params)) {
+    stop("'engine_params' must be a list.")
+  }
+
+  algo_params <- engine_params[[algo]]
+  if (is.null(algo_params)) {
+    return(list())
+  }
+  if (!is.list(algo_params)) {
+    stop(sprintf("Engine parameters for algorithm '%s' must be provided as a list.", algo))
+  }
+
+  engine_name <- if (length(engine) == 0 || is.na(engine)) "" else as.character(engine)
+
+  candidate <- NULL
+  if (!is.null(names(algo_params)) && engine_name %in% names(algo_params)) {
+    candidate <- algo_params[[engine_name]]
+  } else if (length(algo_params) > 0 && (is.null(names(algo_params)) || any(names(algo_params) == ""))) {
+    candidate <- algo_params
+  }
+
+  if (is.null(candidate)) {
+    return(list())
+  }
+  if (!is.list(candidate)) {
+    detail <- if (nzchar(engine_name)) sprintf(" and engine '%s'", engine_name) else ""
+    stop(sprintf("Engine parameters for algorithm '%s'%s must be provided as a list.", algo, detail))
+  }
+  if (length(candidate) > 0 && (is.null(names(candidate)) || any(names(candidate) == ""))) {
+    detail <- if (nzchar(engine_name)) sprintf(" and engine '%s'", engine_name) else ""
+    stop(sprintf("Engine parameters for algorithm '%s'%s must be a named list.", algo, detail))
+  }
+
+  candidate
+}
+
+merge_engine_args <- function(base = list(), overrides = list()) {
+  if (is.null(base)) {
+    base <- list()
+  }
+  if (is.null(overrides)) {
+    overrides <- list()
+  }
+  if (!is.list(base)) {
+    stop("'base' must be a list when merging engine arguments.")
+  }
+  if (!is.list(overrides)) {
+    stop("'overrides' must be a list when merging engine arguments.")
+  }
+  if (length(overrides) == 0) {
+    return(base)
+  }
+  if (is.null(names(overrides)) || any(names(overrides) == "")) {
+    stop("Engine parameter overrides must be a named list.")
+  }
+  if (length(base) == 0) {
+    return(overrides)
+  }
+  utils::modifyList(base, overrides, keep.null = TRUE)
+}
+
+call_with_engine_params <- function(fun, base_args, engine_args) {
+  if (is.null(engine_args)) {
+    engine_args <- list()
+  }
+  if (!is.list(base_args)) {
+    stop("'base_args' must be provided as a list.")
+  }
+  if (!is.list(engine_args)) {
+    stop("Engine parameters must be provided as a list.")
+  }
+  combined <- merge_engine_args(base_args, engine_args)
+  do.call(fun, combined)
+}
+
 
 #' Get Engine Names from Model Workflows
 #'

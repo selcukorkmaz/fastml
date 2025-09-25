@@ -33,6 +33,14 @@ utils::globalVariables(c("Fraction", "Performance"))
 #' @param tune_params A named list of tuning ranges for each algorithm and engine
 #'   pair. Example: \code{list(rand_forest = list(ranger = list(mtry = c(1, 3))))}
 #'   will override the defaults for the ranger engine. Default is \code{NULL}.
+#' @param engine_params A named list of engine-level arguments to pass directly
+#'   to the underlying model fitting functions. Use this for fixed settings that
+#'   should apply whenever an engine is fitted (for example,
+#'   \code{list(royston_parmar = list(rstpm2 = list(link = "PO")))},
+#'   \code{list(cox_ph = list(survival = list(ties = "breslow")))}, or
+#'   \code{list(rand_forest = list(ranger = list(importance = "impurity")))}).
+#'   These arguments are distinct from \code{tune_params}, which define ranges of
+#'   hyperparameters to explore during tuning. Default is an empty list.
 #' @param metric The performance metric to optimize during training.
 #' @param algorithm_engines A named list specifying the engine to use for each algorithm.
 #' @param n_cores An integer specifying the number of CPU cores to use for parallel processing. Default is \code{1}.
@@ -145,6 +153,7 @@ fastml <- function(data = NULL,
                    exclude = NULL,
                    recipe = NULL,
                    tune_params = NULL,
+                   engine_params = list(),
                    metric = NULL,
                    algorithm_engines = NULL,
                    n_cores = 1,
@@ -703,6 +712,7 @@ fastml <- function(data = NULL,
     repeats = repeats,
     resamples = resamples,
     tune_params = tune_params,
+    engine_params = engine_params,
     metric = metric,
     summaryFunction = summaryFunction,
     seed = seed,
@@ -896,7 +906,8 @@ fastml <- function(data = NULL,
        folds = folds,
        repeats = repeats,
        resamples = resamples,
-       tune_params = tune_params,
+        tune_params = tune_params,
+        engine_params = engine_params,
         metric = metric,
         summaryFunction = summaryFunction,
         seed = seed,
