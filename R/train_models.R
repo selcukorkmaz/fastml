@@ -149,6 +149,7 @@ train_models <- function(train_data,
     for (algo in algorithms) {
       engine <- get_engine(algo, get_default_engine(algo, task))
       engine_args <- resolve_engine_params(engine_params, algo, engine)
+      fit_engine_args <- NULL
 
       if (algo == "rand_forest") {
         if (identical(engine, "aorsf") && !requireNamespace("aorsf", quietly = TRUE)) {
@@ -186,6 +187,39 @@ train_models <- function(train_data,
           engine_args
         )
         spec <- create_native_spec("cox_ph", engine, fit, rec_prep)
+      } else if (algo == "penalized_cox") {
+        if (!requireNamespace("censored", quietly = TRUE)) {
+          warning("Package 'censored' not installed; skipping penalized_cox.")
+          next
+        }
+        if (!requireNamespace("glmnet", quietly = TRUE)) {
+          stop("The 'glmnet' package is required for penalized_cox. Please install it.")
+        }
+
+        defaults <- get_default_params("penalized_cox", task, engine = engine)
+        penalty_val <- defaults$penalty
+        mixture_val <- defaults$mixture
+
+        if (length(engine_args) > 0) {
+          if ("penalty" %in% names(engine_args)) {
+            penalty_val <- engine_args$penalty
+            engine_args$penalty <- NULL
+          }
+          if ("mixture" %in% names(engine_args)) {
+            mixture_val <- engine_args$mixture
+            engine_args$mixture <- NULL
+          }
+        }
+
+        spec_info <- define_penalized_cox_spec(
+          task = task,
+          penalty = penalty_val,
+          mixture = mixture_val,
+          engine = engine,
+          engine_params = engine_args
+        )
+        spec <- spec_info$model_spec
+        fit_engine_args <- spec_info$fit_args
       } else if (algo == "stratified_cox") {
         if (!requireNamespace("survival", quietly = TRUE)) {
           stop("The 'survival' package is required for stratified Cox. Please install it.")
@@ -440,6 +474,10 @@ train_models <- function(train_data,
         next
       }
 
+      if (is.null(fit_engine_args)) {
+        fit_engine_args <- engine_args
+      }
+
       if (inherits(spec, "fastml_native_survival")) {
         models[[algo]] <- spec
       } else {
@@ -448,7 +486,7 @@ train_models <- function(train_data,
           workflows::add_model(spec)
         models[[algo]] <- do.call(
           parsnip::fit,
-          c(list(object = wf, data = train_data), engine_args)
+          c(list(object = wf, data = train_data), fit_engine_args)
         )
       }
     }

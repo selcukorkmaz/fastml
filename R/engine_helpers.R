@@ -60,6 +60,7 @@ availableMethods <- function(type = c("classification", "regression", "survival"
       c(
         "rand_forest",
         "cox_ph",
+        "penalized_cox",
         "stratified_cox",
         "time_varying_cox",
         "survreg",
@@ -89,6 +90,9 @@ get_default_engine <- function(algo, task = NULL) {
   }
   if (algo == "cox_ph" && !is.null(task) && task == "survival") {
     return("survival")
+  }
+  if (algo == "penalized_cox" && !is.null(task) && task == "survival") {
+    return("glmnet")
   }
   if (algo == "stratified_cox" && !is.null(task) && task == "survival") {
     return("survival")

@@ -8,7 +8,7 @@
 #'   \code{"svm_rbf"}, \code{"nearest_neighbor"}, \code{"naive_Bayes"}, \code{"mlp"},
 #'   \code{"deep_learning"}, \code{"discrim_linear"}, \code{"discrim_quad"}, \code{"bag_tree"},
 #'   \code{"elastic_net"}, \code{"bayes_glm"}, \code{"pls"}, \code{"linear_reg"},
-#'   \code{"ridge_reg"}, and \code{"lasso_reg"}.
+#'   \code{"ridge_reg"}, \code{"lasso_reg"}, and \code{"penalized_cox"}.
 #'
 #' @param task A character string specifying the task type, typically \code{"classification"} or \code{"regression"}.
 #'
@@ -337,6 +337,10 @@ get_default_params <- function(algo, task, num_predictors = NULL, engine = NULL)
          ),
          # 24. Lasso Regression
          "lasso_reg" = list(
+           penalty = 0.01,
+           mixture = 1
+         ),
+         "penalized_cox" = list(
            penalty = 0.01,
            mixture = 1
          ),

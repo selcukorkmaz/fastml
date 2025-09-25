@@ -1,13 +1,14 @@
 library(testthat)
 library(survival)
 
-test_that("available survival methods include rand_forest and cox_ph", {
-  expect_true(all(c("rand_forest", "cox_ph") %in% availableMethods("survival")))
+test_that("available survival methods include core algorithms", {
+  expect_true(all(c("rand_forest", "cox_ph", "penalized_cox") %in% availableMethods("survival")))
 })
 
 test_that("get_default_engine works for survival algorithms", {
   expect_identical(get_default_engine("rand_forest", task = "survival"), "aorsf")
   expect_identical(get_default_engine("cox_ph", task = "survival"), "survival")
+  expect_identical(get_default_engine("penalized_cox", task = "survival"), "glmnet")
 })
 
 test_that("cox_ph survival model trains and evaluates", {
@@ -65,6 +66,40 @@ test_that("cox_ph survival model trains and evaluates", {
     if (!is.null(first_curve)) {
       expect_true(is.numeric(first_curve))
     }
+  }
+})
+
+test_that("penalized Cox survival model trains and evaluates", {
+  skip_if_not_installed("censored")
+  skip_if_not_installed("glmnet")
+
+  data(cancer, package = "survival")
+  res <- fastml(
+    data = cancer,
+    label = c("time", "status"),
+    algorithms = c("penalized_cox"),
+    task = "survival",
+    resampling_method = "none",
+    test_size = 0.3
+  )
+
+  expect_s3_class(res, "fastml")
+  perf <- res$performance[[1]]
+  expect_true(all(c("c_index", "uno_c", "ibs", "rmst_diff") %in% perf$.metric))
+  brier_metrics <- perf$.metric[grepl("^brier_t", perf$.metric)]
+  expect_true(length(brier_metrics) >= 1)
+  brier_val <- perf$.estimate[perf$.metric %in% brier_metrics]
+  expect_true(length(brier_val) > 0)
+  expect_true(all(is.finite(brier_val)))
+  expect_true(all(brier_val >= 0 & brier_val <= 1))
+  expect_identical(res$engine_names$penalized_cox, "glmnet")
+
+  preds <- res$predictions[[1]]
+  expect_true("surv_prob_curve" %in% names(preds))
+  expect_true(is.numeric(attr(preds$surv_prob_curve, "eval_times")))
+  if (requireNamespace("censored", quietly = TRUE)) {
+    expect_true("surv_time" %in% names(preds))
+    expect_type(preds$surv_time, "double")
   }
 })
 
