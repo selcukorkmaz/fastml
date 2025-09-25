@@ -51,6 +51,7 @@ utils::globalVariables(c("truth", "residual", "sensitivity", "specificity", "Fal
 #' @importFrom yardstick conf_mat
 #' @importFrom pROC roc auc multiclass.roc
 #' @importFrom probably cal_plot_breaks
+#' @importFrom methods slot slotNames
 #' @importFrom rlang get_expr get_env sym
 #' @importFrom viridisLite viridis
 #' @importFrom tidyr pivot_wider
@@ -842,6 +843,13 @@ summary.fastml <- function(object,
     }
 
     print_stpm2_details <- function(fit_obj, model_info = NULL) {
+      if (is.function(fit_obj) && !is.null(model_info)) {
+        alt_fit <- tryCatch(model_info$fit, error = function(e) NULL)
+        if (inherits(alt_fit, c("stpm2", "pstpm2"))) {
+          fit_obj <- alt_fit
+        }
+      }
+
       if (!inherits(fit_obj, c("stpm2", "pstpm2"))) {
         return(FALSE)
       }
@@ -856,11 +864,23 @@ summary.fastml <- function(object,
         trimws(call_str)
       }
 
+      extract_call_slot <- function(obj, slot_name) {
+        if (!slot_name %in% methods::slotNames(obj)) {
+          return(NULL)
+        }
+        tryCatch(methods::slot(obj, slot_name), error = function(e) NULL)
+      }
+
       printed_any <- FALSE
 
-      call_expr <- tryCatch(fit_obj@Call, error = function(e) NULL)
-      if (is.null(call_expr)) {
-        call_expr <- tryCatch(fit_obj@call.formula, error = function(e) NULL)
+      call_candidates <- c("call", "call.orig", "Call", "call.formula")
+      call_expr <- NULL
+      for (slot_nm in call_candidates) {
+        call_expr <- extract_call_slot(fit_obj, slot_nm)
+        if (!is.null(call_expr) && !is.function(call_expr)) {
+          break
+        }
+        call_expr <- NULL
       }
       call_str <- if (!is.null(call_expr)) collapse_call(call_expr) else ""
       if (nzchar(call_str)) {
@@ -1001,6 +1021,15 @@ summary.fastml <- function(object,
       }
 
       if (is.matrix(coef_mat) && nrow(coef_mat) > 0) {
+        rn <- rownames(coef_mat)
+        if (!is.null(rn)) {
+          spline_mask <- grepl("^nsx\\(", rn)
+          if (any(spline_mask)) {
+            spline_names <- paste0("Spline", seq_len(sum(spline_mask)))
+            rn[spline_mask] <- spline_names
+            rownames(coef_mat) <- rn
+          }
+        }
         cat("  Coefficients:\n")
         coef_lines <- utils::capture.output(stats::printCoefmat(coef_mat, digits = 4))
         for (ln in coef_lines) {
