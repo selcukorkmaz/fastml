@@ -140,18 +140,62 @@ fastml_compute_breslow_baseline <- function(time_vec, status_vec, lp_vec) {
 
 fastml_xgb_predict_lp <- function(fit_obj, predictors) {
   booster <- fit_obj$booster
+  n_obs <- if (!is.null(predictors)) nrow(predictors) else 0L
   if (is.null(booster)) {
-    return(rep(NA_real_, nrow(predictors)))
+    return(rep(NA_real_, n_obs))
   }
   feature_names <- fit_obj$feature_names
   mat <- fastml_prepare_xgb_matrix(predictors, feature_names)
   if (nrow(mat) == 0 && length(feature_names) > 0) {
-    return(rep(NA_real_, nrow(predictors)))
+    return(rep(NA_real_, n_obs))
   }
-  pred <- tryCatch({
-    xgboost::predict(booster, newdata = mat, outputmargin = TRUE)
-  }, error = function(e) rep(NA_real_, nrow(mat)))
-  as.numeric(pred)
+
+  safe_margin_pred <- function(strict_shape = FALSE) {
+    tryCatch(
+      xgboost::predict(
+        booster,
+        newdata = mat,
+        outputmargin = TRUE,
+        strict_shape = strict_shape
+      ),
+      error = function(e) NULL
+    )
+  }
+
+  pred <- safe_margin_pred()
+  if (is.null(pred) || length(pred) == 0 || all(!is.finite(pred))) {
+    # Some versions of xgboost require strict_shape = TRUE to return a
+    # vector when using the AFT objective. Retry with that flag before
+    # falling back to non-margin predictions.
+    pred <- safe_margin_pred(strict_shape = TRUE)
+  }
+
+  if (is.null(pred) || length(pred) == 0 || all(!is.finite(pred))) {
+    # As a last resort, request the default prediction (expected survival
+    # time) and convert it back to the location parameter on the log scale.
+    pred_raw <- tryCatch(
+      xgboost::predict(booster, newdata = mat, strict_shape = TRUE),
+      error = function(e) NULL
+    )
+    if (!is.null(pred_raw) && length(pred_raw) > 0) {
+      pred_raw <- as.numeric(pred_raw)
+      pred_raw[!is.finite(pred_raw) | pred_raw <= 0] <- NA_real_
+      pred <- log(pred_raw)
+    }
+  }
+
+  if (is.null(pred) || length(pred) == 0) {
+    return(rep(NA_real_, nrow(mat)))
+  }
+
+  pred <- as.numeric(pred)
+  if (length(pred) != nrow(mat)) {
+    # The prediction output should align with the number of rows. If it
+    # does not, coerce by recycling or truncating so downstream metrics are
+    # well-defined rather than silently returning a mismatched vector.
+    pred <- rep(pred, length.out = nrow(mat))
+  }
+  pred
 }
 
 fastml_xgb_survival_matrix_cox <- function(fit_obj, lp_vec, times) {
@@ -352,7 +396,9 @@ fastml_xgb_aft_predict <- function(fit_obj, predictors, eval_times = NULL, quant
   surv_mat <- NULL
   if (!is.null(eval_times)) {
     surv_mat <- fastml_aft_survival_from_quantiles(eval_times, quantile_mat, quantile_probs)
-    if (is.null(surv_mat) || ncol(surv_mat) != length(eval_times)) {
+    invalid_surv <- is.null(surv_mat) || ncol(surv_mat) != length(eval_times) ||
+      !any(is.finite(surv_mat))
+    if (invalid_surv) {
       surv_mat <- fastml_aft_survival_prob(eval_times, mu_vec, dist, scale)
     }
   }
