@@ -803,35 +803,88 @@ fastml <- function(data = NULL,
 
 
   # Now apply the function over the flattened list
-  metric_values <- sapply(combined_performance, function(x) {
-    if (is.data.frame(x)) {
-      val <- x %>% dplyr::filter(.metric == metric) %>% dplyr::pull(.estimate)
-      if (length(val) == 0) NA_real_ else as.numeric(val[1])
-    } else {
-      NA_real_
-    }
-  })
-
   lower_is_better_metrics <- c("rmse", "mae", "ibs", "logloss", "mse", "brier_score")
+  extract_metric_values <- function(metric_name) {
+    sapply(combined_performance, function(x) {
+      if (is.data.frame(x)) {
+        vals <- x[x$.metric == metric_name, ".estimate", drop = TRUE]
+        if (length(vals) == 0) {
+          NA_real_
+        } else {
+          as.numeric(vals[1])
+        }
+      } else {
+        NA_real_
+      }
+    })
+  }
 
-  lower_is_better <- FALSE
-  if (!is.null(metric)) {
+  compute_lower_is_better <- function(metric_name) {
+    if (is.null(metric_name) || length(metric_name) == 0 || is.na(metric_name)) {
+      return(FALSE)
+    }
     direction <- tryCatch({
       if (requireNamespace("yardstick", quietly = TRUE) &&
-          exists(metric, envir = asNamespace("yardstick"), inherits = FALSE)) {
-        attr(get(metric, envir = asNamespace("yardstick")), "direction", exact = TRUE)
+          exists(metric_name, envir = asNamespace("yardstick"), inherits = FALSE)) {
+        attr(get(metric_name, envir = asNamespace("yardstick")), "direction", exact = TRUE)
       } else {
         NA_character_
       }
     }, error = function(e) NA_character_)
 
     if (!is.na(direction) && !is.null(direction)) {
-      lower_is_better <- identical(direction, "minimize")
+      identical(direction, "minimize")
     } else {
-      lower_is_better <- metric %in% lower_is_better_metrics ||
-        grepl("^brier_t", metric) ||
-        grepl("brier", metric, fixed = TRUE)
+      metric_name %in% lower_is_better_metrics ||
+        grepl("^brier_t", metric_name) ||
+        grepl("brier", metric_name, fixed = TRUE)
     }
+  }
+
+  metric_values <- extract_metric_values(metric)
+  lower_is_better <- compute_lower_is_better(metric)
+
+  if (!any(is.finite(metric_values))) {
+    available_metrics <- unique(unlist(lapply(combined_performance, function(x) {
+      if (is.data.frame(x)) {
+        as.character(x$.metric)
+      } else {
+        character(0)
+      }
+    })))
+
+    fallback_priority <- if (task == "classification") {
+      c("roc_auc", "accuracy", "kap", "sens", "spec", "precision", "f_meas")
+    } else if (task == "regression") {
+      c("rmse", "mae", "rsq")
+    } else {
+      c("c_index", "uno_c", "ibs", "rmst_diff")
+    }
+
+    candidate_metrics <- setdiff(fallback_priority, metric)
+    candidate_metrics <- candidate_metrics[candidate_metrics %in% available_metrics]
+    remaining_metrics <- setdiff(available_metrics, c(metric, candidate_metrics))
+    candidate_metrics <- c(candidate_metrics, remaining_metrics)
+
+    fallback_metric <- NULL
+    for (cand in candidate_metrics) {
+      cand_values <- extract_metric_values(cand)
+      if (any(is.finite(cand_values))) {
+        fallback_metric <- cand
+        metric_values <- cand_values
+        lower_is_better <- compute_lower_is_better(cand)
+        break
+      }
+    }
+
+    if (!is.null(fallback_metric)) {
+      warning(sprintf("Metric '%s' unavailable across models; falling back to '%s'.", metric, fallback_metric), call. = FALSE)
+      metric <- fallback_metric
+    }
+  }
+
+  if (!any(is.finite(metric_values))) {
+    stop("None of the models returned the specified metric.")
   }
 
   if (any(is.na(metric_values))) {
