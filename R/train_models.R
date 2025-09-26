@@ -419,6 +419,7 @@ train_models <- function(train_data,
         if (!is.null(status_col) && status_col %in% names(train_data)) {
           extras$train_status <- train_data[[status_col]]
         }
+        extras$train_size <- nrow(baked_train)
         spec <- create_native_spec(
           "parametric_surv",
           engine,

@@ -1272,43 +1272,94 @@ summary.fastml <- function(object,
       }
       cat("  Distribution:", dist_label, "\n")
 
-      coef_vec <- tryCatch(fit_obj$coefficients, error = function(e) NULL)
+      coef_vec <- tryCatch({
+        stats::coef(fit_obj)
+      }, error = function(e) {
+        tryCatch(fit_obj$coefficients, error = function(e2) NULL)
+      })
       if (!is.null(coef_vec) && length(coef_vec) > 0) {
-        cat("  Coefficients:\n")
+        cat("  Coefficients (link scale):\n")
         coef_fmt <- format_numeric_vec(coef_vec)
         coef_mat <- matrix(coef_fmt, ncol = 1)
         rownames(coef_mat) <- if (!is.null(names(coef_vec))) names(coef_vec) else rownames(coef_mat)
         colnames(coef_mat) <- "coef"
         print(coef_mat, quote = FALSE)
-      } else {
-        cat("  Coefficients: <unavailable>\n")
       }
 
-      res_list <- tryCatch(fit_obj$res, error = function(e) NULL)
-      if (is.list(res_list) && length(res_list) > 0) {
+      res_mat <- tryCatch(as.matrix(fit_obj$res), error = function(e) NULL)
+      if (is.matrix(res_mat) && nrow(res_mat) > 0) {
         cat("  Parameter estimates:\n")
-        for (nm in names(res_list)) {
-          entry <- res_list[[nm]]
-          est_val <- NA_real_
-          se_val <- NA_real_
-          if (is.data.frame(entry) && nrow(entry) >= 1) {
-            if ("est" %in% names(entry)) {
-              est_val <- entry$est[1]
-            }
-            if ("se" %in% names(entry)) {
-              se_val <- entry$se[1]
-            }
-          } else if (is.numeric(entry) && length(entry) >= 1) {
-            est_val <- entry[1]
-          }
-          cat("    ", nm, ": ", format_numeric_single(est_val), sep = "")
-          if (is.finite(se_val)) {
-            cat(" (SE ", format_numeric_single(se_val), ")", sep = "")
-          }
-          cat("\n")
+        col_names <- colnames(res_mat)
+        fmt_mat <- apply(res_mat, 2, format_numeric_vec)
+        if (is.vector(fmt_mat)) {
+          fmt_mat <- matrix(fmt_mat, ncol = 1)
+          colnames(fmt_mat) <- col_names[1]
         }
-      } else {
-        cat("  Parameter estimates: <unavailable>\n")
+        rownames(fmt_mat) <- rownames(res_mat)
+        print(fmt_mat, quote = FALSE)
+      }
+
+      loglik_val <- tryCatch({
+        ll <- fit_obj$loglik
+        if (length(ll) > 0) ll[length(ll)] else NA_real_
+      }, error = function(e) NA_real_)
+      if (is.finite(loglik_val)) {
+        cat("  Log-likelihood:", format_numeric_single(loglik_val), "\n")
+      }
+
+      aic_val <- tryCatch(as.numeric(fit_obj$AIC), error = function(e) NA_real_)
+      if (is.finite(aic_val)) {
+        cat("  AIC:", format_numeric_single(aic_val), "\n")
+      }
+
+      bic_val <- tryCatch(as.numeric(fit_obj$BIC), error = function(e) NA_real_)
+      if (is.finite(bic_val)) {
+        cat("  BIC:", format_numeric_single(bic_val), "\n")
+      }
+
+      train_times <- NULL
+      train_status <- NULL
+      train_size <- NULL
+      if (!is.null(model_info)) {
+        train_times <- tryCatch(model_info$train_times, error = function(e) NULL)
+        train_status <- tryCatch(model_info$train_status, error = function(e) NULL)
+        train_size <- tryCatch(model_info$train_size, error = function(e) NULL)
+      }
+      n_obs <- tryCatch(as.numeric(fit_obj$N), error = function(e) NA_real_)
+      events <- NA_real_
+      censored <- NA_real_
+      if (is.null(train_status) && is.numeric(train_size) && length(train_size) == 1 && is.finite(train_size)) {
+        n_obs <- train_size
+      }
+      if (!is.null(train_status)) {
+        status_norm <- tryCatch({
+          fastml_normalize_survival_status(train_status, reference_length = length(train_status))$status
+        }, error = function(e) NULL)
+        if (!is.null(status_norm)) {
+          n_obs <- length(status_norm)
+          events <- sum(status_norm == 1, na.rm = TRUE)
+          censored <- sum(status_norm == 0, na.rm = TRUE)
+        }
+      } else if (!is.null(train_times)) {
+        times_num <- as.numeric(train_times)
+        times_num <- times_num[is.finite(times_num)]
+        if (length(times_num) > 0) {
+          n_obs <- length(times_num)
+        }
+      }
+      if (is.finite(n_obs)) {
+        msg <- paste0("  Sample size: ", format_numeric_single(n_obs, digits = 0))
+        details <- character(0)
+        if (is.finite(events)) {
+          details <- c(details, paste0("events = ", format_numeric_single(events, digits = 0)))
+        }
+        if (is.finite(censored)) {
+          details <- c(details, paste0("censored = ", format_numeric_single(censored, digits = 0)))
+        }
+        if (length(details) > 0) {
+          msg <- paste0(msg, " (", paste(details, collapse = ", "), ")")
+        }
+        cat(msg, "\n")
       }
 
       breaks_info <- NULL
@@ -1317,35 +1368,6 @@ summary.fastml <- function(object,
       }
       if (!is.null(breaks_info) && length(breaks_info) > 0) {
         cat("  Piecewise breaks:", paste(format_numeric_vec(breaks_info), collapse = ", "), "\n")
-      }
-
-      loglik_val <- tryCatch(fit_obj$loglik, error = function(e) NULL)
-      loglik_last <- if (!is.null(loglik_val) && length(loglik_val) > 0) {
-        as.numeric(loglik_val[length(loglik_val)])
-      } else {
-        NA_real_
-      }
-      cat("  Log-likelihood:", format_numeric_single(loglik_last), "\n")
-
-      aic_val <- tryCatch(fit_obj$AIC, error = function(e) NA_real_)
-      if (is.finite(aic_val)) {
-        cat("  AIC: ", format_numeric_single(aic_val), "\n", sep = "")
-      }
-
-      npars <- tryCatch(fit_obj$npars, error = function(e) NA_real_)
-      n_obs <- tryCatch(fit_obj$N, error = function(e) NA_real_)
-      if (!is.finite(n_obs)) {
-        n_obs <- tryCatch(attr(stats::logLik(fit_obj), "nobs"), error = function(e) NA_real_)
-      }
-      bic_val <- tryCatch(fit_obj$BIC, error = function(e) NA_real_)
-      if (!is.finite(bic_val) && is.finite(loglik_last) && is.finite(npars) && is.finite(n_obs) && n_obs > 0) {
-        bic_val <- -2 * loglik_last + log(n_obs) * npars
-      }
-      if (is.finite(bic_val)) {
-        cat("  BIC: ", format_numeric_single(bic_val), "\n", sep = "")
-      }
-      if (is.finite(n_obs)) {
-        cat("  Number of observations: ", format_numeric_single(n_obs, digits = 0), "\n", sep = "")
       }
 
       TRUE

@@ -191,7 +191,7 @@ fastml_flexsurv_survival_matrix <- function(fit, newdata, times) {
 
   if (!is.null(summary_list)) {
     res <- extract_curves(summary_list, times, n_obs)
-    has_finite <- any(rowSums(is.finite(res)) > 0)
+    has_finite <- is.matrix(res) && any(rowSums(is.finite(res)) > 0)
     if (!has_finite) {
       res <- compute_rowwise(newdata, times)
     }
@@ -199,11 +199,25 @@ fastml_flexsurv_survival_matrix <- function(fit, newdata, times) {
     res <- compute_rowwise(newdata, times)
   }
 
-  if (!all(dim(res) == c(n_obs, length(times)))) {
-    res <- compute_rowwise(newdata, times)
+  expected_dim <- c(n_obs, length(times))
+  if (!is.matrix(res)) {
+    res <- matrix(as.numeric(res), nrow = expected_dim[1], ncol = expected_dim[2])
   }
 
-  res <- pmin(pmax(res, 0), 1)
+  if (!all(dim(res) == expected_dim)) {
+    res <- compute_rowwise(newdata, times)
+    if (!is.matrix(res)) {
+      res <- matrix(as.numeric(res), nrow = expected_dim[1], ncol = expected_dim[2])
+    }
+  }
+
+  if (!is.matrix(res) || !all(dim(res) == expected_dim)) {
+    res <- matrix(NA_real_, nrow = expected_dim[1], ncol = expected_dim[2])
+  }
+
+  if (length(times) > 0) {
+    res <- pmin(pmax(res, 0), 1)
+  }
   res
 }
 
@@ -211,18 +225,20 @@ fastml_parametric_surv_predict <- function(fit,
                                            newdata,
                                            eval_times,
                                            risk_time = NULL) {
-  if (!inherits(fit, "flexsurvreg")) {
-    n_obs <- if (!is.null(newdata)) nrow(newdata) else 0L
-    return(list(surv = NULL, risk = rep(NA_real_, n_obs)))
-  }
+  n_obs <- if (!is.null(newdata)) nrow(newdata) else 0L
 
-  if (!requireNamespace("flexsurv", quietly = TRUE)) {
-    n_obs <- if (!is.null(newdata)) nrow(newdata) else 0L
-    return(list(surv = NULL, risk = rep(NA_real_, n_obs)))
+  if (!inherits(fit, "flexsurvreg") ||
+      !requireNamespace("flexsurv", quietly = TRUE)) {
+    empty_surv <- if (length(eval_times) > 0) {
+      matrix(NA_real_, nrow = n_obs, ncol = length(eval_times))
+    } else {
+      matrix(numeric(), nrow = n_obs, ncol = 0)
+    }
+    return(list(surv = empty_surv, risk = rep(NA_real_, n_obs)))
   }
 
   eval_times <- as.numeric(eval_times)
-  eval_times <- eval_times[is.finite(eval_times) & eval_times >= 0]
+  eval_times <- sort(unique(eval_times[is.finite(eval_times) & eval_times >= 0]))
 
   if (is.null(newdata)) {
     newdata <- data.frame(matrix(nrow = 0, ncol = 0))
@@ -231,32 +247,47 @@ fastml_parametric_surv_predict <- function(fit,
   newdata <- as.data.frame(newdata)
   n_obs <- nrow(newdata)
 
-  surv_mat <- fastml_flexsurv_survival_matrix(fit, newdata, eval_times)
-  if (!is.null(surv_mat)) {
-    if (ncol(surv_mat) == length(eval_times)) {
-      colnames(surv_mat) <- format(eval_times, trim = TRUE, scientific = FALSE)
+  if (n_obs == 0) {
+    surv_mat <- if (length(eval_times) > 0) {
+      matrix(numeric(), nrow = 0, ncol = length(eval_times))
+    } else {
+      matrix(numeric(), nrow = 0, ncol = 0)
     }
     attr(surv_mat, "eval_times") <- eval_times
+    return(list(surv = surv_mat, risk = numeric(0)))
   }
 
+  if (length(eval_times) == 0) {
+    surv_mat <- matrix(NA_real_, nrow = n_obs, ncol = 0)
+    attr(surv_mat, "eval_times") <- eval_times
+    return(list(surv = surv_mat, risk = rep(NA_real_, n_obs)))
+  }
+
+  surv_mat <- fastml_flexsurv_survival_matrix(fit, newdata, eval_times)
+  if (is.null(surv_mat) || !is.matrix(surv_mat) ||
+      nrow(surv_mat) != n_obs || ncol(surv_mat) != length(eval_times)) {
+    surv_mat <- matrix(NA_real_, nrow = n_obs, ncol = length(eval_times))
+  }
+
+  if (ncol(surv_mat) == length(eval_times)) {
+    colnames(surv_mat) <- format(eval_times, trim = TRUE, scientific = FALSE)
+  }
+  attr(surv_mat, "eval_times") <- eval_times
+
   risk_vec <- rep(NA_real_, n_obs)
-
-  if (!is.null(surv_mat) &&
-      n_obs > 0 &&
-      nrow(surv_mat) == n_obs &&
-      length(eval_times) > 0 &&
-      ncol(surv_mat) == length(eval_times)) {
-
+  valid_cols <- which(colSums(is.finite(surv_mat)) > 0)
+  if (length(valid_cols) > 0) {
     if (is.null(risk_time) || !is.finite(risk_time) || risk_time <= 0) {
-      risk_time <- stats::median(eval_times)
-      if (!is.finite(risk_time) || risk_time <= 0) {
-        risk_time <- max(eval_times)
-      }
+      med_time <- stats::median(eval_times)
+      risk_time <- if (is.finite(med_time) && med_time > 0) med_time else max(eval_times)
     }
-
+    if (!is.finite(risk_time) || risk_time <= 0) {
+      risk_time <- eval_times[valid_cols[length(valid_cols)]]
+    }
     idx <- which.min(abs(eval_times - risk_time))
     idx <- max(1L, min(idx, ncol(surv_mat)))
     surv_vals <- as.numeric(surv_mat[, idx])
+    surv_vals[!is.finite(surv_vals)] <- NA_real_
     risk_vec <- -log(pmax(surv_vals, .Machine$double.eps))
     risk_vec[!is.finite(risk_vec)] <- NA_real_
   }

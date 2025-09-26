@@ -716,7 +716,7 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       G_time_minus <- censor_eval_fn(time_minus)
       G_time_minus[!is.finite(G_time_minus) | G_time_minus <= 0] <- NA_real_
 
-      weights <- matrix(0, nrow = n, ncol = m)
+      weights <- matrix(NA_real_, nrow = n, ncol = m)
       for (j in seq_len(m)) {
         t_val <- eval_times[j]
         g_t <- G_t[j]
@@ -745,9 +745,18 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
 
       residual <- indicator - surv_mat
       residual[!is.finite(residual)] <- NA_real_
+      weights[!is.finite(weights) | weights <= 0] <- NA_real_
       weighted <- weights * residual^2
-      weighted[!is.finite(weighted)] <- 0
-      bs_t <- colSums(weighted, na.rm = TRUE) / n
+      weighted[!is.finite(weighted)] <- NA_real_
+      denom_counts <- colSums(!is.na(weighted))
+      bs_t <- colSums(weighted, na.rm = TRUE)
+      if (length(denom_counts) == length(bs_t)) {
+        valid_cols <- denom_counts > 0
+        bs_t[valid_cols] <- bs_t[valid_cols] / denom_counts[valid_cols]
+        bs_t[!valid_cols] <- NA_real_
+      } else {
+        bs_t <- bs_t / n
+      }
       bs_t[!is.finite(bs_t)] <- NA_real_
 
       if (!is.finite(tau) || tau <= 0) {
