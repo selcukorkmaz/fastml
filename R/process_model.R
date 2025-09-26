@@ -786,33 +786,7 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         } else if (inherits(final_model$fit, "survreg")) {
           as.numeric(stats::predict(final_model$fit, newdata = pred_predictors, type = "lp"))
         } else if (inherits(final_model$fit, "flexsurvreg")) {
-          pred_data <- pred_predictors
-          if (is.null(pred_data) || nrow(pred_data) != nrow(test_data)) {
-            pred_data <- tryCatch({
-              if (is.null(pred_new_data)) {
-                NULL
-              } else {
-                drop_cols <- c(final_model$response, final_model$time_col, final_model$status_col, final_model$start_col)
-                drop_cols <- drop_cols[!is.na(drop_cols)]
-                keep_cols <- setdiff(names(pred_new_data), drop_cols)
-                pred_new_data[, keep_cols, drop = FALSE]
-              }
-            }, error = function(e) NULL)
-          }
-          if (is.null(pred_data) && nrow(test_data) > 0) {
-            pred_data <- data.frame(matrix(nrow = nrow(test_data), ncol = 0))
-          }
-          eval_time <- default_time_val
-          if (!is.finite(eval_time) || eval_time <= 0) {
-            eval_time <- 1
-          }
-          surv_mat <- fastml_flexsurv_survival_matrix(final_model$fit, pred_data, eval_time)
-          if (is.null(surv_mat) || nrow(surv_mat) != nrow(test_data) || ncol(surv_mat) == 0) {
-            rep(NA_real_, nrow(test_data))
-          } else {
-            surv_vals <- as.numeric(surv_mat[, ncol(surv_mat), drop = TRUE])
-            1 - pmin(pmax(surv_vals, 0), 1)
-          }
+          rep(NA_real_, nrow(test_data))
         } else if (inherits(final_model$fit, "glmnet")) {
           if (!requireNamespace("glmnet", quietly = TRUE)) {
             rep(NA_real_, nrow(test_data))
@@ -1166,7 +1140,7 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         rmst_val
       }
 
-      if (identical(model_type, "rstpm2") && !is.null(surv_mat) &&
+      if ((identical(model_type, "rstpm2") || identical(model_type, "flexsurv")) && !is.null(surv_mat) &&
           !is.null(eval_times_full) && length(eval_times_full) > 0 &&
           is.matrix(surv_mat)) {
 
@@ -1503,7 +1477,17 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
           if (is.null(newdata_survfit) && n_obs > 0) {
             newdata_survfit <- data.frame(matrix(nrow = n_obs, ncol = 0))
           }
-          surv_prob_mat <- fastml_flexsurv_survival_matrix(final_model$fit, newdata_survfit, eval_times)
+          risk_horizon <- if (is.finite(t0) && t0 > 0) t0 else default_time_val
+          parametric_pred <- fastml_parametric_surv_predict(
+            final_model$fit,
+            newdata_survfit,
+            eval_times,
+            risk_time = risk_horizon
+          )
+          surv_prob_mat <- parametric_pred$surv
+          if (length(parametric_pred$risk) == n_obs && any(is.finite(parametric_pred$risk))) {
+            risk <- parametric_pred$risk
+          }
         } else if (inherits(final_model$fit, "stpm2")) {
           if (requireNamespace("rstpm2", quietly = TRUE) && length(eval_times) > 0) {
             base_newdata <- newdata_survfit

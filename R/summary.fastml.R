@@ -827,15 +827,15 @@ summary.fastml <- function(object,
           next
         }
         fit_candidate <- tryCatch(candidate$fit$fit$fit, error = function(e) NULL)
-        if (inherits(fit_candidate, c("survreg", "coxph", "stpm2", "pstpm2", "fastml_xgb_survival"))) {
+        if (inherits(fit_candidate, c("survreg", "coxph", "stpm2", "pstpm2", "flexsurvreg", "fastml_xgb_survival"))) {
           return(fit_candidate)
         }
         fit_candidate <- tryCatch(candidate$fit$fit, error = function(e) NULL)
-        if (inherits(fit_candidate, c("survreg", "coxph", "stpm2", "pstpm2", "fastml_xgb_survival"))) {
+        if (inherits(fit_candidate, c("survreg", "coxph", "stpm2", "pstpm2", "flexsurvreg", "fastml_xgb_survival"))) {
           return(fit_candidate)
         }
         fit_candidate <- tryCatch(candidate$fit, error = function(e) NULL)
-        if (inherits(fit_candidate, c("survreg", "coxph", "stpm2", "pstpm2", "fastml_xgb_survival"))) {
+        if (inherits(fit_candidate, c("survreg", "coxph", "stpm2", "pstpm2", "flexsurvreg", "fastml_xgb_survival"))) {
           return(fit_candidate)
         }
       }
