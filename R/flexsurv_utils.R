@@ -61,6 +61,32 @@ fastml_flexsurv_survival_matrix <- function(fit, newdata, times) {
     res
   }
 
+  coerce_to_dataframe <- function(x) {
+    if (is.null(x)) {
+      return(NULL)
+    }
+    if (is.data.frame(x)) {
+      return(x)
+    }
+    if (inherits(x, "tbl_df")) {
+      return(as.data.frame(x))
+    }
+    if (is.matrix(x)) {
+      return(as.data.frame(x))
+    }
+    if (is.list(x) && !is.null(x$time) && !is.null(x$survival)) {
+      df <- data.frame(time = x$time, survival = x$survival)
+      other_cols <- setdiff(names(x), c("time", "survival"))
+      for (nm in other_cols) {
+        if (is.atomic(x[[nm]]) && length(x[[nm]]) == nrow(df)) {
+          df[[nm]] <- x[[nm]]
+        }
+      }
+      return(df)
+    }
+    NULL
+  }
+
   extract_curves <- function(summary_list, times, n_obs) {
     if (inherits(summary_list, "data.frame")) {
       row_cols <- intersect(c(".row", "row", "obs", "case", "id", "ID", "index"),
@@ -93,7 +119,8 @@ fastml_flexsurv_survival_matrix <- function(fit, newdata, times) {
     }
 
     summary_list <- lapply(summary_list, function(df) {
-      if (is.data.frame(df)) {
+      df <- coerce_to_dataframe(df)
+      if (!is.null(df) && nrow(df) > 0) {
         drop_cols <- intersect(c(".row", "row", "obs", "case", "id", "ID", "index"), names(df))
         if (length(drop_cols) > 0) {
           df <- df[, setdiff(names(df), drop_cols), drop = FALSE]
@@ -111,6 +138,9 @@ fastml_flexsurv_survival_matrix <- function(fit, newdata, times) {
     max_iter <- min(length(summary_list), n_obs)
     for (i in seq_len(max_iter)) {
       df <- summary_list[[i]]
+      if (!is.null(df) && !is.data.frame(df)) {
+        df <- coerce_to_dataframe(df)
+      }
       if (is.null(df)) {
         next
       }
@@ -159,10 +189,11 @@ fastml_flexsurv_survival_matrix <- function(fit, newdata, times) {
       if (is.null(row_summary)) {
         next
       }
-      if (is.list(row_summary) && length(row_summary) >= 1) {
+      if (is.list(row_summary) && length(row_summary) >= 1 && !is.data.frame(row_summary)) {
         row_summary <- row_summary[[1]]
       }
-      if (!is.data.frame(row_summary)) {
+      row_summary <- coerce_to_dataframe(row_summary)
+      if (is.null(row_summary)) {
         next
       }
       time_col <- intersect(c("time", "t", ".eval_time"), names(row_summary))
