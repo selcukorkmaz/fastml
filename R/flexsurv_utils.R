@@ -76,9 +76,46 @@ fastml_flexsurv_survival_matrix <- function(fit, newdata, times) {
     return(NULL)
   }
 
+  # Newer versions of flexsurv (and tibbles returned by summary()) sometimes
+  # yield a single data frame with a ".row" (or similar) column instead of a
+  # list of data frames.  Split such outputs so each observation gets its own
+  # curve representation.
+  if (inherits(summary_list, "data.frame")) {
+    row_cols <- intersect(c(".row", "row", "obs", "case"), names(summary_list))
+    if (length(row_cols) > 0) {
+      split_col <- summary_list[[row_cols[1]]]
+      if (!is.null(split_col)) {
+        split_keys <- unique(split_col)
+        split_map <- split(summary_list, split_col)
+        split_names <- names(split_map)
+        summary_list <- lapply(split_keys, function(key) {
+          idx <- match(as.character(key), split_names)
+          map_name <- if (!is.na(idx)) split_names[idx] else split_names[1]
+          df <- split_map[[map_name]]
+          drop_cols <- intersect(row_cols, names(df))
+          if (length(drop_cols) > 0) {
+            df <- df[, setdiff(names(df), drop_cols), drop = FALSE]
+          }
+          df
+        })
+        summary_list <- unname(summary_list)
+      }
+    }
+  }
+
   if (!is.list(summary_list)) {
     summary_list <- list(summary_list)
   }
+
+  summary_list <- lapply(summary_list, function(df) {
+    if (is.data.frame(df)) {
+      drop_cols <- intersect(c(".row", "row", "obs", "case"), names(df))
+      if (length(drop_cols) > 0) {
+        df <- df[, setdiff(names(df), drop_cols), drop = FALSE]
+      }
+    }
+    df
+  })
 
   if (length(summary_list) == 1L && n_obs > 1L) {
     summary_list <- rep(summary_list, length.out = n_obs)
