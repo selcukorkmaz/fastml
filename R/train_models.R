@@ -380,7 +380,8 @@ train_models <- function(train_data,
         dist_arg <- tolower(dist_arg)
         dist_map <- c(
           weibull = "weibull",
-          loglogistic = "loglogistic",
+          loglogistic = "llogis",
+          llogis = "llogis",
           lognormal = "lognormal",
           exponential = "exp",
           exp = "exp"
@@ -388,6 +389,7 @@ train_models <- function(train_data,
         label_map <- c(
           weibull = "weibull",
           loglogistic = "loglogistic",
+          llogis = "loglogistic",
           lognormal = "lognormal",
           exponential = "exponential",
           exp = "exponential"
