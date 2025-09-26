@@ -11,6 +11,7 @@
   model_name = NULL,
   verbose = FALSE,
   postprocess_fn = NULL,
+  eval_time = NULL,
   ...
 )
 }
@@ -19,17 +20,24 @@
 
 \item{newdata}{A data frame or tibble containing new predictor data for which to generate predictions.}
 
-\item{type}{Type of prediction to return. One of `"auto"` (default), `"class"`, `"prob"`, or `"numeric"`.
-- `"auto"`: chooses `"class"` for classification and `"numeric"` for regression.
+\item{type}{Type of prediction to return. One of `"auto"` (default), `"class"`, `"prob"`, `"numeric"`,
+`"survival"`, or `"risk"`.
+- `"auto"`: chooses `"class"` for classification, `"numeric"` for regression, and `"survival"` for survival.
 - `"prob"`: returns class probabilities (only for classification).
 - `"class"`: returns predicted class labels.
-- `"numeric"`: returns predicted numeric values (for regression).}
+- `"numeric"`: returns predicted numeric values (for regression).
+- `"survival"`: returns survival probabilities at the supplied `eval_time` horizons (for survival tasks).
+- `"risk"`: returns risk scores on the linear predictor scale (for survival tasks).}
 
 \item{model_name}{(Optional) Name of a specific model to use when `object$best_model` contains multiple models.}
 
 \item{verbose}{Logical; if `TRUE`, prints progress messages showing which models are used during prediction.}
 
 \item{postprocess_fn}{(Optional) A function to apply to the final predictions (e.g., inverse transforms, thresholding).}
+
+\item{eval_time}{Optional numeric vector of time points (on the original time
+scale) at which to return survival probabilities when `type = "survival"`.
+Required for survival tasks when requesting survival curves.}
 
 \item{...}{Additional arguments (currently unused).}
 }
