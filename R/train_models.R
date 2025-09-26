@@ -434,9 +434,16 @@ train_models <- function(train_data,
         prep_dat <- get_prepped_data()
         baked_train <- prep_dat$data
         rec_prep <- prep_dat$recipe
-        breaks_val <- engine_args$breaks
-        if (!is.null(breaks_val)) {
+        breaks_val <- NULL
+        if ("breaks" %in% names(engine_args)) {
+          breaks_val <- engine_args$breaks
           engine_args$breaks <- NULL
+        }
+        if ("cuts" %in% names(engine_args) && is.null(breaks_val)) {
+          breaks_val <- engine_args$cuts
+          engine_args$cuts <- NULL
+        }
+        if (!is.null(breaks_val)) {
           breaks_val <- as.numeric(breaks_val)
           breaks_val <- breaks_val[is.finite(breaks_val) & breaks_val > 0]
           breaks_val <- sort(unique(breaks_val))
@@ -447,10 +454,10 @@ train_models <- function(train_data,
         base_args <- list(
           formula = as.formula(paste(response_col, "~ .")),
           data = baked_train,
-          dist = "exp"
+          dist = "pwexp"
         )
         if (!is.null(breaks_val)) {
-          base_args$breaks <- breaks_val
+          base_args$cuts <- breaks_val
         }
         fit <- call_with_engine_params(
           flexsurv::flexsurvreg,
@@ -458,7 +465,7 @@ train_models <- function(train_data,
           engine_args
         )
         extras <- list(
-          distribution = "exp",
+          distribution = "pwexp",
           distribution_label = "piecewise exponential",
           breaks = breaks_val
         )
