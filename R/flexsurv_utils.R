@@ -178,25 +178,65 @@ fastml_flexsurv_survival_matrix <- function(fit, newdata, times) {
     res
   }
 
-  summary_list <- tryCatch(
+  summary_tidy <- tryCatch(
     flexsurv::summary(
       fit,
       type = "survival",
       t = times,
       newdata = newdata,
-      ci = FALSE
+      ci = FALSE,
+      tidy = TRUE
     ),
     error = function(e) NULL
   )
 
-  if (!is.null(summary_list)) {
-    res <- extract_curves(summary_list, times, n_obs)
-    has_finite <- is.matrix(res) && any(rowSums(is.finite(res)) > 0)
-    if (!has_finite) {
+  convert_tidy_summary <- function(df, times, n_obs) {
+    if (!is.data.frame(df) || !(".row" %in% names(df))) {
+      return(NULL)
+    }
+    time_col <- intersect(c("time", "t", ".eval_time"), names(df))
+    surv_col <- intersect(c("est", "survival", "S", ".pred_survival", ".pred"), names(df))
+    if (length(time_col) == 0 || length(surv_col) == 0) {
+      return(NULL)
+    }
+    df$.row <- as.integer(df$.row)
+    df <- df[is.finite(df$.row) & df$.row >= 1, , drop = FALSE]
+    if (nrow(df) == 0) {
+      return(NULL)
+    }
+    res <- matrix(NA_real_, nrow = n_obs, ncol = length(times))
+    split_map <- split(df, df$.row)
+    max_iter <- min(length(split_map), n_obs)
+    for (i in seq_len(max_iter)) {
+      entry <- split_map[[i]]
+      res[i, ] <- align_curve(entry[[time_col[1]]], entry[[surv_col[1]]], times)
+    }
+    res
+  }
+
+  res <- convert_tidy_summary(summary_tidy, times, n_obs)
+
+  if (is.null(res) || !is.matrix(res)) {
+    summary_list <- tryCatch(
+      flexsurv::summary(
+        fit,
+        type = "survival",
+        t = times,
+        newdata = newdata,
+        ci = FALSE
+      ),
+      error = function(e) NULL
+    )
+
+    if (!is.null(summary_list)) {
+      res <- extract_curves(summary_list, times, n_obs)
+      has_finite <- is.matrix(res) && any(rowSums(is.finite(res)) > 0)
+      if (!has_finite) {
+        res <- compute_rowwise(newdata, times)
+      }
+    } else {
       res <- compute_rowwise(newdata, times)
     }
-  } else {
-    res <- compute_rowwise(newdata, times)
   }
 
   expected_dim <- c(n_obs, length(times))
@@ -216,6 +256,7 @@ fastml_flexsurv_survival_matrix <- function(fit, newdata, times) {
   }
 
   if (length(times) > 0) {
+    res[is.nan(res)] <- NA_real_
     res <- pmin(pmax(res, 0), 1)
   }
   res
