@@ -25,6 +25,7 @@
 #' @return A vector of predictions, or a named list of predictions (if multiple models are used).
 #'         If `postprocess_fn` is supplied, its output will be returned instead.
 #'
+#' @method predict fastml
 #' @importFrom stats predict
 #' @importFrom tibble is_tibble
 #' @export

@@ -42,6 +42,8 @@ utils::globalVariables(c("truth", "residual", "sensitivity", "specificity", "Fal
 #' @param ... Additional arguments.
 #' @return Prints summary of fastml models.
 #'
+#' @method summary fastml
+#'
 #' @importFrom dplyr filter select mutate bind_rows group_by summarise n starts_with distinct
 #' @importFrom magrittr %>%
 #' @importFrom reshape2 melt dcast
