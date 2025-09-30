@@ -2,9 +2,18 @@
 % Please edit documentation in R/xgboost_survival.R
 \name{predict_survival}
 \alias{predict_survival}
+\alias{predict_survival.fastml_native_survival}
+\alias{predict_survival.workflow}
+\alias{predict_survival.default}
 \title{Predict survival probabilities from a survival model}
 \usage{
 predict_survival(fit, newdata, times, ...)
+
+\method{predict_survival}{fastml_native_survival}(fit, newdata, times, ...)
+
+\method{predict_survival}{workflow}(fit, newdata, times, ...)
+
+\method{predict_survival}{default}(fit, newdata, times, ...)
 }
 \arguments{
 \item{fit}{A fitted survival model.}

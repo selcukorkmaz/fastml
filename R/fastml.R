@@ -60,7 +60,7 @@ utils::globalVariables(c("Fraction", "Performance"))
 #'   Default is \code{"error"}.
 #' @param impute_custom_function A function that takes a data.frame as input and returns an imputed data.frame. Used only if \code{impute_method = "custom"}.
 #' @param encode_categoricals Logical indicating whether to encode categorical variables. Default is \code{TRUE}.
-#' @param scaling_methods Vector of scaling methods to apply. Default is \code{c("center", "scale")}. 
+#' @param scaling_methods Vector of scaling methods to apply. Default is \code{c("center", "scale")}.
 #' @param balance_method Method to handle class imbalance. One of \code{"none"},
 #'   \code{"upsample"}, or \code{"downsample"}. Applied to the training set for
 #'   classification tasks. Default is \code{"none"}.
@@ -162,7 +162,7 @@ fastml <- function(data = NULL,
                    impute_custom_function = NULL,
                    encode_categoricals = TRUE,
                    scaling_methods = c("center", "scale"),
-                   balance_method = c("none", "upsample", "downsample"),
+                   balance_method = "none",
                    resamples = NULL,
                    summaryFunction = NULL,
                    use_default_tuning = FALSE,

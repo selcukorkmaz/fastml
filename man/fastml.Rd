@@ -28,7 +28,7 @@ fastml(
   impute_custom_function = NULL,
   encode_categoricals = TRUE,
   scaling_methods = c("center", "scale"),
-  balance_method = c("none", "upsample", "downsample"),
+  balance_method = "none",
   resamples = NULL,
   summaryFunction = NULL,
   use_default_tuning = FALSE,
