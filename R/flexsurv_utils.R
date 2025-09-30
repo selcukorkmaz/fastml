@@ -61,6 +61,78 @@ fastml_flexsurv_survival_matrix <- function(fit, newdata, times) {
     res
   }
 
+  convert_predict_survival <- function(pred_tbl, times, n_obs) {
+    if (is.null(pred_tbl)) {
+      return(NULL)
+    }
+
+    if (inherits(pred_tbl, "tbl_df")) {
+      pred_tbl <- as.data.frame(pred_tbl)
+    }
+
+    extract_frames <- function(tbl) {
+      if (is.null(tbl)) {
+        return(list())
+      }
+      if (".pred" %in% names(tbl)) {
+        res <- tbl[[".pred"]]
+        if (!is.list(res)) {
+          res <- list(res)
+        }
+        return(res)
+      }
+      split(tbl, seq_len(nrow(tbl)))
+    }
+
+    frames <- extract_frames(pred_tbl)
+    if (length(frames) == 0) {
+      return(NULL)
+    }
+
+    res <- matrix(NA_real_, nrow = length(frames), ncol = length(times))
+    for (i in seq_along(frames)) {
+      df <- frames[[i]]
+      if (is.null(df)) {
+        next
+      }
+      df <- coerce_to_dataframe(df)
+      if (is.null(df)) {
+        next
+      }
+      time_col <- intersect(c(".time", "time", "t", ".eval_time"), names(df))
+      surv_col <- intersect(c(".pred_survival", ".pred", "survival", "est", ".pred_surv"), names(df))
+      if (length(time_col) == 0 || length(surv_col) == 0) {
+        next
+      }
+      res[i, ] <- align_curve(df[[time_col[1]]], df[[surv_col[1]]], times)
+    }
+
+    if (nrow(res) == 1 && n_obs > 1) {
+      res <- res[rep(1, n_obs), , drop = FALSE]
+    }
+
+    if (nrow(res) != n_obs) {
+      if (length(frames) >= n_obs) {
+        res <- res[seq_len(n_obs), , drop = FALSE]
+      } else {
+        res <- rbind(res, matrix(NA_real_, nrow = max(0, n_obs - nrow(res)), ncol = length(times)))
+      }
+    }
+
+    if (nrow(res) != n_obs) {
+      res <- res[seq_len(min(nrow(res), n_obs)), , drop = FALSE]
+      if (nrow(res) < n_obs) {
+        res <- rbind(res, matrix(NA_real_, nrow = n_obs - nrow(res), ncol = length(times)))
+      }
+    }
+
+    if (nrow(res) == n_obs) {
+      res
+    } else {
+      NULL
+    }
+  }
+
   coerce_to_dataframe <- function(x) {
     if (is.null(x)) {
       return(NULL)
@@ -245,7 +317,26 @@ fastml_flexsurv_survival_matrix <- function(fit, newdata, times) {
     res
   }
 
-  res <- convert_tidy_summary(summary_tidy, times, n_obs)
+  predict_tbl <- NULL
+  if (length(times) > 0 && n_obs > 0) {
+    predict_tbl <- tryCatch(
+      flexsurv::predict(
+        fit,
+        newdata = newdata,
+        type = "survival",
+        times = times,
+        conf.int = FALSE,
+        se.fit = FALSE
+      ),
+      error = function(e) NULL
+    )
+  }
+
+  res <- convert_predict_survival(predict_tbl, times, n_obs)
+
+  if (is.null(res)) {
+    res <- convert_tidy_summary(summary_tidy, times, n_obs)
+  }
 
   if (is.null(res) || !is.matrix(res)) {
     summary_list <- tryCatch(
