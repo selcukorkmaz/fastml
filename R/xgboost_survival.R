@@ -422,6 +422,8 @@ predict_risk <- function(fit, newdata, ...) {
   UseMethod("predict_risk")
 }
 
+#' @rdname predict_risk
+#' @method predict_risk fastml_native_survival
 #' @export
 predict_risk.fastml_native_survival <- function(fit, newdata, ...) {
   if (missing(newdata)) {
@@ -544,6 +546,8 @@ predict_risk.fastml_native_survival <- function(fit, newdata, ...) {
   rep(NA_real_, nrow(predictors))
 }
 
+#' @rdname predict_risk
+#' @method predict_risk workflow
 #' @export
 predict_risk.workflow <- function(fit, newdata, ...) {
   if (missing(newdata)) {
@@ -570,6 +574,8 @@ predict_risk.workflow <- function(fit, newdata, ...) {
   as.numeric(pred_lp)
 }
 
+#' @rdname predict_risk
+#' @method predict_risk default
 #' @export
 predict_risk.default <- function(fit, newdata, ...) {
   stop("predict_risk() is not implemented for objects of class ", paste(class(fit), collapse = ", "), ".")
@@ -627,6 +633,8 @@ fastml_align_survival_output <- function(pred_obj, times, n) {
   stop("Unsupported survival prediction output structure.")
 }
 
+#' @rdname predict_survival
+#' @method predict_survival fastml_native_survival
 #' @export
 predict_survival.fastml_native_survival <- function(fit, newdata, times, ...) {
   if (missing(newdata)) {
@@ -699,6 +707,8 @@ predict_survival.fastml_native_survival <- function(fit, newdata, times, ...) {
   stop("Survival prediction not implemented for this native engine.")
 }
 
+#' @rdname predict_survival
+#' @method predict_survival workflow
 #' @export
 predict_survival.workflow <- function(fit, newdata, times, ...) {
   if (missing(newdata)) {
@@ -722,6 +732,8 @@ predict_survival.workflow <- function(fit, newdata, times, ...) {
   fastml_align_survival_output(pred, times, nrow(newdata))
 }
 
+#' @rdname predict_survival
+#' @method predict_survival default
 #' @export
 predict_survival.default <- function(fit, newdata, times, ...) {
   stop("predict_survival() is not implemented for objects of class ", paste(class(fit), collapse = ", "), ".")
