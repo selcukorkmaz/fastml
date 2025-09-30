@@ -361,6 +361,18 @@ fastml_flexsurv_survival_matrix <- function(fit, newdata, times) {
     }
   }
 
+  if (length(times) > 0 && is.matrix(res) &&
+      nrow(res) == n_obs && ncol(res) == length(times)) {
+    na_rows <- which(rowSums(is.finite(res)) == 0)
+    if (length(na_rows) > 0) {
+      fallback <- compute_rowwise(newdata, times)
+      if (is.matrix(fallback) && nrow(fallback) == n_obs &&
+          ncol(fallback) == length(times)) {
+        res[na_rows, ] <- fallback[na_rows, , drop = FALSE]
+      }
+    }
+  }
+
   expected_dim <- c(n_obs, length(times))
   if (!is.matrix(res)) {
     res <- matrix(as.numeric(res), nrow = expected_dim[1], ncol = expected_dim[2])
