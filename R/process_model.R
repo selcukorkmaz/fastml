@@ -29,7 +29,7 @@
 #' @param at_risk_threshold Numeric value between 0 and 1 defining the minimum
 #'   proportion of subjects required to remain at risk when determining the
 #'   maximum follow-up time used in survival metrics.
-#' 
+#'
 #' @return A list with two elements:
 #' \describe{
 #'   \item{performance}{A tibble with computed performance metrics.}
@@ -49,22 +49,38 @@
 #'
 #' @export
 
-process_model <- function(model_obj, model_id, task, test_data, label, event_class,
-                          engine, train_data, metric,
+process_model <- function(model_obj,
+                          model_id,
+                          task,
+                          test_data,
+                          label,
+                          event_class,
+                          start_col = NULL,
+                          time_col = NULL,
+                          status_col = NULL,
+                          engine,
+                          train_data,
+                          metric,
                           eval_times_user = NULL,
                           bootstrap_ci = TRUE,
                           bootstrap_samples = 500,
-                          bootstrap_seed = NULL,
+                          bootstrap_seed = 1234,
                           at_risk_threshold = 0.1) {
   # If the model object is a tuning result, finalize the workflow
   if (inherits(model_obj, "tune_results")) {
     best_params <- tryCatch({
       tune::select_best(model_obj, metric = metric)
     }, error = function(e) {
-      warning(paste("Could not select best parameters for model", model_id, ":", e$message))
+      warning(paste(
+        "Could not select best parameters for model",
+        model_id,
+        ":",
+        e$message
+      ))
       return(NULL)
     })
-    if (is.null(best_params)) return(NULL)
+    if (is.null(best_params))
+      return(NULL)
 
     model_spec <- workflows::pull_workflow_spec(model_obj)
     model_recipe <- workflows::pull_workflow_preprocessor(model_obj)
@@ -85,21 +101,23 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
 
   # Make predictions and compute performance metrics
   if (task == "classification") {
-
     pred_class <- predict(final_model, new_data = test_data, type = "class")$.pred_class
 
 
-    if (!is.null(engine) && !is.na(engine) && engine != "LiblineaR") {
+    if (!is.null(engine) &&
+        !is.na(engine) && engine != "LiblineaR") {
       pred_prob <- predict(final_model, new_data = test_data, type = "prob")
     }
 
 
 
-    if(nrow(test_data) != length(pred_class)) {
-      stop('The dataset has missing values. To handle this, set impute_method = "remove" to delete rows with missing values,
+    if (nrow(test_data) != length(pred_class)) {
+      stop(
+        'The dataset has missing values. To handle this, set impute_method = "remove" to delete rows with missing values,
              or use an imputation method such as "medianImpute" to fill missing values with the column median, "knnImpute" to
              estimate missing values using k-Nearest Neighbors, "bagImpute" to apply bagging for imputation, "mice" to use
-             Multiple Imputation by Chained Equations, or "missForest" to use random forests for imputation.')
+             Multiple Imputation by Chained Equations, or "missForest" to use random forests for imputation.'
+      )
     }
 
     data_metrics <- test_data %>%
@@ -113,11 +131,9 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         }
       }
 
-    if(all(grepl("^\\.pred_p", names(data_metrics)[3:4]))){
-
+    if (all(grepl("^\\.pred_p", names(data_metrics)[3:4]))) {
       pred_name = ".pred_p"
-    }else{
-
+    } else{
       pred_name = ".pred_"
     }
 
@@ -125,9 +141,9 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
 
     if (num_classes == 2) {
       # Determine the positive class based on event_class parameter
-      if(event_class == "first"){
+      if (event_class == "first") {
         positive_class <- levels(data_metrics$truth)[1]
-      } else if(event_class == "second"){
+      } else if (event_class == "second") {
         positive_class <- levels(data_metrics$truth)[2]
       } else {
         stop("Invalid event_class argument. It should be either 'first' or 'second'.")
@@ -142,30 +158,33 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         yardstick::precision,
         yardstick::f_meas
       )
-      perf_class <- metrics_class(data_metrics, truth = truth, estimate = estimate, event_level = event_class)
+      perf_class <- metrics_class(
+        data_metrics,
+        truth = truth,
+        estimate = estimate,
+        event_level = event_class
+      )
 
-      if (!is.null(engine) && !is.na(engine) && engine != "LiblineaR") {
+      if (!is.null(engine) &&
+          !is.na(engine) && engine != "LiblineaR") {
         # Compute ROC AUC using the probability column for the positive class
         roc_auc_value <- yardstick::roc_auc(
           data_metrics,
-          truth = truth,
-          !!rlang::sym(paste0(pred_name, positive_class)),
+          truth = truth,!!rlang::sym(paste0(pred_name, positive_class)),
           event_level = "second"
         )
-        if(roc_auc_value$.estimate < 0.50) {
+        if (roc_auc_value$.estimate < 0.50) {
           roc_auc_value <- yardstick::roc_auc(
             data_metrics,
-            truth = truth,
-            !!rlang::sym(paste0(pred_name, positive_class)),
+            truth = truth,!!rlang::sym(paste0(pred_name, positive_class)),
             event_level = "first"
           )
         }
         perf <- dplyr::bind_rows(perf_class, roc_auc_value)
-      }else{
-
+      } else{
         perf <- perf_class
       }
-    }else {
+    } else {
       # Multiclass classification (using macro averaging)
       metrics_class <- yardstick::metric_set(
         yardstick::accuracy,
@@ -182,12 +201,12 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         estimator = "macro"
       )
 
-      if (!is.null(engine) && !is.na(engine) && engine != "LiblineaR") {
+      if (!is.null(engine) &&
+          !is.na(engine) && engine != "LiblineaR") {
         prob_cols <- names(pred_prob)
         perf_roc_auc <- yardstick::roc_auc(
           data_metrics,
-          truth = truth,
-          !!!rlang::syms(prob_cols),
+          truth = truth,!!!rlang::syms(prob_cols),
           estimator = "macro_weighted"
         )
         perf <- dplyr::bind_rows(perf_class, perf_roc_auc)
@@ -200,20 +219,23 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
     normalize_status <- function(status_vec, reference_length) {
       res <- fastml_normalize_survival_status(status_vec, reference_length)
       if (res$recoded && !status_warning_emitted) {
-        warning("Detected non-standard survival status coding; recoding to 0 = censored and 1 = event.", call. = FALSE)
+        warning(
+          "Detected non-standard survival status coding; recoding to 0 = censored and 1 = event.",
+          call. = FALSE
+        )
         status_warning_emitted <<- TRUE
       }
       res$status
     }
-    if (length(label) == 3) {
-      start_col <- label[1]
-      time_col <- label[2]
-      status_col <- label[3]
-    } else {
-      start_col <- NULL
-      time_col <- label[1]
-      status_col <- label[2]
-    }
+    # if (length(label) == 3) {
+    #   start_col <- label[1]
+    #   time_col <- label[2]
+    #   status_col <- label[3]
+    # } else {
+    #   start_col <- NULL
+    #   time_col <- label[1]
+    #   status_col <- label[2]
+    # }
     test_status_clean <- normalize_status(test_data[[status_col]], nrow(test_data))
     train_status_clean <- normalize_status(train_data[[status_col]], nrow(train_data))
     test_data[[status_col]] <- test_status_clean
@@ -229,41 +251,49 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
     if (inherits(final_model, "fastml_native_survival")) {
       pred_new_data <- tryCatch(
         recipes::bake(final_model$recipe, new_data = test_data),
-        error = function(e) test_data
+        error = function(e)
+          test_data
       )
     }
 
     pred_predictors <- NULL
     if (inherits(final_model, "fastml_native_survival")) {
-      pred_predictors <- fastml_prepare_native_survival_predictors(
-        final_model,
-        pred_new_data,
-        test_data
-      )
+      pred_predictors <- fastml_prepare_native_survival_predictors(final_model, pred_new_data, test_data)
     }
 
     identify_survival_model <- function(obj) {
       fit_obj <- NULL
       if (inherits(obj, "fastml_native_survival")) {
-        fit_obj <- tryCatch(obj$fit, error = function(e) NULL)
+        fit_obj <- tryCatch(
+          obj$fit,
+          error = function(e)
+            NULL
+        )
       }
       if (is.null(fit_obj)) {
         fit_obj <- tryCatch({
           workflows::extract_fit_engine(obj)
-        }, error = function(e) NULL)
+        }, error = function(e)
+          NULL)
       }
       if (is.null(fit_obj)) {
         fit_obj <- tryCatch({
           workflows::extract_fit_parsnip(obj)$fit
-        }, error = function(e) NULL)
+        }, error = function(e)
+          NULL)
       }
       if (is.null(fit_obj)) {
         fit_obj <- tryCatch({
           parsnip::extract_fit_engine(obj)
-        }, error = function(e) NULL)
+        }, error = function(e)
+          NULL)
       }
       if (is.null(fit_obj)) {
-        fit_obj <- tryCatch(obj$fit, error = function(e) NULL)
+        fit_obj <- tryCatch(
+          obj$fit,
+          error = function(e)
+            NULL
+        )
       }
 
       model_type <- "other"
@@ -278,7 +308,11 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       } else if (inherits(fit_obj, "glmnet")) {
         model_type <- "glmnet"
       } else if (inherits(fit_obj, "fastml_xgb_survival")) {
-        objective <- tryCatch(fit_obj$objective, error = function(e) NULL)
+        objective <- tryCatch(
+          fit_obj$objective,
+          error = function(e)
+            NULL
+        )
         if (identical(objective, "survival:aft")) {
           model_type <- "xgboost_aft"
         } else if (identical(objective, "survival:cox")) {
@@ -296,7 +330,8 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
 
     default_time_val <- NA_real_
     time_candidates <- list()
-    if (!is.null(final_model$time_col) && final_model$time_col %in% names(train_data)) {
+    if (!is.null(final_model$time_col) &&
+        final_model$time_col %in% names(train_data)) {
       time_candidates[[length(time_candidates) + 1]] <- train_data[[final_model$time_col]]
     }
     if (time_col %in% names(train_data)) {
@@ -309,7 +344,8 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       med_vals <- vapply(time_candidates, function(x) {
         stats::median(as.numeric(x), na.rm = TRUE)
       }, numeric(1))
-      default_time_val <- med_vals[is.finite(med_vals) & med_vals > 0]
+      default_time_val <- med_vals[is.finite(med_vals) &
+                                     med_vals > 0]
       if (length(default_time_val) > 0) {
         default_time_val <- default_time_val[1]
       } else {
@@ -342,14 +378,21 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       # numeric of length 1 when a single eval_time is provided.
       if (is.list(pred)) {
         pred <- vapply(pred, function(x) {
-          if (is.null(x)) return(NA_real_)
+          if (is.null(x))
+            return(NA_real_)
           # If it's a scalar numeric, take it; otherwise try first element
-          if (is.numeric(x) && length(x) == 1L) return(as.numeric(x))
-          if (is.atomic(x) && length(x) >= 1L) return(as.numeric(x[[1L]]))
+          if (is.numeric(x) &&
+              length(x) == 1L)
+            return(as.numeric(x))
+          if (is.atomic(x) &&
+              length(x) >= 1L)
+            return(as.numeric(x[[1L]]))
           # If it's a list wrapping a scalar, try to dig one level
           if (is.list(x) && length(x) >= 1L) {
             x1 <- x[[1L]]
-            if (is.numeric(x1) && length(x1) >= 1L) return(as.numeric(x1[[1L]]))
+            if (is.numeric(x1) &&
+                length(x1) >= 1L)
+              return(as.numeric(x1[[1L]]))
           }
           NA_real_
         }, numeric(1))
@@ -400,17 +443,29 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       }
       if (is.matrix(surv_vals)) {
         n_curves <- ncol(surv_vals)
-        res <- matrix(NA_real_, nrow = n_curves, ncol = length(eval_times))
+        res <- matrix(NA_real_,
+                      nrow = n_curves,
+                      ncol = length(eval_times))
         for (j in seq_len(n_curves)) {
           res[j, ] <- align_survival_curve(surv_times, surv_vals[, j], eval_times)
         }
         if (n_curves != n_obs) {
           if (n_curves == 1 && n_obs > 1) {
-            res <- matrix(res[1, ], nrow = n_obs, ncol = length(eval_times), byrow = TRUE)
+            res <- matrix(
+              res[1, ],
+              nrow = n_obs,
+              ncol = length(eval_times),
+              byrow = TRUE
+            )
           } else {
             res <- res[seq_len(min(n_curves, n_obs)), , drop = FALSE]
             if (n_curves < n_obs) {
-              res <- rbind(res, matrix(NA_real_, nrow = n_obs - n_curves, ncol = length(eval_times)))
+              res <- rbind(res,
+                           matrix(
+                             NA_real_,
+                             nrow = n_obs - n_curves,
+                             ncol = length(eval_times)
+                           ))
             }
           }
         }
@@ -418,7 +473,11 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       }
       if (is.numeric(surv_vals)) {
         curve <- align_survival_curve(surv_times, surv_vals, eval_times)
-        return(matrix(rep(curve, each = n_obs), nrow = n_obs, ncol = length(eval_times)))
+        return(matrix(
+          rep(curve, each = n_obs),
+          nrow = n_obs,
+          ncol = length(eval_times)
+        ))
       }
       NULL
     }
@@ -442,13 +501,18 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
           na.action = stats::na.pass,
           xlev = fit_obj$xlevels
         )
-      }, error = function(e) NULL)
+      }, error = function(e)
+        NULL)
 
       if (is.null(model_frame) || nrow(model_frame) == 0) {
         return(NULL)
       }
 
-      offset_vals <- tryCatch(stats::model.offset(model_frame), error = function(e) NULL)
+      offset_vals <- tryCatch(
+        stats::model.offset(model_frame),
+        error = function(e)
+          NULL
+      )
       if (length(offset_vals) == 0 || all(is.na(offset_vals))) {
         offset_vals <- rep(0, nrow(model_frame))
       } else {
@@ -458,7 +522,8 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
 
       model_matrix <- tryCatch({
         stats::model.matrix(fit_obj, model_frame)
-      }, error = function(e) NULL)
+      }, error = function(e)
+        NULL)
 
       if (is.null(model_matrix)) {
         return(NULL)
@@ -506,7 +571,8 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
             strata_index <- as.integer(factor(strata_vals))
             strata_index[!is.finite(strata_index)] <- 1L
             if (length(scale_lookup) < max(strata_index, na.rm = TRUE)) {
-              scale_lookup <- rep(scale_lookup, length.out = max(strata_index, na.rm = TRUE))
+              scale_lookup <- rep(scale_lookup,
+                                  length.out = max(strata_index, na.rm = TRUE))
             }
           }
           scale_vec <- scale_lookup[strata_index]
@@ -541,12 +607,21 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       n_obs <- length(lp)
 
       if (n_obs == 0) {
-        return(matrix(numeric(0), nrow = 0, ncol = length(eval_times)))
+        return(matrix(
+          numeric(0),
+          nrow = 0,
+          ncol = length(eval_times)
+        ))
       }
 
-      finite_scale <- scale_vec[is.finite(scale_vec) & scale_vec > 0]
-      fallback_scale <- if (length(finite_scale) > 0) stats::median(finite_scale) else 1
-      if (length(scale_vec) != n_obs || any(!is.finite(scale_vec) | scale_vec <= 0)) {
+      finite_scale <- scale_vec[is.finite(scale_vec) &
+                                  scale_vec > 0]
+      fallback_scale <- if (length(finite_scale) > 0)
+        stats::median(finite_scale)
+      else
+        1
+      if (length(scale_vec) != n_obs ||
+          any(!is.finite(scale_vec) | scale_vec <= 0)) {
         scale_vec <- rep(fallback_scale, n_obs)
       }
 
@@ -573,11 +648,23 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         q_vec <- rep(t_val, n_obs)
         surv_vals <- tryCatch({
           if (is.null(parms)) {
-            survival::psurvreg(q_vec, mean = lp, scale = scale_vec, distribution = dist_name)
+            survival::psurvreg(
+              q_vec,
+              mean = lp,
+              scale = scale_vec,
+              distribution = dist_name
+            )
           } else {
-            survival::psurvreg(q_vec, mean = lp, scale = scale_vec, distribution = dist_name, parms = parms)
+            survival::psurvreg(
+              q_vec,
+              mean = lp,
+              scale = scale_vec,
+              distribution = dist_name,
+              parms = parms
+            )
           }
-        }, error = function(e) rep(NA_real_, n_obs))
+        }, error = function(e)
+          rep(NA_real_, n_obs))
 
         surv_vals <- 1 - surv_vals
         surv_vals[!is.finite(surv_vals)] <- NA_real_
@@ -593,16 +680,23 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       }
 
       if (is.matrix(pred_obj)) {
-        if (nrow(pred_obj) == n_obs && ncol(pred_obj) == length(eval_times)) {
+        if (nrow(pred_obj) == n_obs &&
+            ncol(pred_obj) == length(eval_times)) {
           return(as.matrix(pred_obj))
         }
-        if (ncol(pred_obj) == n_obs && nrow(pred_obj) == length(eval_times)) {
+        if (ncol(pred_obj) == n_obs &&
+            nrow(pred_obj) == length(eval_times)) {
           return(t(pred_obj))
         }
       }
 
-      if (is.numeric(pred_obj) && length(pred_obj) == n_obs * length(eval_times)) {
-        return(matrix(pred_obj, nrow = n_obs, ncol = length(eval_times)))
+      if (is.numeric(pred_obj) &&
+          length(pred_obj) == n_obs * length(eval_times)) {
+        return(matrix(
+          pred_obj,
+          nrow = n_obs,
+          ncol = length(eval_times)
+        ))
       }
 
       extract_list <- NULL
@@ -623,10 +717,16 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       }
 
       if (!is.list(extract_list)) {
-        if (is.numeric(extract_list) && length(extract_list) == n_obs * length(eval_times)) {
-          return(matrix(extract_list, nrow = n_obs, ncol = length(eval_times)))
+        if (is.numeric(extract_list) &&
+            length(extract_list) == n_obs * length(eval_times)) {
+          return(matrix(
+            extract_list,
+            nrow = n_obs,
+            ncol = length(eval_times)
+          ))
         }
-        if (is.numeric(extract_list) && length(extract_list) == n_obs) {
+        if (is.numeric(extract_list) &&
+            length(extract_list) == n_obs) {
           return(matrix(extract_list, nrow = n_obs, ncol = 1))
         }
         return(NULL)
@@ -636,10 +736,12 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       max_iter <- min(length(extract_list), n_obs)
       for (i in seq_len(max_iter)) {
         entry <- extract_list[[i]]
-        if (is.null(entry)) next
+        if (is.null(entry))
+          next
         if (is.data.frame(entry)) {
           time_col <- intersect(c(".eval_time", ".time", "time"), names(entry))
-          surv_col <- intersect(c(".survival", "survival", ".pred_survival"), names(entry))
+          surv_col <- intersect(c(".survival", "survival", ".pred_survival"),
+                                names(entry))
           if (length(time_col) > 0 && length(surv_col) > 0) {
             res[i, ] <- align_survival_curve(entry[[time_col[1]]], entry[[surv_col[1]]], eval_times)
             next
@@ -672,7 +774,8 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
           inner <- entry[[1]]
           if (is.data.frame(inner)) {
             time_col <- intersect(c(".eval_time", ".time", "time"), names(inner))
-            surv_col <- intersect(c(".survival", "survival", ".pred_survival"), names(inner))
+            surv_col <- intersect(c(".survival", "survival", ".pred_survival"),
+                                  names(inner))
             if (length(time_col) > 0 && length(surv_col) > 0) {
               res[i, ] <- align_survival_curve(inner[[time_col[1]]], inner[[surv_col[1]]], eval_times)
               next
@@ -689,10 +792,17 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       res
     }
 
-    compute_ibrier <- function(eval_times, surv_mat, time_vec, status_vec, tau, censor_eval_fn) {
+    compute_ibrier <- function(eval_times,
+                               surv_mat,
+                               time_vec,
+                               status_vec,
+                               tau,
+                               censor_eval_fn) {
       n <- length(time_vec)
       m <- length(eval_times)
-      if (n == 0 || m == 0 || is.null(surv_mat) || nrow(surv_mat) != n || ncol(surv_mat) != m) {
+      if (n == 0 ||
+          m == 0 ||
+          is.null(surv_mat) || nrow(surv_mat) != n || ncol(surv_mat) != m) {
         return(list(ibs = NA_real_, curve = rep(NA_real_, m)))
       }
 
@@ -714,7 +824,8 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
 
       time_minus <- pmax(time_vec - 1e-08, 0)
       G_time_minus <- censor_eval_fn(time_minus)
-      G_time_minus[!is.finite(G_time_minus) | G_time_minus <= 0] <- NA_real_
+      G_time_minus[!is.finite(G_time_minus) |
+                     G_time_minus <= 0] <- NA_real_
 
       weights <- matrix(NA_real_, nrow = n, ncol = m)
       for (j in seq_len(m)) {
@@ -766,7 +877,8 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         bs_t[eval_times > tau] <- NA_real_
       }
 
-      valid_bs <- which(is.finite(bs_t) & is.finite(eval_times) & eval_times <= tau + 1e-08)
+      valid_bs <- which(is.finite(bs_t) &
+                          is.finite(eval_times) & eval_times <= tau + 1e-08)
       if (length(valid_bs) >= 2) {
         times_valid <- eval_times[valid_bs]
         bs_valid <- bs_t[valid_bs]
@@ -774,7 +886,10 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         bs_aug <- c(0, bs_valid)
         area <- sum(diff(times_aug) * (head(bs_aug, -1) + tail(bs_aug, -1)) / 2)
         tau <- max(times_valid)
-        ibs <- if (tau > 0) area / tau else NA_real_
+        ibs <- if (tau > 0)
+          area / tau
+        else
+          NA_real_
       } else if (length(valid_bs) == 1) {
         ibs <- bs_t[valid_bs]
       } else {
@@ -791,9 +906,17 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
           pred_predictors <- data.frame()
         }
         if (inherits(final_model$fit, "coxph")) {
-          as.numeric(stats::predict(final_model$fit, newdata = pred_predictors, type = "lp"))
+          as.numeric(stats::predict(
+            final_model$fit,
+            newdata = pred_predictors,
+            type = "lp"
+          ))
         } else if (inherits(final_model$fit, "survreg")) {
-          as.numeric(stats::predict(final_model$fit, newdata = pred_predictors, type = "lp"))
+          as.numeric(stats::predict(
+            final_model$fit,
+            newdata = pred_predictors,
+            type = "lp"
+          ))
         } else if (inherits(final_model$fit, "flexsurvreg")) {
           rep(NA_real_, nrow(test_data))
         } else if (inherits(final_model$fit, "glmnet")) {
@@ -803,9 +926,13 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
             feature_names <- final_model$feature_names
             x_terms <- final_model$x_terms
             x_contrasts <- final_model$x_contrasts
-            n_obs <- if (is.null(pred_predictors)) 0L else nrow(pred_predictors)
+            n_obs <- if (is.null(pred_predictors))
+              0L
+            else
+              nrow(pred_predictors)
 
-            if (is.null(feature_names) || length(feature_names) == 0) {
+            if (is.null(feature_names) ||
+                length(feature_names) == 0) {
               rep(NA_real_, nrow(test_data))
             } else if (n_obs == 0) {
               numeric(0)
@@ -816,7 +943,9 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
                 }
                 n_local <- nrow(new_data)
                 if (n_local == 0) {
-                  out <- matrix(0, nrow = 0, ncol = length(feature_names))
+                  out <- matrix(0,
+                                nrow = 0,
+                                ncol = length(feature_names))
                   colnames(out) <- feature_names
                   return(out)
                 }
@@ -827,11 +956,16 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
                     if (!is.null(x_terms)) {
                       stats::model.matrix(x_terms, new_data, contrasts.arg = x_contrasts)
                     } else {
-                      stats::model.matrix(~ . - 1, data = new_data)
+                      stats::model.matrix( ~ . - 1, data = new_data)
                     }
-                  }, error = function(e) NULL)
+                  }, error = function(e)
+                    NULL)
                   if (is.null(mm)) {
-                    mm <- tryCatch(stats::model.matrix(~ . - 1, data = new_data), error = function(e) NULL)
+                    mm <- tryCatch(
+                      stats::model.matrix( ~ . - 1, data = new_data),
+                      error = function(e)
+                        NULL
+                    )
                   }
                   if (is.null(mm)) {
                     mm <- matrix(0, nrow = n_local, ncol = 0)
@@ -839,12 +973,15 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
                 }
                 mm <- as.matrix(mm)
                 mm_colnames <- colnames(mm)
-                if (!is.null(mm_colnames) && any(mm_colnames == "(Intercept)")) {
+                if (!is.null(mm_colnames) &&
+                    any(mm_colnames == "(Intercept)")) {
                   keep_cols <- mm_colnames != "(Intercept)"
                   mm <- mm[, keep_cols, drop = FALSE]
                   mm_colnames <- colnames(mm)
                 }
-                mm_full <- matrix(0, nrow = n_local, ncol = length(feature_names))
+                mm_full <- matrix(0,
+                                  nrow = n_local,
+                                  ncol = length(feature_names))
                 colnames(mm_full) <- feature_names
                 if (ncol(mm) > 0) {
                   overlap <- intersect(feature_names, mm_colnames)
@@ -860,9 +997,14 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
               n_obs <- nrow(mm_full)
               penalty <- final_model$penalty
               pred_lp <- tryCatch({
-                glmnet::predict(final_model$fit, newx = mm_full,
-                                 s = penalty, type = "link")
-              }, error = function(e) NULL)
+                glmnet::predict(
+                  final_model$fit,
+                  newx = mm_full,
+                  s = penalty,
+                  type = "link"
+                )
+              }, error = function(e)
+                NULL)
               if (!is.null(pred_lp) && length(dim(pred_lp)) >= 2) {
                 pred_lp <- as.matrix(pred_lp)[, 1, drop = TRUE]
               }
@@ -870,12 +1012,14 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
                 pred_lp <- as.numeric(pred_lp)
               }
 
-              needs_manual_lp <- is.null(pred_lp) || length(pred_lp) == 0 || any(!is.finite(pred_lp))
+              needs_manual_lp <- is.null(pred_lp) ||
+                length(pred_lp) == 0 || any(!is.finite(pred_lp))
 
               if (needs_manual_lp) {
                 coef_mat <- tryCatch({
                   glmnet::coef(final_model$fit, s = penalty)
-                }, error = function(e) NULL)
+                }, error = function(e)
+                  NULL)
 
                 if (!is.null(coef_mat)) {
                   coef_dense <- as.matrix(coef_mat)
@@ -922,7 +1066,8 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
             }
             time_var <- final_model$time_col
             if (!is.null(time_var)) {
-              if (!(time_var %in% names(rp_newdata)) && time_var %in% names(test_data)) {
+              if (!(time_var %in% names(rp_newdata)) &&
+                  time_var %in% names(test_data)) {
                 rp_newdata[[time_var]] <- test_data[[time_var]]
               }
               if (!(time_var %in% names(rp_newdata))) {
@@ -931,11 +1076,16 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
                 rp_newdata[[time_var]][!is.finite(rp_newdata[[time_var]])] <- default_time_val
               }
             }
-            if (!is.null(final_model$start_col) && !(final_model$start_col %in% names(rp_newdata)) &&
+            if (!is.null(final_model$start_col) &&
+                !(final_model$start_col %in% names(rp_newdata)) &&
                 final_model$start_col %in% names(test_data)) {
               rp_newdata[[final_model$start_col]] <- test_data[[final_model$start_col]]
             }
-            as.numeric(rstpm2::predict(final_model$fit, newdata = rp_newdata, type = "lp"))
+            as.numeric(rstpm2::predict(
+              final_model$fit,
+              newdata = rp_newdata,
+              type = "lp"
+            ))
           }
         } else {
           rep(NA_real_, nrow(test_data))
@@ -945,13 +1095,15 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         if (identical(survival_model_type, "rstpm2")) {
           pred_vals <- tryCatch(
             predict(final_model, new_data = test_data, type = "lp"),
-            error = function(e) NULL
+            error = function(e)
+              NULL
           )
         }
         if (is.null(pred_vals)) {
           pred_vals <- tryCatch(
             predict(final_model, new_data = test_data, type = "linear_pred"),
-            error = function(e) NULL
+            error = function(e)
+              NULL
           )
         }
         extract_pred(pred_vals)
@@ -1013,17 +1165,21 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       status_vec <- ifelse(is.na(status_vec), 0, ifelse(status_vec > 0, 1, 0))
       valid_idx <- which(is.finite(time_vec) & time_vec >= 0)
       if (length(valid_idx) == 0) {
-        return(function(times) rep(NA_real_, length(times)))
+        return(function(times)
+          rep(NA_real_, length(times)))
       }
       censor_indicator <- 1 - status_vec[valid_idx]
       fit <- tryCatch({
         survival::survfit(survival::Surv(time_vec[valid_idx], censor_indicator) ~ 1)
-      }, error = function(e) NULL)
+      }, error = function(e)
+        NULL)
       if (is.null(fit)) {
-        return(function(times) rep(NA_real_, length(times)))
+        return(function(times)
+          rep(NA_real_, length(times)))
       }
       function(times) {
-        if (length(times) == 0) return(numeric(0))
+        if (length(times) == 0)
+          return(numeric(0))
         if (length(fit$time) == 0 || length(fit$surv) == 0) {
           return(rep(1, length(times)))
         }
@@ -1047,8 +1203,13 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       group
     }
 
-    compute_uno_c_index <- function(train_time, train_status, test_time, test_status,
-                                    risk_vec, tau, censor_eval_fn) {
+    compute_uno_c_index <- function(train_time,
+                                    train_status,
+                                    test_time,
+                                    test_status,
+                                    risk_vec,
+                                    tau,
+                                    censor_eval_fn) {
       if (!is.function(censor_eval_fn)) {
         return(NA_real_)
       }
@@ -1067,7 +1228,8 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         return(NA_real_)
       }
       G_vec[!is.finite(G_vec) | G_vec <= 0] <- NA_real_
-      event_idx <- which(status_val == 1 & is.finite(G_vec) & time_val <= tau)
+      event_idx <- which(status_val == 1 &
+                           is.finite(G_vec) & time_val <= tau)
       if (length(event_idx) == 0) {
         return(NA_real_)
       }
@@ -1075,10 +1237,13 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       denominator <- 0
       for (ii in event_idx) {
         w_i <- 1 / (G_vec[ii]^2)
-        if (!is.finite(w_i) || w_i <= 0) next
-        later <- which(time_val > time_val[ii] & time_val <= tau & is.finite(G_vec))
+        if (!is.finite(w_i) || w_i <= 0)
+          next
+        later <- which(time_val > time_val[ii] &
+                         time_val <= tau & is.finite(G_vec))
         later <- later[G_vec[later] > 0]
-        if (length(later) == 0) next
+        if (length(later) == 0)
+          next
         denominator <- denominator + w_i * length(later)
         diff_scores <- risk_val[ii] - risk_val[later]
         concordant <- sum(diff_scores > 0) + 0.5 * sum(diff_scores == 0)
@@ -1123,7 +1288,8 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         ord <- order(curve_times)
         curve_times <- curve_times[ord]
         curve_surv <- curve_surv[ord]
-        keep <- is.finite(curve_times) & curve_times >= 0 & is.finite(curve_surv)
+        keep <- is.finite(curve_times) &
+          curve_times >= 0 & is.finite(curve_surv)
         curve_times <- curve_times[keep]
         curve_surv <- curve_surv[keep]
         if (length(curve_times) == 0) {
@@ -1142,25 +1308,39 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         }
         curve_surv <- pmin(pmax(curve_surv, 0), 1)
         curve_surv <- cummin(curve_surv)
-        fn <- stats::approxfun(curve_times, curve_surv, method = "linear",
-                               yleft = 1, yright = tail(curve_surv, 1))
-        rmst_val <- tryCatch(stats::integrate(fn, lower = 0, upper = tau)$value,
-                             error = function(e) NA_real_)
+        fn <- stats::approxfun(
+          curve_times,
+          curve_surv,
+          method = "linear",
+          yleft = 1,
+          yright = tail(curve_surv, 1)
+        )
+        rmst_val <- tryCatch(
+          stats::integrate(fn, lower = 0, upper = tau)$value,
+          error = function(e)
+            NA_real_
+        )
         rmst_val
       }
 
-      if ((identical(model_type, "rstpm2") || identical(model_type, "flexsurv")) && !is.null(surv_mat) &&
-          !is.null(eval_times_full) && length(eval_times_full) > 0 &&
+      if ((identical(model_type, "rstpm2") ||
+           identical(model_type, "flexsurv")) && !is.null(surv_mat) &&
+          !is.null(eval_times_full) &&
+          length(eval_times_full) > 0 &&
           is.matrix(surv_mat)) {
-
         surv_mat_use <- surv_mat
         if (nrow(surv_mat_use) == length(time_vec)) {
           surv_mat_use <- surv_mat_use[valid, , drop = FALSE]
         } else if (nrow(surv_mat_use) != length(valid)) {
-          surv_mat_use <- tryCatch(surv_mat_use[valid, , drop = FALSE], error = function(e) NULL)
+          surv_mat_use <- tryCatch(
+            surv_mat_use[valid, , drop = FALSE],
+            error = function(e)
+              NULL
+          )
         }
 
-        if (!is.null(surv_mat_use) && nrow(surv_mat_use) == length(valid)) {
+        if (!is.null(surv_mat_use) &&
+            nrow(surv_mat_use) == length(valid)) {
           eval_times_full <- as.numeric(eval_times_full)
           prepare_group_curve <- function(group_label) {
             idx <- which(group_val == group_label)
@@ -1218,7 +1398,9 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
             } else {
               surv_unique[1] <- 1
             }
-            list(times = unique_times, surv = surv_unique, size = length(idx))
+            list(times = unique_times,
+                 surv = surv_unique,
+                 size = length(idx))
           }
 
           build_pseudo_data <- function(curve_info, arm_label) {
@@ -1241,7 +1423,8 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
             interval_surv_prev <- head(surv_vec, -1)
             interval_surv_next <- tail(surv_vec, -1)
             interval_times <- tail(times_vec, -1)
-            expected_counts <- pmax(0, (interval_surv_prev - interval_surv_next) * total_n)
+            expected_counts <- pmax(0,
+                                    (interval_surv_prev - interval_surv_next) * total_n)
             base_counts <- floor(expected_counts + 1e-08)
             base_counts <- pmin(base_counts, total_n)
             remainder <- expected_counts - base_counts
@@ -1282,13 +1465,18 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
                     arm = pseudo_df$arm,
                     tau = tau
                   ),
-                  error = function(e) NULL
+                  error = function(e)
+                    NULL
                 )
-                if (!is.null(rmst_obj) && !is.null(rmst_obj$unadjusted.result)) {
+                if (!is.null(rmst_obj) &&
+                    !is.null(rmst_obj$unadjusted.result)) {
                   diff_row <- rmst_obj$unadjusted.result
                   if (is.matrix(diff_row)) {
-                    rmst_row <- diff_row[grepl("RMST (arm=1)-(arm=0)", rownames(diff_row), fixed = TRUE), , drop = FALSE]
-                    if (nrow(rmst_row) >= 1 && "Est." %in% colnames(rmst_row)) {
+                    rmst_row <- diff_row[grepl("RMST (arm=1)-(arm=0)",
+                                               rownames(diff_row),
+                                               fixed = TRUE), , drop = FALSE]
+                    if (nrow(rmst_row) >= 1 &&
+                        "Est." %in% colnames(rmst_row)) {
                       diff_val <- rmst_row[1, "Est."]
                       if (is.finite(diff_val)) {
                         return(as.numeric(diff_val))
@@ -1311,7 +1499,8 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       rmst_group <- function(times, status) {
         fit <- tryCatch({
           survival::survfit(survival::Surv(times, status) ~ 1)
-        }, error = function(e) NULL)
+        }, error = function(e)
+          NULL)
         if (is.null(fit)) {
           return(NA_real_)
         }
@@ -1341,7 +1530,9 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       rmst_low - rmst_high
     }
 
-    get_surv_info <- function(surv_matrix_vals, default_time, default_status) {
+    get_surv_info <- function(surv_matrix_vals,
+                              default_time,
+                              default_status) {
       time_out <- default_time
       status_out <- default_status
       if (!is.null(surv_matrix_vals)) {
@@ -1365,9 +1556,11 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         return(rep(NA_real_, length(horizons)))
       }
       sapply(horizons, function(h) {
-        if (!is.finite(h)) return(NA_real_)
+        if (!is.finite(h))
+          return(NA_real_)
         idx <- which.min(abs(eval_times - h))
-        if (length(idx) == 0) return(NA_real_)
+        if (length(idx) == 0)
+          return(NA_real_)
         if (abs(eval_times[idx] - h) > max(1e-08, 1e-06 * max(1, abs(h)))) {
           return(NA_real_)
         }
@@ -1380,19 +1573,31 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       x
     }
 
-    train_surv_matrix <- tryCatch(as.matrix(train_data$surv_obj), error = function(e) NULL)
+    train_surv_matrix <- tryCatch(
+      as.matrix(train_data$surv_obj),
+      error = function(e)
+        NULL
+    )
     train_times_raw <- as.numeric(train_data[[time_col]])
     train_status_default <- normalize_status(train_data[[status_col]], length(train_times_raw))
     train_info <- get_surv_info(train_surv_matrix, train_times_raw, train_status_default)
     train_times <- train_info$time
-    train_status_event <- ifelse(is.na(train_info$status), 0, ifelse(train_info$status > 0, 1, 0))
+    train_status_event <- ifelse(is.na(train_info$status),
+                                 0,
+                                 ifelse(train_info$status > 0, 1, 0))
 
-    test_surv_matrix <- tryCatch(as.matrix(surv_obj), error = function(e) NULL)
+    test_surv_matrix <- tryCatch(
+      as.matrix(surv_obj),
+      error = function(e)
+        NULL
+    )
     test_times_raw <- as.numeric(test_data[[time_col]])
     test_status_default <- normalize_status(test_data[[status_col]], length(test_times_raw))
     test_info <- get_surv_info(test_surv_matrix, test_times_raw, test_status_default)
     obs_time <- test_info$time
-    status_event <- ifelse(is.na(test_info$status), 0, ifelse(test_info$status > 0, 1, 0))
+    status_event <- ifelse(is.na(test_info$status),
+                           0,
+                           ifelse(test_info$status > 0, 1, 0))
 
     t0 <- stats::median(train_times, na.rm = TRUE)
     threshold <- min(max(at_risk_threshold, 0.01), 0.5)
@@ -1406,47 +1611,72 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
 
     digits_round <- determine_round_digits(obs_time)
     if (is.null(eval_times_user)) {
-      eval_horizons <- unique(round(c(stats::median(obs_time, na.rm = TRUE),
-                                      as.numeric(stats::quantile(obs_time, 0.75, na.rm = TRUE, names = FALSE))),
-                                     digits_round))
-      eval_horizons <- eval_horizons[is.finite(eval_horizons) & eval_horizons > 0]
+      eval_horizons <- unique(round(c(
+        stats::median(obs_time, na.rm = TRUE),
+        as.numeric(
+          stats::quantile(obs_time, 0.75, na.rm = TRUE, names = FALSE)
+        )
+      ), digits_round))
+      eval_horizons <- eval_horizons[is.finite(eval_horizons) &
+                                       eval_horizons > 0]
     } else {
       eval_horizons <- sort(unique(as.numeric(eval_times_user)))
-      eval_horizons <- eval_horizons[is.finite(eval_horizons) & eval_horizons > 0]
+      eval_horizons <- eval_horizons[is.finite(eval_horizons) &
+                                       eval_horizons > 0]
     }
     if (length(eval_horizons) > 0 && is.finite(tau_max)) {
       too_late <- eval_horizons > tau_max
       if (any(too_late)) {
         eval_horizons <- eval_horizons[!too_late]
         if (length(eval_horizons) == 0) {
-          warning("All requested eval_times exceed t_max; horizon-specific Brier scores will be omitted.")
+          warning(
+            "All requested eval_times exceed t_max; horizon-specific Brier scores will be omitted."
+          )
         } else {
-          warning("Some requested eval_times exceed t_max and were removed for Brier score computation.")
+          warning(
+            "Some requested eval_times exceed t_max and were removed for Brier score computation."
+          )
         }
       }
     }
     brier_times <- eval_horizons
-    brier_metric_names <- if (length(brier_times) > 0) paste0("brier_t", seq_along(brier_times)) else character(0)
-    brier_time_map <- if (length(brier_times) > 0) stats::setNames(brier_times, brier_metric_names) else numeric(0)
+    brier_metric_names <- if (length(brier_times) > 0)
+      paste0("brier_t", seq_along(brier_times))
+    else
+      character(0)
+    brier_time_map <- if (length(brier_times) > 0)
+      stats::setNames(brier_times, brier_metric_names)
+    else
+      numeric(0)
 
     combined_times <- c(train_times, obs_time)
-    combined_times <- combined_times[is.finite(combined_times) & combined_times > 0]
+    combined_times <- combined_times[is.finite(combined_times) &
+                                       combined_times > 0]
     if (length(combined_times) > 0) {
       eval_times <- sort(unique(combined_times))
       if (length(eval_times) > 200) {
         probs <- seq(0, 1, length.out = 200)
-        eval_times <- sort(unique(as.numeric(stats::quantile(eval_times, probs = probs, na.rm = TRUE, type = 1))))
+        eval_times <- sort(unique(as.numeric(
+          stats::quantile(
+            eval_times,
+            probs = probs,
+            na.rm = TRUE,
+            type = 1
+          )
+        )))
       }
     } else {
       eval_times <- numeric(0)
     }
     special_points <- c(brier_times, tau_max, t0)
-    special_points <- special_points[is.finite(special_points) & special_points > 0]
+    special_points <- special_points[is.finite(special_points) &
+                                       special_points > 0]
     eval_times <- sort(unique(c(eval_times, special_points)))
     if (is.finite(tau_max)) {
       eval_times <- eval_times[eval_times <= tau_max + 1e-08]
     }
-    if (length(eval_times) == 0 && is.finite(tau_max) && tau_max > 0) {
+    if (length(eval_times) == 0 &&
+        is.finite(tau_max) && tau_max > 0) {
       eval_times <- tau_max
     }
 
@@ -1461,24 +1691,32 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
     if (length(eval_times) > 0 && n_obs > 0) {
       if (inherits(final_model, "fastml_native_survival")) {
         newdata_survfit <- pred_predictors
-        if (is.null(newdata_survfit) || nrow(newdata_survfit) != n_obs) {
+        if (is.null(newdata_survfit) ||
+            nrow(newdata_survfit) != n_obs) {
           newdata_survfit <- tryCatch({
             if (is.null(pred_new_data)) {
               NULL
             } else {
-              drop_cols <- c(final_model$response, final_model$time_col, final_model$status_col, final_model$start_col)
+              drop_cols <- c(
+                final_model$response,
+                final_model$time_col,
+                final_model$status_col,
+                final_model$start_col
+              )
               drop_cols <- drop_cols[!is.na(drop_cols)]
               keep_cols <- setdiff(names(pred_new_data), drop_cols)
               pred_new_data[, keep_cols, drop = FALSE]
             }
-          }, error = function(e) NULL)
+          }, error = function(e)
+            NULL)
         }
         if (inherits(final_model$fit, "survreg")) {
           surv_prob_mat <- compute_survreg_matrix(final_model$fit, newdata_survfit, eval_times)
           if (is.null(surv_prob_mat)) {
             surv_fit <- tryCatch(
               survival::survfit(final_model$fit, newdata = newdata_survfit),
-              error = function(e) NULL
+              error = function(e)
+                NULL
             )
             surv_prob_mat <- build_survfit_matrix(surv_fit, eval_times, n_obs)
           }
@@ -1486,26 +1724,31 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
           if (is.null(newdata_survfit) && n_obs > 0) {
             newdata_survfit <- data.frame(matrix(nrow = n_obs, ncol = 0))
           }
-          risk_horizon <- if (is.finite(t0) && t0 > 0) t0 else default_time_val
-          parametric_pred <- fastml_parametric_surv_predict(
-            final_model$fit,
-            newdata_survfit,
-            eval_times,
-            risk_time = risk_horizon
-          )
+          risk_horizon <- if (is.finite(t0) &&
+                              t0 > 0)
+            t0
+          else
+            default_time_val
+          parametric_pred <- fastml_parametric_surv_predict(final_model$fit,
+                                                            newdata_survfit,
+                                                            eval_times,
+                                                            risk_time = risk_horizon)
           surv_prob_mat <- parametric_pred$surv
-          if (length(parametric_pred$risk) == n_obs && any(is.finite(parametric_pred$risk))) {
+          if (length(parametric_pred$risk) == n_obs &&
+              any(is.finite(parametric_pred$risk))) {
             risk <- parametric_pred$risk
           }
         } else if (inherits(final_model$fit, "stpm2")) {
-          if (requireNamespace("rstpm2", quietly = TRUE) && length(eval_times) > 0) {
+          if (requireNamespace("rstpm2", quietly = TRUE) &&
+              length(eval_times) > 0) {
             base_newdata <- newdata_survfit
             if (is.null(base_newdata)) {
               base_newdata <- data.frame()
             }
             time_var <- final_model$time_col
             if (!is.null(time_var)) {
-              if (!(time_var %in% names(base_newdata)) && time_var %in% names(test_data)) {
+              if (!(time_var %in% names(base_newdata)) &&
+                  time_var %in% names(test_data)) {
                 base_newdata[[time_var]] <- test_data[[time_var]]
               }
               if (!(time_var %in% names(base_newdata))) {
@@ -1514,19 +1757,27 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
                 base_newdata[[time_var]][!is.finite(base_newdata[[time_var]])] <- default_time_val
               }
             }
-            if (!is.null(final_model$start_col) && !(final_model$start_col %in% names(base_newdata)) &&
+            if (!is.null(final_model$start_col) &&
+                !(final_model$start_col %in% names(base_newdata)) &&
                 final_model$start_col %in% names(test_data)) {
               base_newdata[[final_model$start_col]] <- test_data[[final_model$start_col]]
             }
-            surv_prob_mat <- matrix(NA_real_, nrow = n_obs, ncol = length(eval_times))
+            surv_prob_mat <- matrix(NA_real_,
+                                    nrow = n_obs,
+                                    ncol = length(eval_times))
             for (j in seq_along(eval_times)) {
               nd <- base_newdata
               if (!is.null(time_var)) {
                 nd[[time_var]] <- eval_times[j]
               }
               preds <- tryCatch({
-                as.numeric(rstpm2::predict(final_model$fit, newdata = nd, type = "surv"))
-              }, error = function(e) rep(NA_real_, n_obs))
+                as.numeric(rstpm2::predict(
+                  final_model$fit,
+                  newdata = nd,
+                  type = "surv"
+                ))
+              }, error = function(e)
+                rep(NA_real_, n_obs))
               if (length(preds) == n_obs) {
                 surv_prob_mat[, j] <- preds
               }
@@ -1545,19 +1796,32 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         } else {
           surv_fit <- tryCatch(
             survival::survfit(final_model$fit, newdata = newdata_survfit),
-            error = function(e) NULL
+            error = function(e)
+              NULL
           )
           surv_prob_mat <- build_survfit_matrix(surv_fit, eval_times, n_obs)
         }
       } else {
         surv_pred <- tryCatch(
-          predict(final_model, new_data = test_data, type = "survival", eval_time = eval_times),
-          error = function(e) NULL
+          predict(
+            final_model,
+            new_data = test_data,
+            type = "survival",
+            eval_time = eval_times
+          ),
+          error = function(e)
+            NULL
         )
         if (is.null(surv_pred) && length(eval_times) == 1) {
           surv_pred <- tryCatch(
-            predict(final_model, new_data = test_data, type = "survival", eval_time = eval_times[1]),
-            error = function(e) NULL
+            predict(
+              final_model,
+              new_data = test_data,
+              type = "survival",
+              eval_time = eval_times[1]
+            ),
+            error = function(e)
+              NULL
           )
         }
         surv_prob_mat <- convert_survival_predictions(surv_pred, eval_times, n_obs)
@@ -1565,7 +1829,10 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
     }
 
     surv_prob <- rep(NA_real_, n_obs)
-    if (!is.null(surv_prob_mat) && nrow(surv_prob_mat) == n_obs && ncol(surv_prob_mat) == length(eval_times) && length(eval_times) > 0) {
+    if (!is.null(surv_prob_mat) &&
+        nrow(surv_prob_mat) == n_obs &&
+        ncol(surv_prob_mat) == length(eval_times) &&
+        length(eval_times) > 0) {
       idx_t0 <- 1L
       if (is.finite(t0) && t0 > 0) {
         idx_t0 <- which.min(abs(eval_times - t0))
@@ -1578,7 +1845,9 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       if (length(surv_prob) == n_obs && any(is.finite(surv_prob))) {
         risk <- -log(pmax(surv_prob, .Machine$double.eps))
       }
-    } else if ((!any(is.finite(risk)) || all(is.na(risk))) && length(surv_prob) == n_obs && any(is.finite(surv_prob))) {
+    } else if ((!any(is.finite(risk)) ||
+                all(is.na(risk))) &&
+               length(surv_prob) == n_obs && any(is.finite(surv_prob))) {
       risk <- -log(pmax(surv_prob, .Machine$double.eps))
     }
     if (length(risk) != n_obs) {
@@ -1587,7 +1856,10 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
     risk[!is.finite(risk)] <- NA_real_
 
     surv_curve_list <- vector("list", n_obs)
-    if (!is.null(surv_prob_mat) && nrow(surv_prob_mat) == n_obs && ncol(surv_prob_mat) == length(eval_times) && length(eval_times) > 0) {
+    if (!is.null(surv_prob_mat) &&
+        nrow(surv_prob_mat) == n_obs &&
+        ncol(surv_prob_mat) == length(eval_times) &&
+        length(eval_times) > 0) {
       formatted_times <- format(eval_times, trim = TRUE, scientific = FALSE)
       for (i in seq_len(n_obs)) {
         row_vals <- as.numeric(surv_prob_mat[i, ])
@@ -1606,7 +1878,8 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
     }
 
     surv_time <- tryCatch({
-      if (inherits(final_model, "fastml_native_survival") && requireNamespace("censored", quietly = TRUE)) {
+      if (inherits(final_model, "fastml_native_survival") &&
+          requireNamespace("censored", quietly = TRUE)) {
         if (inherits(final_model$fit, "coxph")) {
           as.numeric(censored::survival_time_coxph(final_model$fit, pred_predictors))
         } else if (inherits(final_model$fit, "survbagg")) {
@@ -1619,10 +1892,12 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       } else {
         rep(NA_real_, nrow(test_data))
       }
-    }, error = function(e) rep(NA_real_, nrow(test_data)))
+    }, error = function(e)
+      rep(NA_real_, nrow(test_data)))
 
     if (identical(survival_model_type, "xgboost_aft")) {
-      if (!is.null(aft_quantile_mat) && nrow(aft_quantile_mat) == n_obs && length(aft_probs) > 0) {
+      if (!is.null(aft_quantile_mat) &&
+          nrow(aft_quantile_mat) == n_obs && length(aft_probs) > 0) {
         median_idx <- which.min(abs(aft_probs - 0.5))
         if (length(median_idx) == 0) {
           median_idx <- ceiling(length(aft_probs) / 2)
@@ -1644,17 +1919,31 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
 
     ibs_curve_full <- rep(NA_real_, length(eval_times))
     ibs_point <- NA_real_
-    brier_time_values <- if (length(brier_metric_names) > 0) rep(NA_real_, length(brier_metric_names)) else numeric(0)
+    brier_time_values <- if (length(brier_metric_names) > 0)
+      rep(NA_real_, length(brier_metric_names))
+    else
+      numeric(0)
     rmst_diff <- NA_real_
-    if (!limited_metrics && !is.null(surv_prob_mat) && length(eval_times) > 0) {
-      ibs_res_full <- compute_ibrier(eval_times, surv_prob_mat, obs_time, status_event, tau_max, censor_eval_test)
+    if (!limited_metrics &&
+        !is.null(surv_prob_mat) && length(eval_times) > 0) {
+      ibs_res_full <- compute_ibrier(eval_times,
+                                     surv_prob_mat,
+                                     obs_time,
+                                     status_event,
+                                     tau_max,
+                                     censor_eval_test)
       ibs_point <- ibs_res_full$ibs
       ibs_curve_full <- ibs_res_full$curve
       brier_time_values <- map_brier_values(ibs_curve_full, eval_times, brier_times)
-      rmst_diff <- compute_rmst_difference(obs_time, status_event, risk, tau_max,
-                                           surv_mat = surv_prob_mat,
-                                           eval_times_full = eval_times,
-                                           model_type = survival_model_type)
+      rmst_diff <- compute_rmst_difference(
+        obs_time,
+        status_event,
+        risk,
+        tau_max,
+        surv_mat = surv_prob_mat,
+        eval_times_full = eval_times,
+        model_type = survival_model_type
+      )
     }
 
     harrell_c <- NA_real_
@@ -1665,7 +1954,8 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         surv_valid <- surv_obj[risk_valid]
         harrell_c <- tryCatch(
           survival::concordance(surv_valid ~ risk_vals)$concordance,
-          error = function(e) NA_real_
+          error = function(e)
+            NA_real_
         )
       } else {
         harrell_c <- 0.5
@@ -1673,7 +1963,15 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
     }
     harrell_c <- clamp01(harrell_c)
 
-    uno_c <- compute_uno_c_index(train_times, train_status_event, obs_time, status_event, risk, tau_max, censor_eval_train)
+    uno_c <- compute_uno_c_index(
+      train_times,
+      train_status_event,
+      obs_time,
+      status_event,
+      risk,
+      tau_max,
+      censor_eval_train
+    )
     uno_c <- clamp01(uno_c)
     if (!limited_metrics) {
       ibs_point <- clamp01(ibs_point)
@@ -1686,8 +1984,16 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       metric_names <- c("c_index", "uno_c")
       metrics_point <- c(harrell_c, uno_c)
     } else {
-      metric_names <- c("c_index", "uno_c", "ibs", "rmst_diff", brier_metric_names)
-      metrics_point <- c(harrell_c, uno_c, ibs_point, rmst_diff, brier_time_values)
+      metric_names <- c("c_index",
+                        "uno_c",
+                        "ibs",
+                        "rmst_diff",
+                        brier_metric_names)
+      metrics_point <- c(harrell_c,
+                         uno_c,
+                         ibs_point,
+                         rmst_diff,
+                         brier_time_values)
     }
     names(metrics_point) <- metric_names
     metrics_point[is.nan(metrics_point)] <- NA_real_
@@ -1698,7 +2004,10 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       status_sub <- status_event[idx]
       risk_sub <- risk[idx]
       surv_sub <- surv_obj[idx]
-      surv_mat_sub <- if (!is.null(surv_prob_mat)) surv_prob_mat[idx, , drop = FALSE] else NULL
+      surv_mat_sub <- if (!is.null(surv_prob_mat))
+        surv_prob_mat[idx, , drop = FALSE]
+      else
+        NULL
       harrell_sub <- NA_real_
       risk_valid_sub <- is.finite(risk_sub)
       if (any(risk_valid_sub)) {
@@ -1707,14 +2016,23 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
           surv_valid_sub <- surv_sub[risk_valid_sub]
           harrell_sub <- tryCatch(
             survival::concordance(surv_valid_sub ~ risk_vals_sub)$concordance,
-            error = function(e) NA_real_
+            error = function(e)
+              NA_real_
           )
         } else {
           harrell_sub <- 0.5
         }
       }
       harrell_sub <- clamp01(harrell_sub)
-      uno_sub <- compute_uno_c_index(train_times, train_status_event, obs_sub, status_sub, risk_sub, tau_max, censor_eval_train)
+      uno_sub <- compute_uno_c_index(
+        train_times,
+        train_status_event,
+        obs_sub,
+        status_sub,
+        risk_sub,
+        tau_max,
+        censor_eval_train
+      )
       uno_sub <- clamp01(uno_sub)
       if (limited_metrics) {
         vals <- c(harrell_sub, uno_sub)
@@ -1724,8 +2042,14 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       }
       ibs_sub <- NA_real_
       curve_sub <- rep(NA_real_, length(eval_times))
-      if (!is.null(surv_mat_sub) && nrow(surv_mat_sub) == length(idx)) {
-        ibs_sub_res <- compute_ibrier(eval_times, surv_mat_sub, obs_sub, status_sub, tau_max, censor_eval_test)
+      if (!is.null(surv_mat_sub) &&
+          nrow(surv_mat_sub) == length(idx)) {
+        ibs_sub_res <- compute_ibrier(eval_times,
+                                      surv_mat_sub,
+                                      obs_sub,
+                                      status_sub,
+                                      tau_max,
+                                      censor_eval_test)
         ibs_sub <- clamp01(ibs_sub_res$ibs)
         curve_sub <- ibs_sub_res$curve
       }
@@ -1733,10 +2057,15 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
       if (length(brier_sub) > 0) {
         brier_sub <- clamp01(brier_sub)
       }
-      rmst_sub <- compute_rmst_difference(obs_sub, status_sub, risk_sub, tau_max,
-                                          surv_mat = surv_mat_sub,
-                                          eval_times_full = eval_times,
-                                          model_type = survival_model_type)
+      rmst_sub <- compute_rmst_difference(
+        obs_sub,
+        status_sub,
+        risk_sub,
+        tau_max,
+        surv_mat = surv_mat_sub,
+        eval_times_full = eval_times,
+        model_type = survival_model_type
+      )
       vals <- c(harrell_sub, uno_sub, ibs_sub, rmst_sub, brier_sub)
       names(vals) <- metric_names
       vals[is.nan(vals)] <- NA_real_
@@ -1746,11 +2075,14 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
     ci_lower <- rep(NA_real_, length(metric_names))
     ci_upper <- rep(NA_real_, length(metric_names))
     n_boot_used <- 0L
-    if (isTRUE(bootstrap_ci) && bootstrap_samples > 1 && n_obs > 1) {
+    if (isTRUE(bootstrap_ci) &&
+        bootstrap_samples > 1 && n_obs > 1) {
       if (!is.null(bootstrap_seed)) {
         set.seed(bootstrap_seed)
       }
-      boot_matrix <- matrix(NA_real_, nrow = bootstrap_samples, ncol = length(metric_names))
+      boot_matrix <- matrix(NA_real_,
+                            nrow = bootstrap_samples,
+                            ncol = length(metric_names))
       colnames(boot_matrix) <- metric_names
       for (b in seq_len(bootstrap_samples)) {
         idx <- sample.int(n_obs, size = n_obs, replace = TRUE)
@@ -1760,11 +2092,18 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
         vals <- boot_matrix[, j]
         vals <- vals[is.finite(vals)]
         if (length(vals) > 0) {
-          ci_lower[j] <- stats::quantile(vals, probs = 0.025, names = FALSE, na.rm = TRUE)
-          ci_upper[j] <- stats::quantile(vals, probs = 0.975, names = FALSE, na.rm = TRUE)
+          ci_lower[j] <- stats::quantile(vals,
+                                         probs = 0.025,
+                                         names = FALSE,
+                                         na.rm = TRUE)
+          ci_upper[j] <- stats::quantile(vals,
+                                         probs = 0.975,
+                                         names = FALSE,
+                                         na.rm = TRUE)
         }
       }
-      clamp_idx <- metric_names %in% c("c_index", "uno_c", "ibs") | grepl("^brier_t", metric_names)
+      clamp_idx <- metric_names %in% c("c_index", "uno_c", "ibs") |
+        grepl("^brier_t", metric_names)
       if (any(clamp_idx)) {
         ci_lower[clamp_idx] <- clamp01(ci_lower[clamp_idx])
         ci_upper[clamp_idx] <- clamp01(ci_upper[clamp_idx])
@@ -1808,7 +2147,10 @@ process_model <- function(model_obj, model_id, task, test_data, label, event_cla
     attr(perf, "brier_times") <- brier_time_map
     attr(perf, "t_max") <- tau_max
     attr(perf, "at_risk_threshold") <- threshold
-    attr(data_metrics, "eval_times") <- if (limited_metrics) numeric(0) else eval_times
+    attr(data_metrics, "eval_times") <- if (limited_metrics)
+      numeric(0)
+    else
+      eval_times
     if (limited_metrics) {
       attr(data_metrics, "brier_curve") <- NULL
       attr(data_metrics, "brier_times") <- numeric(0)
