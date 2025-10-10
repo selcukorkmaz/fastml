@@ -674,6 +674,27 @@ process_model <- function(model_obj,
       res
     }
 
+    compute_flexsurv_matrix <- function(fit_obj, new_data, eval_times) {
+      if (!inherits(fit_obj, "flexsurvreg") || length(eval_times) == 0) {
+        return(NULL)
+      }
+      n_obs <- nrow(new_data)
+      res <- matrix(NA_real_, nrow = n_obs, ncol = length(eval_times))
+      for (i in seq_len(n_obs)) {
+        s <- tryCatch(
+          flexsurv::summary(fit_obj,
+                            newdata = new_data[i, , drop = FALSE],
+                            type = "survival", t = eval_times),
+          error = function(e) NULL
+        )
+        if (!is.null(s) && is.data.frame(s[[1]])) {
+          surv_vals <- s[[1]]$est
+          res[i, ] <- surv_vals[match(eval_times, s[[1]]$time, nomatch = NA)]
+        }
+      }
+      res
+    }
+
     convert_survival_predictions <- function(pred_obj, eval_times, n_obs) {
       if (is.null(pred_obj) || length(eval_times) == 0 || n_obs == 0) {
         return(NULL)
@@ -918,7 +939,19 @@ process_model <- function(model_obj,
             type = "lp"
           ))
         } else if (inherits(final_model$fit, "flexsurvreg")) {
-          rep(NA_real_, nrow(test_data))
+          tryCatch({
+            mm <- model.matrix(formula(final_model$fit), data = pred_predictors)
+            coefs <- final_model$fit$res.t[, "est"]
+            common <- intersect(names(coefs), colnames(mm))
+            lp <- as.numeric(mm[, common, drop = FALSE] %*% coefs[common])
+            if ("(Intercept)" %in% names(coefs)) {
+              lp <- lp + coefs["(Intercept)"]
+            }
+            lp
+          }, error = function(e) {
+            warning("Failed to compute linear predictors for flexsurvreg: ", e$message)
+            rep(NA_real_, nrow(test_data))
+          })
         } else if (inherits(final_model$fit, "glmnet")) {
           if (!requireNamespace("glmnet", quietly = TRUE)) {
             rep(NA_real_, nrow(test_data))
@@ -1710,6 +1743,9 @@ process_model <- function(model_obj,
           }, error = function(e)
             NULL)
         }
+        if (is.null(newdata_survfit) && n_obs > 0) {
+          newdata_survfit <- data.frame(matrix(nrow = n_obs, ncol = 0))
+        }
         if (inherits(final_model$fit, "survreg")) {
           surv_prob_mat <- compute_survreg_matrix(final_model$fit, newdata_survfit, eval_times)
           if (is.null(surv_prob_mat)) {
@@ -1737,6 +1773,13 @@ process_model <- function(model_obj,
           if (length(parametric_pred$risk) == n_obs &&
               any(is.finite(parametric_pred$risk))) {
             risk <- parametric_pred$risk
+          surv_prob_mat <- compute_flexsurv_matrix(final_model$fit, newdata_survfit, eval_times)
+          if (!is.null(surv_prob_mat) && ncol(surv_prob_mat) > 0) {
+            mid_idx <- ceiling(ncol(surv_prob_mat) / 2)
+            surv_mid <- surv_prob_mat[, mid_idx]
+            risk <- -log(pmax(surv_mid, .Machine$double.eps))
+          } else {
+            risk <- rep(NA_real_, nrow(test_data))
           }
         } else if (inherits(final_model$fit, "stpm2")) {
           if (requireNamespace("rstpm2", quietly = TRUE) &&
