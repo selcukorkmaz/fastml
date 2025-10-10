@@ -2213,5 +2213,7 @@ process_model <- function(model_obj,
   }
 
   return(list(performance = perf, predictions = data_metrics))
+  }
+
 }
 
