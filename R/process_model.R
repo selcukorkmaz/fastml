@@ -678,20 +678,38 @@ process_model <- function(model_obj,
       if (!inherits(fit_obj, "flexsurvreg") || length(eval_times) == 0) {
         return(NULL)
       }
+
       n_obs <- nrow(new_data)
       res <- matrix(NA_real_, nrow = n_obs, ncol = length(eval_times))
+
       for (i in seq_len(n_obs)) {
         s <- tryCatch(
-          flexsurv::summary(fit_obj,
-                            newdata = new_data[i, , drop = FALSE],
-                            type = "survival", t = eval_times),
+          flexsurv::summary(
+            fit_obj,
+            newdata = new_data[i, , drop = FALSE],
+            type = "survival",
+            t = eval_times,
+            ci = FALSE
+          ),
           error = function(e) NULL
         )
-        if (!is.null(s) && is.data.frame(s[[1]])) {
-          surv_vals <- s[[1]]$est
-          res[i, ] <- surv_vals[match(eval_times, s[[1]]$time, nomatch = NA)]
+
+        if (is.list(s) && length(s) >= 1 && is.data.frame(s[[1]])) {
+          df <- s[[1]]
+          if (all(c("time", "est") %in% names(df))) {
+            aligned <- rep(NA_real_, length(eval_times))
+            matched <- match(eval_times, df$time)
+            valid <- which(!is.na(matched))
+            aligned[valid] <- df$est[matched[valid]]
+
+            aligned <- zoo::na.locf(aligned, na.rm = FALSE)
+            aligned <- pmin(cummin(pmax(aligned, 0)), 1)
+            res[i, ] <- aligned
+          }
         }
       }
+
+      colnames(res) <- paste0("t", seq_along(eval_times))
       res
     }
 
