@@ -242,43 +242,75 @@ fastml_flexsurv_survival_matrix <- function(fit, newdata, times) {
   }
 
   compute_rowwise <- function(newdata, times) {
-    res <- matrix(NA_real_, nrow = nrow(newdata), ncol = length(times))
-    if (nrow(newdata) == 0 || length(times) == 0) {
+    n_obs <- nrow(newdata)
+    n_times <- length(times)
+    res <- matrix(NA_real_, nrow = n_obs, ncol = n_times)
+
+    if (n_obs == 0 || n_times == 0) {
       return(res)
     }
-    for (i in seq_len(nrow(newdata))) {
-      row_df <- newdata[i, , drop = FALSE]
-      row_summary <- tryCatch(
-        flexsurv::summary(
-          fit,
-          type = "survival",
-          t = times,
-          newdata = row_df,
-          ci = FALSE
-        ),
-        error = function(e) NULL
+
+    res_list <- tryCatch({
+      flexsurv::summary(
+        fit,
+        type = "survival",
+        t = times,
+        newdata = newdata,
+        ci = FALSE
       )
-      if (is.null(row_summary)) {
-        next
-      }
-      if (is.list(row_summary) && length(row_summary) >= 1 && !is.data.frame(row_summary)) {
-        row_summary <- row_summary[[1]]
-      }
-      row_summary <- coerce_to_dataframe(row_summary)
-      if (is.null(row_summary)) {
-        next
-      }
-      time_col <- intersect(c("time", "t", ".eval_time"), names(row_summary))
-      surv_col <- intersect(c("est", "survival", "S", ".pred_survival", ".pred"), names(row_summary))
-      if (length(time_col) == 0 || length(surv_col) == 0) {
-        next
-      }
-      res[i, ] <- align_curve(row_summary[[time_col[1]]],
-                              row_summary[[surv_col[1]]],
-                              times)
+    }, error = function(e) {
+      warning("flexsurv::summary failed during prediction: ", e$message)
+      NULL
+    })
+
+    if (is.null(res_list)) {
+      return(res)
     }
-    res <- pmin(pmax(res, 0), 1)
-    res
+
+    if (is.data.frame(res_list)) {
+      res_list <- list(res_list)
+    }
+
+    if (!is.list(res_list)) {
+      return(res)
+    }
+
+    row_values <- lapply(res_list, function(df) {
+      df <- coerce_to_dataframe(df)
+      if (is.null(df)) {
+        return(rep(NA_real_, n_times))
+      }
+      time_col <- intersect(c("time", "t", ".eval_time"), names(df))
+      surv_col <- intersect(c("est", "survival", "S", ".pred_survival", ".pred"), names(df))
+      if (length(time_col) == 0 || length(surv_col) == 0) {
+        return(rep(NA_real_, n_times))
+      }
+      align_curve(df[[time_col[1]]], df[[surv_col[1]]], times)
+    })
+
+    if (length(row_values) == 0) {
+      return(res)
+    }
+
+    row_mat <- do.call(rbind, row_values)
+    if (!is.matrix(row_mat)) {
+      row_mat <- matrix(as.numeric(row_mat), ncol = n_times, byrow = TRUE)
+    }
+
+    if (nrow(row_mat) < n_obs) {
+      pad <- matrix(NA_real_, nrow = n_obs - nrow(row_mat), ncol = n_times)
+      row_mat <- rbind(row_mat, pad)
+    }
+    if (nrow(row_mat) > n_obs) {
+      row_mat <- row_mat[seq_len(n_obs), , drop = FALSE]
+    }
+
+    if (ncol(row_mat) != n_times) {
+      row_mat <- matrix(NA_real_, nrow = n_obs, ncol = n_times)
+    }
+
+    row_mat <- pmin(pmax(row_mat, 0), 1)
+    row_mat
   }
 
   summary_tidy <- tryCatch(
