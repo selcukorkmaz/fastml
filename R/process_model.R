@@ -1335,9 +1335,9 @@ process_model <- function(model_obj,
             t0
           else
             default_time_val
-          parametric_pred <- fastml_parametric_surv_predict(final_model$fit,
-                                                            newdata_survfit,
-                                                            eval_times,
+          parametric_pred <- fastml_parametric_surv_predict(fit = final_model$fit,
+                                                            newdata = newdata_survfit,
+                                                            eval_times = eval_times,
                                                             risk_time = risk_horizon)
           surv_prob_mat <- parametric_pred$surv
           if (length(parametric_pred$risk) == n_obs &&

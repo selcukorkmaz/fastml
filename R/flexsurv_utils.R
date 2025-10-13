@@ -250,7 +250,7 @@ fastml_flexsurv_survival_matrix <- function(fit, newdata, times) {
     }
 
     res_list <- tryCatch({
-      flexsurv::summary(
+      summary(
         fit,
         type = "survival",
         t = times,
@@ -258,7 +258,7 @@ fastml_flexsurv_survival_matrix <- function(fit, newdata, times) {
         ci = FALSE
       )
     }, error = function(e) {
-      warning("flexsurv::summary failed during prediction: ", e$message)
+      warning("summary failed during prediction: ", e$message)
       NULL
     })
 
@@ -313,7 +313,7 @@ fastml_flexsurv_survival_matrix <- function(fit, newdata, times) {
   }
 
   summary_tidy <- tryCatch(
-    flexsurv::summary(
+    summary(
       fit,
       type = "survival",
       t = times,
@@ -371,7 +371,7 @@ fastml_flexsurv_survival_matrix <- function(fit, newdata, times) {
 
   if (is.null(res) || !is.matrix(res)) {
     summary_list <- tryCatch(
-      flexsurv::summary(
+      summary(
         fit,
         type = "survival",
         t = times,
@@ -469,7 +469,7 @@ fastml_parametric_surv_predict <- function(fit,
     return(list(surv = surv_mat, risk = rep(NA_real_, n_obs)))
   }
 
-  surv_mat <- fastml_flexsurv_survival_matrix(fit, newdata, eval_times)
+  surv_mat <- fastml_flexsurv_survival_matrix(fit, newdata, times = eval_times)
   if (is.null(surv_mat) || !is.matrix(surv_mat) ||
       nrow(surv_mat) != n_obs || ncol(surv_mat) != length(eval_times)) {
     surv_mat <- matrix(NA_real_, nrow = n_obs, ncol = length(eval_times))
