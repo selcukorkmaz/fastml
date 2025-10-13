@@ -4,7 +4,6 @@
 #' and prediction helpers for models fitted with flexsurv::flexsurvreg().
 #'
 #' @noRd
-NULL
 
 fastml_flexsurv_survival_matrix <- function(fit, newdata, times) {
   if (!inherits(fit, "flexsurvreg")) {
