@@ -130,6 +130,9 @@ evaluate_models <- function(models,
                               bootstrap_samples = bootstrap_samples,
                               bootstrap_seed = bootstrap_seed,
                               at_risk_threshold = at_risk_threshold)
+
+
+
       if (!is.null(result)) {
         performance[[algo]] <- result$performance
         predictions_list[[algo]] <- result$predictions

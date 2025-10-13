@@ -345,6 +345,7 @@ fastml <- function(data = NULL,
       res$status
     }
     if (length(label) == 2) {
+      start_col = NULL
       time_col <- label[1]
       status_col <- label[2]
       train_status <- normalize_status(train_data[[status_col]], nrow(train_data))
