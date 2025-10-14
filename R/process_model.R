@@ -682,8 +682,20 @@ process_model <- function(model_obj,
       n_obs <- nrow(new_data)
       res <- matrix(NA_real_, nrow = n_obs, ncol = length(eval_times))
 
+      summary_fun <- tryCatch(
+        getFromNamespace("summary.flexsurvreg", "flexsurv"),
+        error = function(e) NULL
+      )
+
+      if (!is.function(summary_fun)) {
+        warning(
+          "Unable to access flexsurv summary method; skipping flexsurv predictions."
+        )
+        return(NULL)
+      }
+
       s_list <- tryCatch(
-        flexsurv::summary(
+        summary_fun(
           fit_obj,
           newdata = new_data,
           type = "survival",
@@ -691,7 +703,7 @@ process_model <- function(model_obj,
           ci = FALSE
         ),
         error = function(e) {
-          warning("flexsurv::summary failed: ", e$message)
+          warning("flexsurv summary failed: ", e$message)
           return(NULL)
         }
       )
