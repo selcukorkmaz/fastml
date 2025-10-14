@@ -682,30 +682,37 @@ process_model <- function(model_obj,
       n_obs <- nrow(new_data)
       res <- matrix(NA_real_, nrow = n_obs, ncol = length(eval_times))
 
+      s_list <- tryCatch(
+        flexsurv::summary(
+          fit_obj,
+          newdata = new_data,
+          type = "survival",
+          t = eval_times,
+          ci = FALSE
+        ),
+        error = function(e) {
+          warning("flexsurv::summary failed: ", e$message)
+          return(NULL)
+        }
+      )
+
+      if (!is.list(s_list) || length(s_list) != n_obs) {
+        return(res)
+      }
+
       for (i in seq_len(n_obs)) {
-        s <- tryCatch(
-          flexsurv::summary(
-            fit_obj,
-            newdata = new_data[i, , drop = FALSE],
-            type = "survival",
-            t = eval_times,
-            ci = FALSE
-          ),
-          error = function(e) NULL
-        )
-
-        if (is.list(s) && length(s) >= 1 && is.data.frame(s[[1]])) {
-          df <- s[[1]]
-          if (all(c("time", "est") %in% names(df))) {
-            aligned <- rep(NA_real_, length(eval_times))
-            matched <- match(eval_times, df$time)
-            valid <- which(!is.na(matched))
-            aligned[valid] <- df$est[matched[valid]]
-
-            aligned <- zoo::na.locf(aligned, na.rm = FALSE)
-            aligned <- pmin(cummin(pmax(aligned, 0)), 1)
-            res[i, ] <- aligned
-          }
+        s_obs <- s_list[[i]]
+        if (is.data.frame(s_obs) && all(c("time", "est") %in% names(s_obs))) {
+          aligned <- approx(
+            s_obs$time,
+            s_obs$est,
+            xout = eval_times,
+            method = "constant",
+            f = 1,
+            yleft = 1
+          )$y
+          aligned <- pmin(cummin(pmax(aligned, 0, na.rm = TRUE)), 1, na.rm = TRUE)
+          res[i, ] <- aligned
         }
       }
 
