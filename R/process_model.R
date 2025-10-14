@@ -1475,6 +1475,31 @@ process_model <- function(model_obj,
           as.numeric(censored::survival_time_survbagg(final_model$fit, pred_predictors))
         } else if (inherits(final_model$fit, "mboost")) {
           as.numeric(censored::survival_time_mboost(final_model$fit, pred_predictors))
+        } else if (inherits(final_model$fit, "flexsurvreg")) {
+          flexsurv_newdata <- test_data
+          quantiles_list <- tryCatch({
+            quantile(
+              final_model$fit,
+              p = 0.5,
+              newdata = flexsurv_newdata,
+              type = "quantile"
+            )
+          }, error = function(e) {
+            warning("Failed to compute quantiles for flexsurvreg: ", e$message)
+            NULL
+          })
+          if (is.list(quantiles_list) &&
+              length(quantiles_list) == nrow(flexsurv_newdata)) {
+            vapply(quantiles_list, function(x) {
+              if (is.data.frame(x) && "est" %in% names(x)) {
+                as.numeric(x$est[1])
+              } else {
+                NA_real_
+              }
+            }, numeric(1))
+          } else {
+            rep(NA_real_, nrow(flexsurv_newdata))
+          }
         } else {
           rep(NA_real_, nrow(test_data))
         }
