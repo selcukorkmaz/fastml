@@ -9,13 +9,16 @@ evaluate_models(
   train_data,
   test_data,
   label,
+  start_col,
+  time_col,
+  status_col,
   task,
   metric = NULL,
   event_class,
   eval_times = NULL,
   bootstrap_ci = TRUE,
   bootstrap_samples = 500,
-  bootstrap_seed = NULL,
+  bootstrap_seed = 1234,
   at_risk_threshold = 0.1
 )
 }

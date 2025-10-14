@@ -11,13 +11,16 @@ process_model(
   test_data,
   label,
   event_class,
+  start_col = NULL,
+  time_col = NULL,
+  status_col = NULL,
   engine,
   train_data,
   metric,
   eval_times_user = NULL,
   bootstrap_ci = TRUE,
   bootstrap_samples = 500,
-  bootstrap_seed = NULL,
+  bootstrap_seed = 1234,
   at_risk_threshold = 0.1
 )
 }
