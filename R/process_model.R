@@ -674,64 +674,6 @@ process_model <- function(model_obj,
       res
     }
 
-    compute_flexsurv_matrix <- function(fit_obj, new_data, eval_times) {
-      if (!inherits(fit_obj, "flexsurvreg") || length(eval_times) == 0) {
-        return(NULL)
-      }
-
-      n_obs <- nrow(new_data)
-      res <- matrix(NA_real_, nrow = n_obs, ncol = length(eval_times))
-
-      summary_fun <- tryCatch(
-        getFromNamespace("summary.flexsurvreg", "flexsurv"),
-        error = function(e) NULL
-      )
-
-      if (!is.function(summary_fun)) {
-        warning(
-          "Unable to access flexsurv summary method; skipping flexsurv predictions."
-        )
-        return(NULL)
-      }
-
-      s_list <- tryCatch(
-        summary_fun(
-          fit_obj,
-          newdata = new_data,
-          type = "survival",
-          t = eval_times,
-          ci = FALSE
-        ),
-        error = function(e) {
-          warning("flexsurv summary failed: ", e$message)
-          return(NULL)
-        }
-      )
-
-      if (!is.list(s_list) || length(s_list) != n_obs) {
-        return(res)
-      }
-
-      for (i in seq_len(n_obs)) {
-        s_obs <- s_list[[i]]
-        if (is.data.frame(s_obs) && all(c("time", "est") %in% names(s_obs))) {
-          aligned <- approx(
-            s_obs$time,
-            s_obs$est,
-            xout = eval_times,
-            method = "constant",
-            f = 1,
-            yleft = 1
-          )$y
-          aligned <- pmin(cummin(pmax(aligned, 0, na.rm = TRUE)), 1, na.rm = TRUE)
-          res[i, ] <- aligned
-        }
-      }
-
-      colnames(res) <- paste0("t", seq_along(eval_times))
-      res
-    }
-
     convert_survival_predictions <- function(pred_obj, eval_times, n_obs) {
       if (is.null(pred_obj) || length(eval_times) == 0 || n_obs == 0) {
         return(NULL)
@@ -1355,7 +1297,11 @@ process_model <- function(model_obj,
           if (is.null(flexsurv_newdata) || nrow(flexsurv_newdata) != n_obs) {
             flexsurv_newdata <- test_data
           }
-          surv_prob_mat <- compute_flexsurv_matrix(final_model$fit, flexsurv_newdata, eval_times)
+          surv_prob_mat <- fastml_flexsurv_survival_matrix(
+            final_model$fit,
+            flexsurv_newdata,
+            eval_times
+          )
 
           # If risk has not been computed yet, derive it from the survival probabilities
           if (!any(is.finite(risk)) &&
