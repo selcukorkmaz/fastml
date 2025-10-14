@@ -1476,7 +1476,11 @@ process_model <- function(model_obj,
         } else if (inherits(final_model$fit, "mboost")) {
           as.numeric(censored::survival_time_mboost(final_model$fit, pred_predictors))
         } else if (inherits(final_model$fit, "flexsurvreg")) {
-          flexsurv_newdata <- test_data
+          flexsurv_newdata <- pred_predictors
+          if (is.null(flexsurv_newdata) ||
+              nrow(flexsurv_newdata) != nrow(test_data)) {
+            flexsurv_newdata <- test_data
+          }
           quantiles_list <- tryCatch({
             quantile(
               final_model$fit,
@@ -1488,8 +1492,19 @@ process_model <- function(model_obj,
             warning("Failed to compute quantiles for flexsurvreg: ", e$message)
             NULL
           })
-          if (is.list(quantiles_list) &&
+          if (is.numeric(quantiles_list) &&
               length(quantiles_list) == nrow(flexsurv_newdata)) {
+            as.numeric(quantiles_list)
+          } else if (is.matrix(quantiles_list) &&
+                     (nrow(quantiles_list) == nrow(flexsurv_newdata) ||
+                      ncol(quantiles_list) == nrow(flexsurv_newdata))) {
+            if (ncol(quantiles_list) == nrow(flexsurv_newdata)) {
+              as.numeric(quantiles_list[1, , drop = TRUE])
+            } else {
+              as.numeric(quantiles_list[, 1, drop = TRUE])
+            }
+          } else if (is.list(quantiles_list) &&
+                     length(quantiles_list) == nrow(flexsurv_newdata)) {
             vapply(quantiles_list, function(x) {
               if (is.data.frame(x) && "est" %in% names(x)) {
                 as.numeric(x$est[1])
