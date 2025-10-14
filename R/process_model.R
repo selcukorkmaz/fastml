@@ -1347,8 +1347,15 @@ process_model <- function(model_obj,
             surv_prob_mat <- build_survfit_matrix(surv_fit, eval_times, n_obs)
           }
         } else if (inherits(final_model$fit, "flexsurvreg")) {
-          # flexsurvreg models expect the original (non-preprocessed) data used during fitting
-          surv_prob_mat <- compute_flexsurv_matrix(final_model$fit, test_data, eval_times)
+          # flexsurvreg models expect the covariates used during fitting.
+          # Prefer the preprocessed predictor set when available, but fall back
+          # to the raw test data if preprocessing failed or yielded mismatched
+          # rows (e.g. due to recipes that only keep the outcome columns).
+          flexsurv_newdata <- newdata_survfit
+          if (is.null(flexsurv_newdata) || nrow(flexsurv_newdata) != n_obs) {
+            flexsurv_newdata <- test_data
+          }
+          surv_prob_mat <- compute_flexsurv_matrix(final_model$fit, flexsurv_newdata, eval_times)
 
           # If risk has not been computed yet, derive it from the survival probabilities
           if (!any(is.finite(risk)) &&
