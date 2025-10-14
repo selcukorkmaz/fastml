@@ -414,20 +414,34 @@ process_model <- function(model_obj,
       ord <- order(curve_times)
       curve_times <- curve_times[ord]
       curve_surv <- curve_surv[ord]
-      idx <- findInterval(eval_times, curve_times)
-      res <- rep(NA_real_, length(eval_times))
-      if (any(idx == 0)) {
-        res[idx == 0] <- 1
+      keep <- is.finite(curve_times) & is.finite(curve_surv)
+      curve_times <- curve_times[keep]
+      curve_surv <- curve_surv[keep]
+      if (length(curve_times) == 0) {
+        return(rep(NA_real_, length(eval_times)))
       }
-      pos_idx <- which(idx > 0)
-      if (length(pos_idx) > 0) {
-        mapped <- pmin(idx[pos_idx], length(curve_surv))
-        res[pos_idx] <- curve_surv[mapped]
+      if (curve_times[1] > 0) {
+        curve_times <- c(0, curve_times)
+        curve_surv <- c(1, curve_surv)
+      } else {
+        curve_times[1] <- 0
+        curve_surv[1] <- 1
       }
-      if (any(idx > length(curve_surv))) {
-        last_val <- curve_surv[length(curve_surv)]
-        res[idx > length(curve_surv)] <- last_val
+      if (length(curve_times) > 1) {
+        curve_surv <- cummin(pmin(pmax(curve_surv, 0), 1))
+      } else {
+        curve_surv <- pmin(pmax(curve_surv, 0), 1)
       }
+      approx_res <- stats::approx(
+        x = curve_times,
+        y = curve_surv,
+        xout = eval_times,
+        method = "constant",
+        f = 0,
+        rule = 2,
+        ties = "ordered"
+      )
+      res <- approx_res$y
       res <- pmin(pmax(res, 0), 1)
       res
     }
