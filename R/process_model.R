@@ -1484,9 +1484,8 @@ process_model <- function(model_obj,
           quantiles_list <- tryCatch({
             quantile(
               final_model$fit,
-              p = 0.5,
-              newdata = flexsurv_newdata,
-              type = "quantile"
+              probs = 0.5,
+              newdata = flexsurv_newdata
             )
           }, error = function(e) {
             warning("Failed to compute quantiles for flexsurvreg: ", e$message)
