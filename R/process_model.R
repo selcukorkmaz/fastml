@@ -958,7 +958,8 @@ process_model <- function(model_obj,
           ))
         } else if (inherits(final_model$fit, "flexsurvreg")) {
           tryCatch({
-            mm <- model.matrix(formula(final_model$fit), data = pred_predictors)
+            # Use the original (unprocessed) test data for flexsurvreg predictions
+            mm <- model.matrix(formula(final_model$fit), data = test_data)
             coefs <- final_model$fit$res.t[, "est"]
             common <- intersect(names(coefs), colnames(mm))
             lp <- as.numeric(mm[, common, drop = FALSE] %*% coefs[common])
@@ -1327,29 +1328,18 @@ process_model <- function(model_obj,
             surv_prob_mat <- build_survfit_matrix(surv_fit, eval_times, n_obs)
           }
         } else if (inherits(final_model$fit, "flexsurvreg")) {
-          if (is.null(newdata_survfit) && n_obs > 0) {
-            newdata_survfit <- data.frame(matrix(nrow = n_obs, ncol = 0))
-          }
-          risk_horizon <- if (is.finite(t0) &&
-                              t0 > 0)
-            t0
-          else
-            default_time_val
-          parametric_pred <- fastml_parametric_surv_predict(fit = final_model$fit,
-                                                            newdata = newdata_survfit,
-                                                            eval_times = eval_times,
-                                                            risk_time = risk_horizon)
-          surv_prob_mat <- parametric_pred$surv
-          if (length(parametric_pred$risk) == n_obs &&
-              any(is.finite(parametric_pred$risk))) {
-            risk <- parametric_pred$risk
-          surv_prob_mat <- compute_flexsurv_matrix(final_model$fit, newdata_survfit, eval_times)
-          if (!is.null(surv_prob_mat) && ncol(surv_prob_mat) > 0) {
+          # flexsurvreg models expect the original (non-preprocessed) data used during fitting
+          surv_prob_mat <- compute_flexsurv_matrix(final_model$fit, test_data, eval_times)
+
+          # If risk has not been computed yet, derive it from the survival probabilities
+          if (!any(is.finite(risk)) &&
+              !is.null(surv_prob_mat) &&
+              ncol(surv_prob_mat) > 0) {
             mid_idx <- ceiling(ncol(surv_prob_mat) / 2)
-            surv_mid <- surv_prob_mat[, mid_idx]
-            risk <- -log(pmax(surv_mid, .Machine$double.eps))
-          } else {
-            risk <- rep(NA_real_, nrow(test_data))
+            if (mid_idx > 0 && mid_idx <= ncol(surv_prob_mat)) {
+              surv_mid <- surv_prob_mat[, mid_idx]
+              risk <- -log(pmax(surv_mid, .Machine$double.eps))
+            }
           }
         } else if (inherits(final_model$fit, "stpm2")) {
           if (requireNamespace("rstpm2", quietly = TRUE) &&
