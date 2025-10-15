@@ -444,21 +444,19 @@ train_models <- function(train_data,
           breaks_val <- engine_args$cuts
           engine_args$cuts <- NULL
         }
-        if (!is.null(breaks_val)) {
-          breaks_val <- as.numeric(breaks_val)
-          breaks_val <- breaks_val[is.finite(breaks_val) & breaks_val > 0]
-          breaks_val <- sort(unique(breaks_val))
-          if (length(breaks_val) == 0) {
-            breaks_val <- NULL
-          }
+        breaks_val <- fastml_piecewise_normalize_breaks(breaks_val)
+        if (length(breaks_val) == 0) {
+          breaks_val <- NULL
         }
+        pw_spec <- fastml_piecewise_make_distribution(breaks_val)
         base_args <- list(
           formula = as.formula(paste(response_col, "~ .")),
           data = baked_train,
-          dist = "pwexp"
+          dist = pw_spec$dlist,
+          dfns = pw_spec$dfns
         )
-        if (!is.null(breaks_val)) {
-          base_args$cuts <- breaks_val
+        if (length(pw_spec$aux) > 0) {
+          base_args$aux <- pw_spec$aux
         }
         fit <- call_with_engine_params(
           flexsurv::flexsurvreg,
@@ -466,7 +464,7 @@ train_models <- function(train_data,
           engine_args
         )
         extras <- list(
-          distribution = "pwexp",
+          distribution = "fastml_piecewise_exponential",
           distribution_label = "piecewise exponential",
           breaks = breaks_val
         )

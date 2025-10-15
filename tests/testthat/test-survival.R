@@ -210,6 +210,50 @@ test_that("parametric_surv flexsurv integration returns survival metrics", {
   expect_true(all(brier_vals >= 0 & brier_vals <= 1))
 })
 
+test_that("piecewise_exp flexsurv integration returns survival metrics", {
+  skip_if_not_installed("flexsurv")
+
+  data(lung, package = "survival")
+  lung_surv <- subset(lung, select = c(time, status, age, sex, ph.ecog))
+  lung_surv <- stats::na.omit(lung_surv)
+  lung_surv$sex <- factor(lung_surv$sex, levels = 1:2, labels = c("male", "female"))
+
+  set.seed(123)
+  res <- fastml(
+    data = lung_surv,
+    label = c("time", "status"),
+    task = "survival",
+    algorithms = "piecewise_exp",
+    metric = "ibs",
+    resampling_method = "none",
+    test_size = 0.30,
+    impute_method = "remove",
+    eval_times = c(90, 180, 365),
+    engine_params = list(
+      piecewise_exp = list(
+        flexsurvreg = list(breaks = c(90, 180))
+      )
+    )
+  )
+
+  expect_s3_class(res, "fastml")
+  perf <- res$performance[[1]]
+  expect_true(any(perf$.metric == "ibs"))
+  ibs_val <- perf$.estimate[perf$.metric == "ibs"][1]
+  expect_true(is.finite(ibs_val))
+  brier_metrics <- perf$.metric[grepl("^brier_t", perf$.metric)]
+  expect_true(length(brier_metrics) >= 1)
+  brier_vals <- perf$.estimate[perf$.metric %in% brier_metrics]
+  expect_true(all(is.finite(brier_vals)))
+  expect_true(all(brier_vals >= 0 & brier_vals <= 1))
+
+  model_extras <- res$models[[1]]$extras
+  expect_true(is.list(model_extras))
+  expect_equal(model_extras$distribution_label, "piecewise exponential")
+  expect_length(model_extras$breaks, 2)
+  expect_equal(sort(model_extras$breaks), c(90, 180))
+})
+
 test_that("survival random forest with aorsf engine trains when available", {
   skip_if_not_installed("aorsf")
   skip_if_not_installed("censored")
