@@ -1466,49 +1466,29 @@ process_model <- function(model_obj,
       brier_time_map <- numeric(0)
     }
 
-    surv_time <- tryCatch({
-      if (inherits(final_model, "fastml_native_survival")) {
-        # --- START: Modified Block ---
-        if (inherits(final_model$fit, "flexsurvreg")) {
-          # For flexsurvreg, use the original (unprocessed) test data
-          flexsurv_newdata <- test_data
+    # Calculate median survival time directly from the survival probability matrix.
+    # This avoids the failing quantile() call and reuses existing results.
+    surv_time <- rep(NA_real_, n_obs)
+    if (!is.null(surv_prob_mat) && nrow(surv_prob_mat) == n_obs && ncol(surv_prob_mat) > 0) {
 
-          # Directly call the generic quantile() function. R will dispatch to the
-          # correct method from the flexsurv package.
-          quantiles_list <- quantile(
-            final_model$fit,
-            p = 0.5,
-            newdata = flexsurv_newdata
-          )
-
-          # The quantile function returns a list of data frames; extract the 'est' column
-          return(vapply(quantiles_list, function(x) {
-            if (is.data.frame(x) && "est" %in% names(x)) as.numeric(x$est[1]) else NA_real_
-          }, numeric(1)))
-
-        } else if (requireNamespace("censored", quietly = TRUE)) {
-          # Fallback to 'censored' package for other supported native models
-          if (inherits(final_model$fit, "coxph")) {
-            return(as.numeric(censored::survival_time_coxph(final_model$fit, pred_predictors)))
-          } else if (inherits(final_model$fit, "survbagg")) {
-            return(as.numeric(censored::survival_time_survbagg(final_model$fit, pred_predictors)))
-          } else if (inherits(final_model$fit, "mboost")) {
-            return(as.numeric(censored::survival_time_mboost(final_model$fit, pred_predictors)))
-          }
+      # For each row (patient), find the first time point where survival drops to 0.5 or less
+      median_indices <- apply(surv_prob_mat, 1, function(surv_row) {
+        idx <- which(surv_row <= 0.5)
+        if (length(idx) > 0) {
+          # Return the index of the first time point where S(t) <= 0.5
+          return(min(idx))
+        } else {
+          # If survival never drops to 0.5, the median is beyond the observed time range
+          return(NA_integer_)
         }
-        # --- END: Modified Block ---
+      })
 
-        # Default for other native models
-        return(rep(NA_real_, nrow(test_data)))
-
-      } else {
-        # Fallback for other model types
-        rep(NA_real_, nrow(test_data))
+      # Map the found indices back to their corresponding time values from eval_times
+      valid_indices <- !is.na(median_indices)
+      if (any(valid_indices)) {
+        surv_time[valid_indices] <- eval_times[median_indices[valid_indices]]
       }
-    }, error = function(e) {
-      warning("Computation of survival time failed: ", e$message)
-      rep(NA_real_, nrow(test_data))
-    })
+    }
 
     if (identical(survival_model_type, "xgboost_aft")) {
       if (!is.null(aft_quantile_mat) &&
