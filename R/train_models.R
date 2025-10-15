@@ -221,8 +221,205 @@ train_models <- function(train_data,
         spec <- spec_info$model_spec
         fit_engine_args <- spec_info$fit_args
       } else if (algo == "xgboost") {
-        warning("XGBoost is not supported for survival tasks; skipping.")
-        next
+        if (!requireNamespace("xgboost", quietly = TRUE)) {
+          warning("Package 'xgboost' not installed; skipping xgboost survival model.")
+          next
+        }
+
+        engine_name <- engine
+        if (is.null(engine_name) || length(engine_name) == 0 || is.na(engine_name)) {
+          engine_name <- "aft"
+        }
+        engine_name <- tolower(as.character(engine_name)[1])
+        if (engine_name %in% c("xgboost", "default")) {
+          engine_name <- "aft"
+        }
+        if (!identical(engine_name, "aft")) {
+          warning(sprintf("XGBoost survival engine '%s' is not supported; skipping.", engine_name))
+          next
+        }
+        engine <- engine_name
+
+        if (!is.null(start_col)) {
+          warning("XGBoost AFT does not support start-stop survival outcomes; skipping.")
+          next
+        }
+
+        prep_dat <- get_prepped_data()
+        baked_train <- prep_dat$data
+        rec_prep <- prep_dat$recipe
+
+        predictor_cols <- setdiff(names(baked_train), response_col)
+        if (length(predictor_cols) == 0) {
+          warning("No predictors available after preprocessing; skipping xgboost survival model.")
+          next
+        }
+        predictors <- baked_train[, predictor_cols, drop = FALSE]
+        feature_names <- predictor_cols
+        design_mat <- fastml_prepare_xgb_matrix(predictors, feature_names)
+
+        if (ncol(design_mat) == 0) {
+          warning("Unable to construct a feature matrix for xgboost; skipping.")
+          next
+        }
+
+        time_vec <- as.numeric(train_data[[time_col]])
+        status_vec <- as.numeric(train_data[[status_col]])
+        valid_idx <- is.finite(time_vec) & time_vec > 0 & is.finite(status_vec)
+        if (!any(valid_idx)) {
+          warning("No valid survival outcomes available for xgboost; skipping.")
+          next
+        }
+        if (!all(valid_idx)) {
+          design_mat <- design_mat[valid_idx, , drop = FALSE]
+          time_vec <- time_vec[valid_idx]
+          status_vec <- status_vec[valid_idx]
+        }
+        if (!any(status_vec > 0, na.rm = TRUE)) {
+          warning("XGBoost AFT requires at least one observed event; skipping.")
+          next
+        }
+
+        time_vec[time_vec <= 0 | !is.finite(time_vec)] <- min(time_vec[time_vec > 0 & is.finite(time_vec)])
+        log_time <- log(time_vec)
+        lower_bounds <- log_time
+        upper_bounds <- log_time
+        upper_bounds[status_vec <= 0 | !is.finite(status_vec)] <- Inf
+
+        dtrain <- xgboost::xgb.DMatrix(data = design_mat, label = log_time)
+        xgboost::setinfo(dtrain, "label_lower_bound", lower_bounds)
+        xgboost::setinfo(dtrain, "label_upper_bound", upper_bounds)
+
+        defaults <- get_default_params(
+          "xgboost",
+          task,
+          num_predictors = ncol(design_mat),
+          engine = "xgboost"
+        )
+
+        max_depth <- defaults$tree_depth
+        if (is.null(max_depth) || !is.finite(max_depth)) max_depth <- 6
+        max_depth <- as.integer(max(1, round(max_depth)))
+
+        eta <- defaults$learn_rate
+        if (is.null(eta) || !is.finite(eta)) eta <- 0.1
+
+        gamma <- defaults$loss_reduction
+        if (is.null(gamma) || !is.finite(gamma)) gamma <- 0
+
+        min_child_weight <- defaults$min_n
+        if (is.null(min_child_weight) || !is.finite(min_child_weight)) min_child_weight <- 2
+
+        subsample <- defaults$sample_size
+        if (is.null(subsample) || !is.finite(subsample)) subsample <- 0.5
+
+        mtry <- defaults$mtry
+        if (is.null(mtry) || !is.finite(mtry)) {
+          colsample <- 1
+        } else {
+          colsample <- min(1, max(1, mtry) / max(1, ncol(design_mat)))
+        }
+
+        nrounds <- defaults$trees
+        if (is.null(nrounds) || !is.finite(nrounds) || nrounds <= 0) nrounds <- 50
+        nrounds <- as.integer(max(1, round(nrounds)))
+
+        params <- list(
+          objective = "survival:aft",
+          eval_metric = "aft-nloglik",
+          max_depth = max_depth,
+          eta = eta,
+          gamma = gamma,
+          min_child_weight = min_child_weight,
+          subsample = subsample,
+          colsample_bytree = colsample,
+          aft_loss_distribution = "logistic",
+          aft_loss_distribution_scale = 1,
+          verbosity = 0
+        )
+
+        aft_quantiles <- c(0.25, 0.5, 0.75)
+        early_stop <- defaults$stop_iter
+        if (!is.null(early_stop) && is.finite(early_stop) && early_stop <= 0) {
+          early_stop <- NULL
+        }
+
+        extra_args <- list()
+        if (length(engine_args) > 0) {
+          if (!is.null(engine_args$params)) {
+            if (!is.list(engine_args$params)) {
+              stop("Engine parameters for xgboost must provide 'params' as a list.")
+            }
+            params <- merge_engine_args(params, engine_args$params)
+            engine_args$params <- NULL
+          }
+          if (!is.null(engine_args$nrounds)) {
+            nrounds <- as.integer(engine_args$nrounds[1])
+            engine_args$nrounds <- NULL
+          }
+          if (!is.null(engine_args$early_stopping_rounds)) {
+            early_stop <- as.integer(engine_args$early_stopping_rounds[1])
+            engine_args$early_stopping_rounds <- NULL
+          }
+          if (!is.null(engine_args$quantiles)) {
+            aft_quantiles <- engine_args$quantiles
+            engine_args$quantiles <- NULL
+          }
+          if (!is.null(engine_args$aft_quantiles)) {
+            aft_quantiles <- engine_args$aft_quantiles
+            engine_args$aft_quantiles <- NULL
+          }
+          extra_args <- merge_engine_args(extra_args, engine_args)
+        }
+
+        aft_quantiles <- as.numeric(aft_quantiles)
+        aft_quantiles <- aft_quantiles[is.finite(aft_quantiles) & aft_quantiles > 0 & aft_quantiles < 1]
+        aft_quantiles <- sort(unique(aft_quantiles))
+
+        if (length(aft_quantiles) == 0) {
+          aft_quantiles <- c(0.25, 0.5, 0.75)
+        }
+
+        if (!is.finite(nrounds) || nrounds <= 0) {
+          warning("xgboost survival requires 'nrounds' > 0; skipping.")
+          next
+        }
+
+        train_args <- c(
+          list(
+            params = params,
+            data = dtrain,
+            nrounds = nrounds
+          ),
+          extra_args
+        )
+
+        if (!is.null(early_stop) && is.finite(early_stop) && early_stop > 0) {
+          train_args$early_stopping_rounds <- as.integer(early_stop)
+        }
+
+        booster <- do.call(xgboost::xgb.train, train_args)
+
+        aft_distribution <- params$aft_loss_distribution
+        if (is.null(aft_distribution) || !nzchar(as.character(aft_distribution)[1])) {
+          aft_distribution <- "logistic"
+        }
+        aft_scale <- params$aft_loss_distribution_scale
+        if (is.null(aft_scale) || !is.finite(aft_scale) || aft_scale <= 0) {
+          aft_scale <- 1
+        }
+
+        fit <- list(
+          booster = booster,
+          objective = "survival:aft",
+          feature_names = colnames(design_mat),
+          aft_distribution = as.character(aft_distribution)[1],
+          aft_scale = as.numeric(aft_scale)[1],
+          aft_quantiles = aft_quantiles
+        )
+        class(fit) <- "fastml_xgb_survival"
+
+        spec <- create_native_spec("xgboost", engine, fit, rec_prep)
       } else if (algo == "stratified_cox") {
         if (!requireNamespace("survival", quietly = TRUE)) {
           stop("The 'survival' package is required for stratified Cox. Please install it.")
