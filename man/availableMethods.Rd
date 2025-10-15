@@ -26,6 +26,6 @@ Depending on the specified \code{type}, the function returns a different set of 
 \itemize{
   \item For \code{"classification"}, it returns algorithms such as \code{"logistic_reg"}, \code{"multinom_reg"}, \code{"decision_tree"}, \code{"C5_rules"}, \code{"rand_forest"}, \code{"xgboost"}, \code{"lightgbm"}, \code{"svm_linear"}, \code{"svm_rbf"}, \code{"nearest_neighbor"}, \code{"naive_Bayes"}, \code{"mlp"}, \code{"discrim_linear"}, \code{"discrim_quad"}, and \code{"bag_tree"}.
   \item For \code{"regression"}, it returns algorithms such as \code{"linear_reg"}, \code{"ridge_reg"}, \code{"lasso_reg"}, \code{"elastic_net"}, \code{"decision_tree"}, \code{"rand_forest"}, \code{"xgboost"}, \code{"lightgbm"}, \code{"svm_linear"}, \code{"svm_rbf"}, \code{"nearest_neighbor"}, \code{"mlp"}, \code{"pls"}, and \code{"bayes_glm"}.
-  \item For \code{"survival"}, it returns algorithms such as \code{"rand_forest"}, \code{"cox_ph"}, \code{"penalized_cox"}, \code{"stratified_cox"}, \code{"time_varying_cox"}, \code{"survreg"}, and \code{"royston_parmar"}.
+  \item For \code{"survival"}, it returns algorithms such as \code{"rand_forest"}, \code{"cox_ph"}, \code{"penalized_cox"}, \code{"stratified_cox"}, \code{"time_varying_cox"}, \code{"survreg"}, \code{"royston_parmar"}, \code{"parametric_surv"}, \code{"piecewise_exp"}, and \code{"xgboost"}.
 }
 }

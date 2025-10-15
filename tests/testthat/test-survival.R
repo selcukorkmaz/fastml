@@ -3,15 +3,43 @@ library(survival)
 
 test_that("available survival methods include core algorithms", {
   methods <- availableMethods("survival")
-  expect_true(all(c("rand_forest", "cox_ph", "penalized_cox") %in% methods))
-  expect_false("xgboost" %in% methods)
+  expect_true(all(c("rand_forest", "cox_ph", "penalized_cox", "xgboost") %in% methods))
 })
 
 test_that("get_default_engine works for survival algorithms", {
   expect_identical(get_default_engine("rand_forest", task = "survival"), "aorsf")
   expect_identical(get_default_engine("cox_ph", task = "survival"), "survival")
   expect_identical(get_default_engine("penalized_cox", task = "survival"), "glmnet")
-  expect_error(get_default_engine("xgboost", task = "survival"), "not supported")
+  expect_identical(get_default_engine("xgboost", task = "survival"), "aft")
+})
+
+test_that("xgboost AFT survival model trains and evaluates", {
+  skip_if_not_installed("xgboost")
+
+  data(heart, package = "survival")
+  set.seed(123)
+  res <- fastml(
+    data = heart,
+    label = c("stop", "event"),
+    algorithms = c("xgboost"),
+    task = "survival",
+    resampling_method = "none",
+    test_size = 0.3,
+    impute_method = "remove",
+    algorithm_engines = list(xgboost = "aft")
+  )
+
+  expect_s3_class(res, "fastml")
+  expect_identical(res$engine_names$xgboost, "aft")
+
+  perf <- res$performance[[1]]
+  expect_true(all(c("c_index", "uno_c", "ibs", "rmst_diff") %in% perf$.metric))
+
+  preds <- res$predictions[[1]]
+  expect_true("surv_prob_curve" %in% names(preds))
+  expect_true(is.numeric(attr(preds$surv_prob_curve, "eval_times")))
+  expect_true("surv_time" %in% names(preds))
+  expect_true(any(is.finite(preds$surv_time)))
 })
 
 
