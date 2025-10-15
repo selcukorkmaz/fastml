@@ -1481,8 +1481,19 @@ process_model <- function(model_obj,
               nrow(flexsurv_newdata) != nrow(test_data)) {
             flexsurv_newdata <- test_data
           }
+          if (!is.null(flexsurv_newdata) &&
+              !is.data.frame(flexsurv_newdata)) {
+            flexsurv_newdata <- as.data.frame(flexsurv_newdata)
+          }
+          quantile_fun <- getS3method("quantile", "flexsurvreg", optional = TRUE)
+          if (is.null(quantile_fun) && requireNamespace("flexsurv", quietly = TRUE)) {
+            quantile_fun <- getS3method("quantile", "flexsurvreg", optional = TRUE)
+          }
           quantiles_list <- tryCatch({
-            quantile(
+            if (is.null(quantile_fun)) {
+              stop("flexsurv quantile method not available")
+            }
+            quantile_fun(
               final_model$fit,
               probs = 0.5,
               newdata = flexsurv_newdata
