@@ -1466,29 +1466,99 @@ process_model <- function(model_obj,
       brier_time_map <- numeric(0)
     }
 
-    # Calculate median survival time directly from the survival probability matrix.
-    # This avoids the failing quantile() call and reuses existing results.
-    surv_time <- rep(NA_real_, n_obs)
-    if (!is.null(surv_prob_mat) && nrow(surv_prob_mat) == n_obs && ncol(surv_prob_mat) > 0) {
+    compute_surv_median <- function(prob_mat, eval_times, n_rows) {
+      if (is.null(prob_mat) ||
+          nrow(prob_mat) != n_rows ||
+          ncol(prob_mat) == 0 ||
+          length(eval_times) == 0) {
+        rep(NA_real_, n_rows)
+      } else {
+        median_indices <- apply(prob_mat, 1, function(surv_row) {
+          idx <- which(surv_row <= 0.5)
+          if (length(idx) > 0) {
+            idx[1]
+          } else {
+            NA_integer_
+          }
+        })
 
-      # For each row (patient), find the first time point where survival drops to 0.5 or less
-      median_indices <- apply(surv_prob_mat, 1, function(surv_row) {
-        idx <- which(surv_row <= 0.5)
-        if (length(idx) > 0) {
-          # Return the index of the first time point where S(t) <= 0.5
-          return(min(idx))
-        } else {
-          # If survival never drops to 0.5, the median is beyond the observed time range
-          return(NA_integer_)
+        result <- rep(NA_real_, n_rows)
+        valid_indices <- !is.na(median_indices)
+        if (any(valid_indices)) {
+          result[valid_indices] <- eval_times[median_indices[valid_indices]]
         }
-      })
-
-      # Map the found indices back to their corresponding time values from eval_times
-      valid_indices <- !is.na(median_indices)
-      if (any(valid_indices)) {
-        surv_time[valid_indices] <- eval_times[median_indices[valid_indices]]
+        result
       }
     }
+
+    align_surv_time <- function(values, n_rows) {
+      if (length(values) == n_rows) {
+        as.numeric(values)
+      } else if (length(values) == 0) {
+        rep(NA_real_, n_rows)
+      } else {
+        aligned <- rep(NA_real_, n_rows)
+        idx <- seq_len(min(length(values), n_rows))
+        if (length(idx) > 0) {
+          aligned[idx] <- as.numeric(values[idx])
+        }
+        aligned
+      }
+    }
+
+    surv_time_default <- compute_surv_median(surv_prob_mat, eval_times, n_obs)
+
+    surv_time <- tryCatch({
+      if (inherits(final_model, "fastml_native_survival")) {
+        result <- surv_time_default
+        missing_idx <- which(!is.finite(result))
+        if (length(missing_idx) > 0) {
+          fallback <- NULL
+          if (inherits(final_model$fit, "flexsurvreg")) {
+            quantiles_list <- quantile(
+              final_model$fit,
+              p = 0.5,
+              newdata = test_data
+            )
+            fallback_vals <- vapply(quantiles_list, function(x) {
+              if (is.data.frame(x) && "est" %in% names(x)) {
+                as.numeric(x$est[1])
+              } else {
+                NA_real_
+              }
+            }, numeric(1))
+            fallback <- align_surv_time(fallback_vals, n_obs)
+          } else if (requireNamespace("censored", quietly = TRUE)) {
+            if (inherits(final_model$fit, "coxph")) {
+              fallback <- align_surv_time(
+                censored::survival_time_coxph(final_model$fit, pred_predictors),
+                n_obs
+              )
+            } else if (inherits(final_model$fit, "survbagg")) {
+              fallback <- align_surv_time(
+                censored::survival_time_survbagg(final_model$fit, pred_predictors),
+                n_obs
+              )
+            } else if (inherits(final_model$fit, "mboost")) {
+              fallback <- align_surv_time(
+                censored::survival_time_mboost(final_model$fit, pred_predictors),
+                n_obs
+              )
+            }
+          }
+          if (!is.null(fallback)) {
+            result[missing_idx] <- fallback[missing_idx]
+          }
+        }
+        result
+
+      } else {
+        surv_time_default
+      }
+    }, error = function(e) {
+      warning("Computation of survival time failed: ", e$message)
+      rep(NA_real_, n_obs)
+    })
 
     if (identical(survival_model_type, "xgboost_aft")) {
       if (!is.null(aft_quantile_mat) &&
