@@ -404,11 +404,7 @@ train_models <- function(train_data,
           data = baked_train,
           dist = dist_flex
         )
-        fit <- call_with_engine_params(
-          flexsurv::flexsurvreg,
-          base_args,
-          engine_args
-        )
+        fit <- fastml_fit_flexsurvreg(base_args, engine_args)
         extras <- list(
           distribution = dist_flex,
           distribution_label = dist_label
@@ -489,11 +485,7 @@ train_models <- function(train_data,
         if (length(pw_spec$aux) > 0) {
           base_args$aux <- pw_spec$aux
         }
-        fit <- call_with_engine_params(
-          flexsurv::flexsurvreg,
-          base_args,
-          engine_args
-        )
+        fit <- fastml_fit_flexsurvreg(base_args, engine_args)
         extras <- list(
           distribution = "fastml_piecewise_exponential",
           distribution_label = "piecewise exponential",

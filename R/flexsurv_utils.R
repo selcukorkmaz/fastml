@@ -5,6 +5,44 @@
 #'
 #' @noRd
 
+fastml_fit_flexsurvreg <- function(base_args, engine_args) {
+  attempt <- tryCatch(
+    call_with_engine_params(
+      flexsurv::flexsurvreg,
+      base_args,
+      engine_args
+    ),
+    error = function(e) e
+  )
+
+  if (inherits(attempt, "error")) {
+    msg <- conditionMessage(attempt)
+    singular <- grepl("system is exactly singular", msg, fixed = TRUE)
+    user_overrode_hessian <- !is.null(engine_args) && "hessian" %in% names(engine_args)
+    base_has_hessian <- !is.null(base_args$hessian)
+
+    if (singular && !user_overrode_hessian && !base_has_hessian) {
+      base_args_fallback <- base_args
+      base_args_fallback$hessian <- FALSE
+
+      attempt <- tryCatch(
+        call_with_engine_params(
+          flexsurv::flexsurvreg,
+          base_args_fallback,
+          engine_args
+        ),
+        error = function(e) e
+      )
+    }
+  }
+
+  if (inherits(attempt, "error")) {
+    stop(attempt)
+  }
+
+  attempt
+}
+
 fastml_flexsurv_survival_matrix <- function(fit, newdata, times) {
   if (!inherits(fit, "flexsurvreg")) {
     return(NULL)
