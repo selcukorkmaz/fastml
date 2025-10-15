@@ -231,7 +231,7 @@ test_that("piecewise_exp flexsurv integration returns survival metrics", {
     eval_times = c(90, 180, 365),
     engine_params = list(
       piecewise_exp = list(
-        flexsurvreg = list(breaks = c(90, 180))
+        flexsurvreg = list(knots = c(90, 180))
       )
     )
   )
@@ -252,6 +252,36 @@ test_that("piecewise_exp flexsurv integration returns survival metrics", {
   expect_equal(model_extras$distribution_label, "piecewise exponential")
   expect_length(model_extras$breaks, 2)
   expect_equal(sort(model_extras$breaks), c(90, 180))
+})
+
+test_that("piecewise_exp flexsurv generates default knots when none supplied", {
+  skip_if_not_installed("flexsurv")
+
+  data(lung, package = "survival")
+  lung_surv <- subset(lung, select = c(time, status, age, sex, ph.ecog))
+  lung_surv <- stats::na.omit(lung_surv)
+  lung_surv$sex <- factor(lung_surv$sex, levels = 1:2, labels = c("male", "female"))
+
+  set.seed(123)
+  res <- fastml(
+    data = lung_surv,
+    label = c("time", "status"),
+    task = "survival",
+    algorithms = "piecewise_exp",
+    metric = "ibs",
+    resampling_method = "none",
+    test_size = 0.30,
+    impute_method = "remove",
+    eval_times = c(90, 180, 365)
+  )
+
+  expect_s3_class(res, "fastml")
+  model_extras <- res$models[[1]]$extras
+  expect_true(is.list(model_extras))
+  expect_equal(model_extras$distribution_label, "piecewise exponential")
+  expect_false(is.null(model_extras$breaks))
+  expect_true(length(model_extras$breaks) >= 1)
+  expect_true(all(is.finite(model_extras$breaks)))
 })
 
 test_that("survival random forest with aorsf engine trains when available", {

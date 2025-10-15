@@ -444,9 +444,40 @@ train_models <- function(train_data,
           breaks_val <- engine_args$cuts
           engine_args$cuts <- NULL
         }
+        if ("knots" %in% names(engine_args) && is.null(breaks_val)) {
+          breaks_val <- engine_args$knots
+          engine_args$knots <- NULL
+        }
         breaks_val <- fastml_piecewise_normalize_breaks(breaks_val)
         if (length(breaks_val) == 0) {
           breaks_val <- NULL
+        }
+        if (is.null(breaks_val)) {
+          event_times <- NULL
+          if (!is.null(status_col) && status_col %in% names(train_data)) {
+            status_vals <- train_data[[status_col]]
+            if (!is.null(time_col) && time_col %in% names(train_data)) {
+              time_vals <- train_data[[time_col]]
+            } else {
+              time_vals <- NULL
+            }
+            if (!is.null(time_vals)) {
+              event_idx <- which(is.finite(status_vals) & status_vals == 1)
+              if (length(event_idx) > 0) {
+                event_times <- as.numeric(time_vals[event_idx])
+                event_times <- event_times[is.finite(event_times) & event_times > 0]
+              }
+            }
+          }
+          if (!is.null(event_times) && length(event_times) >= 2) {
+            quantiles <- stats::quantile(
+              event_times,
+              probs = c(1 / 3, 2 / 3),
+              names = FALSE,
+              type = 7
+            )
+            breaks_val <- fastml_piecewise_normalize_breaks(quantiles)
+          }
         }
         pw_spec <- fastml_piecewise_make_distribution(breaks_val)
         base_args <- list(
