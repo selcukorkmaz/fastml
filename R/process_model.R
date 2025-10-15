@@ -1467,72 +1467,48 @@ process_model <- function(model_obj,
     }
 
     surv_time <- tryCatch({
-      if (inherits(final_model, "fastml_native_survival") &&
-          requireNamespace("censored", quietly = TRUE)) {
-        if (inherits(final_model$fit, "coxph")) {
-          as.numeric(censored::survival_time_coxph(final_model$fit, pred_predictors))
-        } else if (inherits(final_model$fit, "survbagg")) {
-          as.numeric(censored::survival_time_survbagg(final_model$fit, pred_predictors))
-        } else if (inherits(final_model$fit, "mboost")) {
-          as.numeric(censored::survival_time_mboost(final_model$fit, pred_predictors))
-        } else if (inherits(final_model$fit, "flexsurvreg")) {
-          flexsurv_newdata <- pred_predictors
-          if (is.null(flexsurv_newdata) ||
-              nrow(flexsurv_newdata) != nrow(test_data)) {
-            flexsurv_newdata <- test_data
+      if (inherits(final_model, "fastml_native_survival")) {
+        # --- START: Modified Block ---
+        if (inherits(final_model$fit, "flexsurvreg")) {
+          # For flexsurvreg, use the original (unprocessed) test data
+          flexsurv_newdata <- test_data
+
+          # Directly call the generic quantile() function. R will dispatch to the
+          # correct method from the flexsurv package.
+          quantiles_list <- quantile(
+            final_model$fit,
+            p = 0.5,
+            newdata = flexsurv_newdata
+          )
+
+          # The quantile function returns a list of data frames; extract the 'est' column
+          return(vapply(quantiles_list, function(x) {
+            if (is.data.frame(x) && "est" %in% names(x)) as.numeric(x$est[1]) else NA_real_
+          }, numeric(1)))
+
+        } else if (requireNamespace("censored", quietly = TRUE)) {
+          # Fallback to 'censored' package for other supported native models
+          if (inherits(final_model$fit, "coxph")) {
+            return(as.numeric(censored::survival_time_coxph(final_model$fit, pred_predictors)))
+          } else if (inherits(final_model$fit, "survbagg")) {
+            return(as.numeric(censored::survival_time_survbagg(final_model$fit, pred_predictors)))
+          } else if (inherits(final_model$fit, "mboost")) {
+            return(as.numeric(censored::survival_time_mboost(final_model$fit, pred_predictors)))
           }
-          if (!is.null(flexsurv_newdata) &&
-              !is.data.frame(flexsurv_newdata)) {
-            flexsurv_newdata <- as.data.frame(flexsurv_newdata)
-          }
-          quantile_fun <- getS3method("quantile", "flexsurvreg", optional = TRUE)
-          if (is.null(quantile_fun) && requireNamespace("flexsurv", quietly = TRUE)) {
-            quantile_fun <- getS3method("quantile", "flexsurvreg", optional = TRUE)
-          }
-          quantiles_list <- tryCatch({
-            if (is.null(quantile_fun)) {
-              stop("flexsurv quantile method not available")
-            }
-            quantile_fun(
-              final_model$fit,
-              probs = 0.5,
-              newdata = flexsurv_newdata
-            )
-          }, error = function(e) {
-            warning("Failed to compute quantiles for flexsurvreg: ", e$message)
-            NULL
-          })
-          if (is.numeric(quantiles_list) &&
-              length(quantiles_list) == nrow(flexsurv_newdata)) {
-            as.numeric(quantiles_list)
-          } else if (is.matrix(quantiles_list) &&
-                     (nrow(quantiles_list) == nrow(flexsurv_newdata) ||
-                      ncol(quantiles_list) == nrow(flexsurv_newdata))) {
-            if (ncol(quantiles_list) == nrow(flexsurv_newdata)) {
-              as.numeric(quantiles_list[1, , drop = TRUE])
-            } else {
-              as.numeric(quantiles_list[, 1, drop = TRUE])
-            }
-          } else if (is.list(quantiles_list) &&
-                     length(quantiles_list) == nrow(flexsurv_newdata)) {
-            vapply(quantiles_list, function(x) {
-              if (is.data.frame(x) && "est" %in% names(x)) {
-                as.numeric(x$est[1])
-              } else {
-                NA_real_
-              }
-            }, numeric(1))
-          } else {
-            rep(NA_real_, nrow(flexsurv_newdata))
-          }
-        } else {
-          rep(NA_real_, nrow(test_data))
         }
+        # --- END: Modified Block ---
+
+        # Default for other native models
+        return(rep(NA_real_, nrow(test_data)))
+
       } else {
+        # Fallback for other model types
         rep(NA_real_, nrow(test_data))
       }
-    }, error = function(e)
-      rep(NA_real_, nrow(test_data)))
+    }, error = function(e) {
+      warning("Computation of survival time failed: ", e$message)
+      rep(NA_real_, nrow(test_data))
+    })
 
     if (identical(survival_model_type, "xgboost_aft")) {
       if (!is.null(aft_quantile_mat) &&
