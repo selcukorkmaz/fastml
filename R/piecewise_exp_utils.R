@@ -76,10 +76,19 @@ fastml_piecewise_extract_deltas <- function(extra, delta_names) {
 }
 
 fastml_piecewise_rates <- function(log_rate, log_ratios) {
+  log_rate <- as.numeric(log_rate)
+  log_ratios <- as.numeric(log_ratios)
+
+  if (length(log_rate) > 1L) {
+    log_ratios <- c(log_rate[-1L], log_ratios)
+    log_rate <- log_rate[1L]
+  }
+
   pars <- c(log_rate, log_ratios)
   if (any(!is.finite(pars))) {
     return(rep(NA_real_, length(log_ratios) + 1L))
   }
+
   base_rate <- exp(log_rate)
   c(base_rate, base_rate * exp(log_ratios))
 }
