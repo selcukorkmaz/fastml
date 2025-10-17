@@ -928,6 +928,16 @@ process_model <- function(model_obj,
                length(surv_prob) == n_obs && any(is.finite(surv_prob))) {
       risk <- -log(pmax(surv_prob, .Machine$double.eps))
     }
+
+    if (identical(survival_model_type, "xgboost_aft") &&
+        (!any(is.finite(risk)) || all(is.na(risk)))) {
+      if (!is.null(aft_mu) && length(aft_mu) == n_obs) {
+        aft_mu_vec <- as.numeric(aft_mu)
+        if (any(is.finite(aft_mu_vec))) {
+          risk <- -aft_mu_vec
+        }
+      }
+    }
     if (length(risk) != n_obs) {
       risk <- rep(risk, length.out = n_obs)
     }
