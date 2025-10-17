@@ -864,41 +864,56 @@ process_model <- function(model_obj,
         } else if (inherits(final_model$fit, "fastml_xgb_survival")) {
           # --- START: Corrected XGBoost AFT Block ---
           if (identical(final_model$fit$objective, "survival:cox")) {
-            # Cox model doesn't predict survival probabilities directly, so we skip these metrics.
             surv_prob_mat <- NULL
 
           } else if (identical(final_model$fit$objective, "survival:aft")) {
-            # Manual implementation to replace the failing fastml_xgb_aft_predict() helper.
 
-            # 1. XGBoost predict() requires a numeric matrix. Convert the preprocessed predictors.
-            predictor_matrix <- as.matrix(pred_predictors)
+            # --- FIX IS HERE ---
+            # 1. Get the exact feature names and order the model was trained on.
+            expected_features <- final_model$fit$feature_names
 
-            # 2. Get the linear predictor (which represents log-time in an AFT model).
+            # 2. Align the prediction data to match the model's expectations.
+            current_predictors <- pred_predictors
+
+            # Add any missing columns (e.g., dummy variables for factor levels not in test set)
+            missing_cols <- setdiff(expected_features, names(current_predictors))
+            if (length(missing_cols) > 0) {
+              for (col in missing_cols) {
+                current_predictors[[col]] <- 0
+              }
+            }
+
+            # Select and reorder columns to match the training order, dropping any extra columns.
+            aligned_predictors <- current_predictors[, expected_features]
+
+            # 3. Convert the now perfectly aligned data frame to a numeric matrix.
+            predictor_matrix <- as.matrix(aligned_predictors)
+            # --- END OF FIX ---
+
+            # 4. Get the linear predictor (log-time). This call will now succeed.
             lp <- predict(final_model$fit$booster, predictor_matrix)
 
-            # 3. Get model parameters stored by fastml.
+            # 5. Get model parameters stored by fastml.
             dist <- final_model$fit$aft_distribution
             scale <- final_model$fit$aft_scale
 
-            # 4. Calculate the survival probability matrix: S(t|lp) = S_0((log(t) - lp) / scale)
+            # 6. Calculate the survival probability matrix.
             if (dist == "logistic") {
               surv_prob_mat <- matrix(NA_real_, nrow = n_obs, ncol = length(eval_times))
               for (i in seq_along(eval_times)) {
                 t <- eval_times[i]
                 if (t > 0) {
                   z <- (log(t) - lp) / scale
-                  # For a standard logistic distribution, the survival function S_0(z) is 1 / (1 + exp(z)).
                   surv_prob_mat[, i] <- 1 / (1 + exp(z))
                 } else {
-                  surv_prob_mat[, i] <- 1 # Survival probability at t=0 is always 1.
+                  surv_prob_mat[, i] <- 1
                 }
               }
             } else {
-              warning(paste("AFT distribution", dist, "is not supported by this fix. Skipping survival matrix."))
+              warning(paste("AFT distribution", dist, "is not supported. Skipping survival matrix."))
               surv_prob_mat <- NULL
             }
 
-            # Also populate aft_mu for the risk and surv_time calculations later on.
             aft_mu <- lp
 
           } else {
