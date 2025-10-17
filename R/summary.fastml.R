@@ -1685,7 +1685,7 @@ summary.fastml <- function(object,
         handled <- FALSE
         success <- FALSE
 
-        if (!is.na(algo_name) && algo_name %in% c("survreg", "cox_ph", "penalized_cox", "stratified_cox", "time_varying_cox", "royston_parmar", "parametric_surv", "piecewise_exp")) {
+        if (!is.na(algo_name) && algo_name %in% c("survreg", "cox_ph", "penalized_cox", "stratified_cox", "time_varying_cox", "royston_parmar", "parametric_surv", "piecewise_exp", "xgboost")) {
           fit_obj <- extract_survival_fit(label, model_obj)
           if (inherits(fit_obj, "survreg")) {
             success <- isTRUE(print_survreg_details(fit_obj))
