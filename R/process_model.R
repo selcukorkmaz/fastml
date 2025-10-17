@@ -862,15 +862,50 @@ process_model <- function(model_obj,
             }
           }
         } else if (inherits(final_model$fit, "fastml_xgb_survival")) {
+          # --- START: Corrected XGBoost AFT Block ---
           if (identical(final_model$fit$objective, "survival:cox")) {
+            # Cox model doesn't predict survival probabilities directly, so we skip these metrics.
             surv_prob_mat <- NULL
+
+          } else if (identical(final_model$fit$objective, "survival:aft")) {
+            # Manual implementation to replace the failing fastml_xgb_aft_predict() helper.
+
+            # 1. XGBoost predict() requires a numeric matrix as input.
+            # This converts the preprocessed predictors to the correct format.
+            predictor_matrix <- as.matrix(pred_predictors)
+
+            # 2. Get the linear predictor (which represents log-time in an AFT model).
+            lp <- predict(final_model$fit$booster, predictor_matrix)
+
+            # 3. Get model parameters stored by fastml.
+            dist <- final_model$fit$aft_distribution
+            scale <- final_model$fit$aft_scale
+
+            # 4. Calculate the survival probability matrix: S(t|lp) = S_0((log(t) - lp) / scale)
+            if (dist == "logistic") {
+              surv_prob_mat <- matrix(NA_real_, nrow = n_obs, ncol = length(eval_times))
+              for (i in seq_along(eval_times)) {
+                t <- eval_times[i]
+                if (t > 0) {
+                  z <- (log(t) - lp) / scale
+                  # For a standard logistic distribution, the survival function S_0(z) is 1 / (1 + exp(z)).
+                  surv_prob_mat[, i] <- 1 / (1 + exp(z))
+                } else {
+                  surv_prob_mat[, i] <- 1 # Survival probability at t=0 is always 1.
+                }
+              }
+            } else {
+              warning(paste("AFT distribution", dist, "is not supported by this fix. Skipping survival matrix."))
+              surv_prob_mat <- NULL
+            }
+
+            # Also populate aft_mu for the risk score calculation later on.
+            aft_mu <- lp
+
           } else {
-            aft_pred <- fastml_xgb_aft_predict(final_model$fit, pred_predictors, eval_times = eval_times)
-            surv_prob_mat <- aft_pred$surv
-            aft_quantile_mat <- aft_pred$quantiles
-            aft_probs <- aft_pred$probs
-            aft_mu <- aft_pred$mu
+            surv_prob_mat <- NULL
           }
+          # --- END: Corrected XGBoost AFT Block ---
         } else {
           surv_fit <- tryCatch(
             survival::survfit(final_model$fit, newdata = newdata_survfit),
