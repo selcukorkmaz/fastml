@@ -159,7 +159,7 @@ predict.fastml <- function(object, newdata,
       if (identical(predict_type, "risk")) {
         risk_pred <- tryCatch({
           if (inherits(wf, "fastml_native_survival")) {
-            predict_risk(wf, newdata = newdata, ...)
+            predict_risk(wf, newdata = new_data_for_predict, ...)
           } else {
             pred_obj <- predict(wf, new_data = new_data_for_predict, type = "linear_pred", ...)
             if (is.data.frame(pred_obj) || tibble::is_tibble(pred_obj)) {
