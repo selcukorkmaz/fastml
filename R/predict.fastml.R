@@ -61,8 +61,11 @@ predict.fastml <- function(object, newdata,
   if (is.null(lbl)) {
     stop("Label name is missing from the model object.")
   }
-  if (lbl %in% names(newdata)) {
-    newdata[[lbl]] <- NULL
+  label_cols <- unique(as.character(lbl))
+  label_cols <- label_cols[label_cols %in% names(newdata)]
+  if (length(label_cols)) {
+    keep_cols <- setdiff(names(newdata), label_cols)
+    newdata <- newdata[, keep_cols, drop = FALSE]
   }
 
   # 2. preprocessing via recipe -------------------------------------------
@@ -122,6 +125,8 @@ predict.fastml <- function(object, newdata,
     wf <- to_predict[[nm]]
     if (verbose) message("Predicting with: ", nm)
 
+    new_data_for_predict <- if (inherits(wf, "workflow")) newdata else new_proc
+
     if (object$task == "survival") {
       if (identical(predict_type, "survival")) {
         times <- eval_time
@@ -156,7 +161,7 @@ predict.fastml <- function(object, newdata,
           if (inherits(wf, "fastml_native_survival")) {
             predict_risk(wf, newdata = newdata, ...)
           } else {
-            pred_obj <- predict(wf, new_data = newdata, type = "linear_pred", ...)
+            pred_obj <- predict(wf, new_data = new_data_for_predict, type = "linear_pred", ...)
             if (is.data.frame(pred_obj) || tibble::is_tibble(pred_obj)) {
               if (".pred" %in% names(pred_obj)) {
                 pred_obj$.pred
@@ -181,7 +186,7 @@ predict.fastml <- function(object, newdata,
       stop("Unsupported prediction type for survival task: ", predict_type)
     }
 
-    p <- predict(wf, new_data = new_proc, type = predict_type, ...)
+    p <- predict(wf, new_data = new_data_for_predict, type = predict_type, ...)
     # pull out the vector (or keep full prob‐tibble)
     if (is.data.frame(p) || tibble::is_tibble(p)) {
       p <- switch(predict_type,
