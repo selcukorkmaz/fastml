@@ -1210,15 +1210,15 @@ train_models <- function(train_data,
 
         if (nrow(tune_params_model) > 0) {
           if (tuning_strategy == "grid" && !adaptive) {
-            tune_grid <- grid_regular(tune_params_model, levels = 3)
+            tune_grid_values <- grid_regular(tune_params_model, levels = 3)
           } else {
-            tune_grid <- NULL
+            tune_grid_values <- NULL
           }
         } else {
-          tune_grid <- NULL
+          tune_grid_values <- NULL
         }
       } else {
-        tune_grid <- NULL
+        tune_grid_values <- NULL
       }
 
       # Create the workflow
@@ -1294,32 +1294,32 @@ train_models <- function(train_data,
                 object = workflow_spec,
                 resamples = resamples,
                 param_info = tune_params_model,
-                grid = if (is.null(tune_grid)) 20 else tune_grid,
+                grid = if (is.null(tune_grid_values)) 20 else tune_grid_values,
                 metrics = if(!is.null(my_metrics)) my_metrics else metrics,
                 control = ctrl_race
               ), engine_args)
             )
           } else if (tuning_strategy == "grid") {
-            if (is.null(tune_grid)) {
-              tune_grid <- grid_regular(tune_params_model, levels = 3)
+            if (is.null(tune_grid_values)) {
+              tune_grid_values <- grid_regular(tune_params_model, levels = 3)
             }
             model_tuned <- do.call(
-              tune_grid,
+              tune::tune_grid,
               c(list(
                 object = workflow_spec,
                 resamples = resamples,
-                grid = tune_grid,
+                grid = tune_grid_values,
                 metrics = if(!is.null(my_metrics)) my_metrics else metrics,
                 control = ctrl_grid
               ), engine_args)
             )
           } else {
             model_tuned <- do.call(
-              tune_grid,
+              tune::tune_grid,
               c(list(
                 object = workflow_spec,
                 resamples = resamples,
-                grid = if (is.null(tune_grid)) 5 else tune_grid,
+                grid = if (is.null(tune_grid_values)) 5 else tune_grid_values,
                 metrics = if(!is.null(my_metrics)) my_metrics else metrics,
                 control = ctrl_grid
               ), engine_args)
