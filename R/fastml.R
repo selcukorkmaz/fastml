@@ -183,7 +183,6 @@ fastml <- function(data = NULL,
 
   task <- match.arg(task, c("auto", "classification", "regression", "survival"))
   tuning_strategy <- match.arg(tuning_strategy, c("grid", "bayes", "none"))
-  balance_method <- match.arg(balance_method)
 
   # If explicit train/test provided, ensure both are given
   if (!is.null(train_data) || !is.null(test_data)) {
