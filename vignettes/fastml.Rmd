@@ -5,14 +5,16 @@ description: >
   models using the fastml package.
 author: "Selçuk Korkmaz"
 date: "`r Sys.Date()`"
-output: 
+output:
   bookdown::html_document2:
     toc: true
     toc_float: true
     theme: default
-    config:
-      github:
-        link: "https://github.com/selcukorkmaz/fastml" 
+    css: fastml_style.css
+  pdf_document:
+    toc: true
+    number_sections: true
+    latex_engine: xelatex
 vignette: >
   %\VignetteIndexEntry{Get Started with fastml}
   %\VignetteEngine{knitr::rmarkdown}
@@ -51,9 +53,14 @@ bs_global_set(
 )
 ```
 
-<style> body { font-family: "Source Sans Pro", "Segoe UI", sans-serif; line-height: 1.65; color: #2c3e50; background-color: #ffffff; max-width: 900px; margin: auto; font-size: 15.5px; } h1, h2, h3 { font-weight: 600; color: #34495e; border-bottom: 1px solid #e0e0e0; padding-bottom: 4px; } code, pre { background-color: #f9f9fc; border-radius: 4px; padding: 2px 4px; } .sourceCode { background: #f4f6f7; border-left: 4px solid #4758AB; padding: 10px; border-radius: 6px; } blockquote { border-left: 4px solid #4758AB; padding-left: 12px; color: #6c757d; font-style: italic; } .note { background: #f9f9fc; border-left: 4px solid #4758AB; padding: 12px; margin: 16px 0; border-radius: 6px; } a:hover { color: #CA225E; text-decoration: underline; } .note:hover { background-color: #eef1fb; transition: background 0.3s ease; } #TOC { position: fixed; top: 90px; right: 40px; width: 260px; font-size: 0.9em; background: #fafafa; border: 1px solid #e0e0e0; padding: 8px 12px; border-radius: 6px; box-shadow: 0 0 4px rgba(0,0,0,0.1); } </style> <p align="center" style="margin-top:20px;"><img src="fastml_hex.png "width="130" alt="fastml logo" style="border:none; box-shadow:none; background:none; outline:none; display:block; margin-left:auto; margin-right:auto;" /></p>
+<!-- <style> body { font-family: "Source Sans Pro", "Segoe UI", sans-serif; line-height: 1.65; color: #2c3e50; background-color: #ffffff; max-width: 900px; margin: auto; font-size: 15.5px; } h1, h2, h3 { font-weight: 600; color: #34495e; border-bottom: 1px solid #e0e0e0; padding-bottom: 4px; } code, pre { background-color: #f9f9fc; border-radius: 4px; padding: 2px 4px; } .sourceCode { background: #f4f6f7; border-left: 4px solid #4758AB; padding: 10px; border-radius: 6px; } blockquote { border-left: 4px solid #4758AB; padding-left: 12px; color: #6c757d; font-style: italic; } .note { background: #f9f9fc; border-left: 4px solid #4758AB; padding: 12px; margin: 16px 0; border-radius: 6px; } a:hover { color: #CA225E; text-decoration: underline; } .note:hover { background-color: #eef1fb; transition: background 0.3s ease; } #TOC { position: fixed; top: 90px; right: 40px; width: 260px; font-size: 0.9em; background: #fafafa; border: 1px solid #e0e0e0; padding: 8px 12px; border-radius: 6px; box-shadow: 0 0 4px rgba(0,0,0,0.1); } </style> <p align="center" style="margin-top:20px;"><img src="fastml_hex.png "width="130" alt="fastml logo" style="border:none; box-shadow:none; background:none; outline:none; display:block; margin-left:auto; margin-right:auto;" /></p> -->
 
-<style> pre.sourceCode { position: relative; background-color: #f9f9fc; border-radius: 6px; border-left: 4px solid #4758AB; padding: 10px; } .copy-button { position: absolute; top: 8px; right: 10px; background-color: #4758AB; color: #fff; border: none; border-radius: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer; opacity: 0.8; } .copy-button:hover { opacity: 1; } pre.sourceCode:hover .copy-button { display: block; } </style> <script> document.addEventListener("DOMContentLoaded", function() { document.querySelectorAll('pre code').forEach(function(block) { var button = document.createElement('button'); button.className = 'copy-button'; button.type = 'button'; button.innerText = 'Copy'; button.addEventListener('click', function() { navigator.clipboard.writeText(block.innerText); button.innerText = 'Copied!'; setTimeout(function() { button.innerText = 'Copy'; }, 1500); }); var pre = block.parentNode; pre.style.position = 'relative'; pre.insertBefore(button, block); }); }); </script>
+<!-- <style> pre.sourceCode { position: relative; background-color: #f9f9fc; border-radius: 6px; border-left: 4px solid #4758AB; padding: 10px; } .copy-button { position: absolute; top: 8px; right: 10px; background-color: #4758AB; color: #fff; border: none; border-radius: 4px; padding: 4px 8px; font-size: 12px; cursor: pointer; opacity: 0.8; } .copy-button:hover { opacity: 1; } pre.sourceCode:hover .copy-button { display: block; } </style> <script> document.addEventListener("DOMContentLoaded", function() { document.querySelectorAll('pre code').forEach(function(block) { var button = document.createElement('button'); button.className = 'copy-button'; button.type = 'button'; button.innerText = 'Copy'; button.addEventListener('click', function() { navigator.clipboard.writeText(block.innerText); button.innerText = 'Copied!'; setTimeout(function() { button.innerText = 'Copy'; }, 1500); }); var pre = block.parentNode; pre.style.position = 'relative'; pre.insertBefore(button, block); }); }); </script> -->
+
+<p align="center" style="margin-top:20px;">
+  <img src="fastml_hex.png" width="130" alt="fastml logo" style="border:none; box-shadow:none; background:none; display:block; margin:auto;" />
+</p>
+
 
 # Introduction
 
@@ -93,6 +100,10 @@ The philosophy behind **fastml** is simple: automate the most common 80% of the 
 
 The core function, `fastml()`, provides an opinionated but extensible one-stop interface that automatically performs:
 
+- **Task Auto-Detection:**
+
+  Automatically detects whether you are performing classification, regression, or survival analysis based on your target variable (label).
+
 - **Data Splitting and Stratification:**  
   Creates reproducible training and testing partitions, optionally stratified by class labels.
 
@@ -120,12 +131,20 @@ install.packages("fastml")
 install.packages("fastml", dependencies = TRUE)
 ```
 
-Or, you can install the latest development version from GitHub:
+If you prefer to use the most recent development version with the latest updates and features, you can install it from GitHub:
 
 ```{r, eval=FALSE}
 install.packages("devtools")
 devtools::install_github("selcukorkmaz/fastml")
 ```
+
+After installation, load the package:
+
+```{r, eval=FALSE}
+library(fastml)
+```
+
+You are now ready to begin building and evaluating machine learning models with **fastml**.
 
 # Your First Workflow: Classification
 
@@ -148,12 +167,9 @@ iris_binary %>%
   labs(title = "Exploring Our Data")
 ```
 
-Once the data is ready, we can train our models using the main `fastml()` function.
-In this example, we train two algorithms — a Random Forest and a Logistic Regression model.
+Now, we pass this clean iris_binary data frame to `fastml()`. Notice we only provide the label. fastml inspects the *Species* column and, seeing it's a factor, automatically detects a classification task. In this example, we train two algorithms — a Random Forest and a Logistic Regression model.
 
 ```{r}
-set.seed(123) # for reproducibility
-
 model_class <- fastml(
   data = iris_binary,
   label = "Species",
@@ -169,8 +185,9 @@ summary(model_class)
 ```
 
 The model marked with * in the summary output represents the best-performing model based on the selected evaluation criterion.
+This quick workflow demonstrates how fastml enables rapid, consistent model benchmarking with minimal code.
 
-### Visualizing Results
+# Visualizing Results
 
 **fastml** includes built-in visualization tools that allow quick inspection and comparison of model performance.  
 Depending on the analysis type, different plots are available for classification, regression, and survival tasks.
@@ -196,172 +213,255 @@ To assess calibration quality, you can use the "calibration" plot:
 plot(model_class, type = "calibration")
 ```
 
+The calibration plot compares predicted probabilities with observed frequencies.
+A perfectly calibrated model will follow the diagonal line, while deviations indicate over- or under-confidence in the model’s predictions.
 
 # Discovering Available Models
 
-`fastml` supports a wide range of algorithms for **classification**, **regression**, and **survival analysis**.  
-You can easily list all available models for a specific task using the `availableMethods()` helper function.
+**fastml** supports a broad set of algorithms covering **classification**, **regression**, and **survival analysis** tasks.  
+These include both traditional statistical models and modern machine learning algorithms such as Random Forests, Gradient Boosting, and Neural Networks.
+
+To view the available algorithms for each task type, use the helper function `availableMethods()`.
+
 
 ```{r}
-# See all classification models
+# List all supported classification algorithms
 availableMethods("classification")
 
-# See all regression models
+# List all supported regression algorithms
 availableMethods("regression")
 
-# See all supported survival models
+# List all supported survival analysis algorithms
 availableMethods("survival")
 ```
 
-## Running All Models at Once
+This function returns the algorithm names recognized by **fastml**, which can be passed directly to the algorithms argument of the `fastml()` function.
 
-Instead of picking specific algorithms, you can benchmark **all available models** for your task by setting `algorithms = "all"`.
+# Running All Models at Once
 
-`fastml` will run every compatible algorithm, tune them (if `use_default_tuning = TRUE`), and the `summary()` will rank them all — giving you a single-step *“battle royale”* of models.
+In many cases, you may want to benchmark multiple algorithms to identify the best-performing model for your dataset.  
+Instead of manually specifying individual algorithms, you can simply set `algorithms = "all"`.
+
+When this option is used, **fastml** automatically runs every supported model for the selected task (classification, regression, or survival analysis).  
+
+The `summary()` output then ranks all models according to their key performance metric.
 
 ```{r}
-# This will take a few minutes!
-set.seed(123)
+# This process may take several minutes depending on data size and models
 model_battle <- fastml(
   data = iris_binary,
   label = "Species",
   algorithms = "all",
 )
 
-# Get the final ranked list of all models
+# Display a ranked summary of all trained models
 summary(model_battle)
 ```
 
+This approach provides a quick, reproducible “model battle royale” that highlights which algorithms perform best on your data.
+It is especially useful for exploratory analysis or as a first step before focusing on fine-tuning specific models.
 
 # Workflow Example: Regression
 
-`fastml` automatically detects a regression task when the label is numeric. Here, we'll predict `mpg` from the `mtcars` dataset and optimize for **RMSE**.
+**fastml** automatically detects a regression task when the outcome variable (`label`) is numeric.  
+In this example, we use the classic `mtcars` dataset to predict **miles per gallon (mpg)** based on engine and vehicle characteristics.
+
+The model performance will be evaluated using **Root Mean Squared Error (RMSE)** as the optimization metric.
 
 ```{r}
-# 1. Prepare data (mtcars)
-data(mtcars)
+# 1. Prepare data
+data(pbc, package = "survival")
+  
+# The pbc dataset has two parts; we only want the baseline data (rows 1-312)
+pbc_baseline <- pbc[1:312, ]
 
-# 2. Run fastml for regression
-set.seed(123)
+# 2. Train regression models
+# We'll compare a Random Forest and an XGBoost model
 model_reg <- fastml(
-  data = mtcars,
-  label = "mpg",
-  algorithms = c("linear_reg", "xgboost"),
-  metric = "rmse" # Optimize for RMSE
-)
+    data = pbc_baseline,
+    label = "albumin",
+    algorithms = c("rand_forest", "xgboost"),
+    metric = "rmse",            # Optimize for RMSE
+    impute_method = "remove" # Remove missing values
+  )
 
 # 3. Summarize the results
 summary(model_reg)
 ```
 
-### Regression-Specific Plots
-
-For regression, `plot(type = "residual")` generates key diagnostic plots: **Truth vs. Predicted** and a **Residual Histogram**.
+The summary output lists all trained models ranked by their RMSE values, where lower scores indicate better predictive accuracy.
+As with classification tasks, fastml standardizes data preprocessing and cross-validation, ensuring fair model comparison.
+You can visualize regression performance further using residual plot:
 
 ```{r}
+# Examine residual distribution
 plot(model_reg, type = "residual")
 ```
+
+These plots help assess whether errors are randomly distributed and whether any model exhibits systematic bias.
 
 
 # A Deeper Dive: Survival Analysis
 
-`fastml` has first-class support for **survival analysis**, including complex **parametric** and **flexible** models.  
-The workflow is triggered by passing a **time** and **status** column to the `label` argument.
+**fastml** provides native support for **survival analysis**, enabling the use of both classical and modern flexible models.  
+A survival workflow is automatically triggered when the `label` argument includes two variables: **time** and **status**.
 
-The package automates the use of specialized, modern survival models such as:
+The package seamlessly integrates multiple survival modeling approaches, including:
 
-- **Royston-Parmar flexible-parametric models** (`rstpm2`)  
-- **General parametric models** (`flexsurvreg`)  
-- **Cox Proportional-Hazards models** (`survival`)
+- **Cox Proportional-Hazards model** (`survival` package)  
+- **Royston–Parmar flexible parametric model** (`rstpm2` package)  
+- **General parametric survival models** (`flexsurvreg` package)
 
-Let's run a **Cox Proportional-Hazards model**, a **standard parametric (Weibull) model**, and a **XGBoost model** on the `lung` dataset.
-
+In this example, we’ll fit a **Cox Proportional-Hazards**, a **Weibull parametric**, and an **XGBoost** survival model using the `lung` dataset.
 
 ```{r}
-# 1. Prepare data (survival)
-  library(survival)
-  data(lung, package = "survival")
+# 1. Prepare data
+library(survival)
+data(lung, package = "survival")
 
-  # 2. Run fastml for survival
-  set.seed(123)
-  model_surv <- fastml(
-    data = lung,
-    label = c("time", "status"), # Triggers survival task
-    algorithms = c("cox_ph", "parametric_surv", "xgboost"),
-    impute_method = "medianImpute", # Handle NAs
-    
-    # Use engine_params to specify the distribution
-    # for the parametric_surv model
-    engine_params = list(
-      parametric_surv = list(
-        flexsurvreg = list(dist = "weibull")
-      )
+# 2. Train survival models
+model_surv <- fastml(
+  data = lung,
+  label = c("time", "status"),  # triggers survival analysis
+  algorithms = c("cox_ph", "parametric_surv", "xgboost"),
+  impute_method = "medianImpute",  # handle missing values
+
+  # Specify the distribution for the parametric model
+  engine_params = list(
+    parametric_surv = list(
+      flexsurvreg = list(dist = "weibull")
     )
   )
+)
 
-  # 3. Summarize survival models
-  # Metrics include Harrell's C-index, Uno's C, and Integrated Brier Score (IBS)
-  summary(model_surv)
+# 3. Summarize model performance
+# Metrics include Harrell’s C-index, Uno’s C, and Integrated Brier Score (IBS)
+summary(model_surv)
 
 ```
 
-The summary for survival models provides specialized metrics. You can also see detailed model parameters (like coefficients for a Cox model) using `summary(type = "params")`.
+The summary output for survival models provides specialized performance metrics that evaluate both discrimination and calibration.
+To inspect detailed model coefficients or distribution parameters, you can use the `type = "params"` option:
 
 ```{r}
-  summary(model_surv, type = "params", algorithm = "cox_ph")
+summary(model_surv, type = "params", algorithm = "cox_ph")
 ```
+
+These outputs allow detailed inspection of model components and help compare the interpretability and flexibility of different survival approaches within a unified **fastml** workflow.
 
 # Handling Imbalanced Data
 
-In many classification problems, one class has far fewer samples than the other.  
-Training on this *imbalanced* data can lead to models that are biased toward the majority class.
+In many real-world classification problems, one class is much less frequent than the other.  
+This **class imbalance** can lead to biased models that favor the majority class and underperform on minority observations.
 
-`fastml` provides a `balance_method` argument to correct this automatically.  
-You can set it to `"upsample"` (to randomly duplicate minority class samples) or `"downsample"` (to randomly remove majority class samples) in the training set.
+To mitigate this, **fastml** provides the `balance_method` argument, which controls how the training data is balanced before model fitting.  
+You can specify one of the following options:
 
-Let's create an imbalanced dataset:
+- `"upsample"` — randomly duplicates minority-class samples to achieve balance.  
+- `"downsample"` — randomly removes majority-class samples to achieve balance.  
+- `"none"` — disables balancing and uses the data as is (default).
 
-```{r}
-# We'll use the binary iris data from before
-# 50 "virginica"
-# 50 "versicolor"
+Let’s demonstrate this feature using the **BreastCancer** dataset from the `mlbench` package, where the goal is to predict tumor type (*benign* vs *malignant*).
 
-# Let's make it imbalanced: 50 "virginica" and 10 "versicolor"
-imbal_data <- bind_rows(
-  filter(iris_binary, Species == "virginica"),
-  filter(iris_binary, Species == "versicolor") %>% slice(1:10)
-)
-
-# See the imbalance
-table(imbal_data$Species)
-```
-
-Now, let's train a model using upsampling to balance the training data.
 
 ```{r}
-set.seed(123)
-model_balanced <- fastml(
-  data = imbal_data,
-  label = "Species",
-  algorithms = "logistic_reg",
-  balance_method = "upsample" # Key argument!
-)
+library(dplyr)
+library(mlbench)
 
-# Look at the confusion matrix
-# The model is now much better at identifying "versicolor"
-summary(model_balanced, type = "conf_mat")
+# Load and prepare data
+data(BreastCancer)
+bc_data <- BreastCancer %>%
+  select(-Id)  # remove non-predictor column
+
+# Examine class distribution
+table(bc_data$Class)
+
+# Preview the data structure
+head(bc_data)
 ```
 
-# Advanced Preprocessing: Imputation
+**Case 1: No Balancing (The Baseline)**
+
+First, we train on the original, imbalanced data.
+
+```{r}
+model_none <- fastml(
+    data = bc_data,
+    label = "Class",
+    algorithms = "logistic_reg",
+    impute_method = "medianImpute", # Handle NAs in 'Bare.nuclei'
+    balance_method = "none"         # Key argument!
+)
+  
+# Show the summary
+summary(model_none)
+```
+
+**Case 2: Downsampling**
+
+Next, we train a model after downsampling the majority (benign) class to match the size of the minority (malignant) class.
+
+```{r}
+model_down <- fastml(
+    data = bc_data,
+    label = "Class",
+    algorithms = "logistic_reg",
+    impute_method = "medianImpute", # Handle NAs in 'Bare.nuclei'
+    balance_method = "downsample"         # Key argument!
+)
+  
+# Show the summary
+summary(model_down)
+```
+
+**Case 3: Upsampling**
+
+Finally, we train a model after upsampling the minority (malignant) class to match the size of the majority (benign) class.
+
+```{r}
+model_up <- fastml(
+    data = bc_data,
+    label = "Class",
+    algorithms = "logistic_reg",
+    impute_method = "medianImpute", # Handle NAs in 'Bare.nuclei'
+    balance_method = "upsample"         # Key argument!
+)
+  
+# Show the summary
+summary(model_up)
+```
+
+
+**Comparison**
+
+After training three models using different balancing strategies (`none`, `downsample`, and `upsample`), we can compare their performance metrics.  
+Although the confusion matrices appear similar for this dataset—due to the inherent stability of logistic regression—the ROC AUC scores reveal meaningful differences:
+
+| Method       | ROC AUC |
+|---------------|---------|
+| none          | 0.959   |
+| downsample    | 0.962   |
+| upsample      | 0.987   |
+
+The **ROC AUC** metric evaluates how well the model ranks positive versus negative samples based on predicted probabilities.  
+Even when the discrete class predictions remain the same, differences in ROC AUC confirm that three distinct models were trained.
+
+Among these, the model trained with **upsampling** achieved the highest ROC AUC, indicating superior discriminative performance.  
+This result highlights how addressing class imbalance—particularly through upsampling—can significantly improve the model’s ability to distinguish between *benign* and *malignant* cases in imbalanced medical datasets.
+
+
+# Imputation
 
 `fastml` can handle missing data using several strategies via the `impute_method` argument.  
 While `"medianImpute"` is fast, you can use more powerful (but slower) methods:
 
-- `impute_method = "knnImpute"` — Uses **K-Nearest Neighbors** to impute.  
-- `impute_method = "mice"` — Uses **Multivariate Imputation by Chained Equations**, a highly robust method.  
-- `impute_method = "missForest"` — Uses a **Random Forest** to impute missing values.
+- `"knnImpute"` — Uses **K-Nearest Neighbors** to impute missing values based on similarity.  
+- `"mice"` — Performs **Multivariate Imputation by Chained Equations**, a flexible and statistically grounded method.  
+- `"missForest"` — Employs **Random Forests** to iteratively impute missing data.
 
-Let's use the `lung` dataset and impute missing values using **MICE**.
+The choice depends on dataset size, computational resources, and the degree of missingness.
+
+Below, we demonstrate the use of **MICE** imputation with the `lung` dataset from the `survival` package.
 
 ```{r}
 library(survival)
@@ -370,7 +470,6 @@ data(lung, package = "survival")
 # This code assumes you have the 'mice' package installed
 # install.packages("mice")
 
-set.seed(123)
 model_mice <- fastml(
   data = lung,
   label = c("time", "status"),
@@ -378,18 +477,32 @@ model_mice <- fastml(
   impute_method = "mice" # Use MICE for imputation
 )
 
-summary(model_mice, type = "params")
+summary(model_mice, type = "metrics")
 ```
 
+# Hyperparameter Tuning
 
-# Advanced: Hyperparameter Tuning
+Most machine learning algorithms include **hyperparameters** that control model complexity, regularization, and learning dynamics.  
+By default, **fastml** uses each model’s standard parameter settings (`use_default_tuning = FALSE`), which are usually adequate for quick benchmarking.  
+However, you can easily enable automated or fully customized **hyperparameter tuning** to optimize model performance.
 
-By default, `fastml` trains models with their default parameters (`use_default_tuning = FALSE`). You can easily enable tuning.
+## Enabling Tuning
 
-### Custom Tuning Grids
+To activate tuning, set `use_default_tuning = TRUE`.  
+When enabled, **fastml** either uses built-in tuning grids for each algorithm or applies your own custom grid if supplied through the `tune_params` argument.
 
-Provide your own tuning grid using the `tune_params` argument.  
-The structure is `list(algorithm = list(engine = list(param = values)))`.
+## Custom Tuning Grids
+
+You can define a tuning grid manually for fine-grained control over search values.  
+The expected structure is:
+
+```{r, eval=FALSE}
+list(algorithm = list(engine = list(
+  param1 = c(values), param2 = c(values)
+)))
+```
+
+Here’s an example tuning grid for the **ranger** engine of a Random Forest model:
 
 ```{r}
 # Define a custom grid for the 'ranger' engine of 'rand_forest'
@@ -402,7 +515,7 @@ my_tune_grid <- list(
   )
 )
 
-set.seed(123)
+# Train model with custom tuning
 model_custom_tune <- fastml(
   data = iris_binary,
   label = "Species",
@@ -411,51 +524,62 @@ model_custom_tune <- fastml(
   use_default_tuning = TRUE # Must be TRUE to enable tuning
 )
 
-# Check which parameters were selected
+# Inspect tuned parameters
 summary(model_custom_tune, type = "params")
 ```
 
-### Bayesian Tuning
+When tuning is enabled, fastml automatically performs internal resampling and selects the parameter combination that yields the best validation performance.
+This allows efficient exploration of hyperparameter space with minimal manual coding, while maintaining compatibility with all supported algorithms and engines.
 
-For a more efficient search, set `tuning_strategy = "bayes"` and `use_default_tuning = TRUE`.  
-`fastml` will use its internal default search space.
+## Bayesian Tuning
+
+Grid search can be computationally expensive because it evaluates all parameter combinations.  
+To improve efficiency, **fastml** supports **Bayesian optimization**, which uses past evaluation results to guide the search toward promising parameter regions.
+
+You can enable Bayesian tuning by setting `tuning_strategy = "bayes"` and `use_default_tuning = TRUE`.  
+The argument `tuning_iterations` controls how many optimization steps are performed.
 
 ```{r}
+# Bayesian hyperparameter tuning example
 set.seed(123)
 model_bayes <- fastml(
   data = iris_binary,
   label = "Species",
   algorithms = "xgboost",
   use_default_tuning = TRUE,
-  tuning_strategy = "bayes",
-  tuning_iterations = 10 # Number of iterations
+  tuning_strategy = "bayes",     # enable Bayesian optimization
+  tuning_iterations = 10         # number of search iterations
 )
 
+# Review the best-found parameters
 summary(model_bayes, type = "params")
 ```
 
+Bayesian optimization intelligently balances exploration (trying new areas of the parameter space) and exploitation (refining promising regions).
+
+This often yields better models in fewer iterations compared to exhaustive grid or random search, making it suitable for complex models like XGBoost or neural networks where tuning spaces are large.
 
 # The tidymodels Bridge: Using Custom recipes
 
-`fastml` provides sane defaults for preprocessing.  
-But what if you need a more complex feature engineering pipeline?
+By default, **fastml** applies an internal preprocessing pipeline that includes data cleaning, encoding, and scaling.  
+However, in many research or production scenarios, you may need to define **custom feature engineering steps** or domain-specific transformations.  
 
-This is where `fastml` complements **tidymodels**.  
-You can pass your own untrained `recipes` object via the `recipe` argument.  
-`fastml` will then use your recipe for all models, giving you full control.
+To support this flexibility, **fastml** seamlessly integrates with the **tidymodels** ecosystem.  
+You can pass your own untrained `recipes` object through the `recipe` argument, and **fastml** will use it for all models—skipping its internal preprocessing.  
+This approach allows you to combine the simplicity of **fastml** with the full power of **tidymodels**’ preprocessing framework.
+
 
 ```{r}
 library(recipes)
 
 # 1. Define a custom tidymodels recipe
-# For example, let's normalize and run PCA
+# Example: Normalize all numeric features and apply PCA
 my_recipe <- recipe(Species ~ ., data = iris_binary) %>%
   step_normalize(all_numeric_predictors()) %>%
   step_pca(all_numeric_predictors(), num_comp = 2)
 
-# 2. Pass the recipe to fastml
-# fastml will *not* run its internal imputation/scaling/dummy steps
-set.seed(123)
+# 2. Pass the custom recipe to fastml
+# fastml will now use your recipe instead of its internal pipeline
 model_recipe <- fastml(
   data = iris_binary,
   label = "Species",
@@ -463,172 +587,159 @@ model_recipe <- fastml(
   algorithms = c("rand_forest", "svm_rbf")
 )
 
+# 3. Summarize model performance
 summary(model_recipe)
 ```
 
-### Using Custom rsample Folds
+When a custom `recipe` is supplied:
 
-You can also take full control of the validation strategy by passing in your own `rsample` object (like `vfold_cv` or `bootstraps`).  
-`fastml` will use your folds for tuning instead of creating its own.
+- **fastml** disables its internal preprocessing steps, such as imputation, encoding, and scaling.  
+- The provided recipe is applied consistently across all algorithms, ensuring reproducibility.  
+- You gain full control over feature engineering, transformations, and variable selection — ideal for advanced users already working within the **tidymodels** framework.
+
+This integration allows you to combine the automation and multi-model comparison strengths of **fastml** with the flexibility and transparency of **recipes**.  
+It bridges quick experimentation with advanced, fully customized preprocessing workflows, preserving both reproducibility and analytical control.
+
+## Using Custom rsample Folds
+
+By default, **fastml** automatically creates its own training, testing, and resampling splits.  
+However, in some cases — such as **stratified sampling**, **blocked time-series splits**, or **custom validation designs** — you may want full control over how the data is partitioned.  
+
+To do this, you can pass your own **rsample** object (e.g., `vfold_cv`, `bootstraps`, or `mc_cv`) to the `resamples` argument.  
+**fastml** will then use your predefined folds for training, validation, and tuning instead of generating its own.
+
 
 ```{r}
 library(rsample)
 
-# 1. Create our own 5-fold cross-validation splits
-set.seed(456)
+# 1. Create custom 5-fold cross-validation splits
 my_folds <- vfold_cv(iris_binary, v = 5, strata = "Species")
 
-# 2. Pass these folds to fastml
-set.seed(123)
+# 2. Use the custom folds in fastml
 model_custom_folds <- fastml(
   data = iris_binary,
   label = "Species",
   algorithms = "svm_rbf",
-  resamples = my_folds,      # <-- Pass the custom folds
-  use_default_tuning = TRUE  # Use the folds for tuning
+  resamples = my_folds,       # pass custom resampling object
+  use_default_tuning = TRUE   # tuning will use these folds
 )
 
+# 3. Inspect tuned parameters
 summary(model_custom_folds, type = "params")
 ```
+
+This approach is particularly useful when you need to:
+
+- **Maintain consistency** across multiple modeling experiments, ensuring that identical folds and sampling strategies are reused.  
+- **Apply domain-specific validation designs**, such as patient-level stratification or batch-wise splitting in biomedical or clinical datasets.  
+- **Guarantee reproducibility** of resampling strategies across environments and packages, making results directly comparable between runs.
+
+By combining **rsample** objects with **fastml**, you gain both flexibility and reproducibility while retaining a streamlined modeling workflow.  
+This integration bridges the convenience of automated model benchmarking with the precision of fully customized resampling strategies.
 
 
 # Advanced Engine & Parameter Control
 
-Beyond tuning, `fastml` gives you precise control over which **engine** (the underlying package) is used and which fixed parameters are passed to it.
+Beyond hyperparameter tuning, **fastml** also provides direct control over the **engine** (the underlying R package used for model fitting) and any fixed engine-specific parameters.  
+This allows fine-grained customization, enabling side-by-side comparisons of different implementations of the same algorithm.
 
-### Comparing Multiple Engines
 
-The `plot()` and `summary()` functions are designed to compare engines against each other.  
-You can run multiple engines for the same algorithm (e.g., `rand_forest`) by passing a vector of engines to the `algorithm_engines` argument.
+## Comparing Multiple Engines
 
-Let's compare the **ranger** and **randomForest** engines for the Random Forest algorithm.
+Many algorithms—such as Random Forests, Gradient Boosting, or SVMs—can be implemented using multiple back-end engines.  
+The `algorithm_engines` argument lets you specify which engines to use for each algorithm.  
+You can provide a vector of engine names for a single algorithm, and **fastml** will train and evaluate each engine separately under identical preprocessing and evaluation settings.
+
 
 ```{r}
-set.seed(123)
+# Compare different Random Forest engines
 model_engines <- fastml(
   data = iris_binary,
   label = "Species",
   algorithms = "rand_forest",
-  
-  # Tell fastml to run rand_forest twice,
-  # once with 'ranger' and once with 'randomForest'
+
+  # Run 'rand_forest' twice: once with 'ranger', once with 'randomForest'
   algorithm_engines = list(
     rand_forest = c("ranger", "randomForest")
   )
 )
 
-# The summary and plots now compare the engines
+# Summarize performance across engines
 summary(model_engines)
+
+# Visualize engine comparison
 plot(model_engines, type = "bar")
 ```
 
-### Setting Fixed Engine Parameters
+Both the `summary()` and `plot()` functions automatically recognize engine-level differences, enabling direct comparison of performance metrics, runtime, and model characteristics.  
+This capability is particularly valuable for **reproducibility studies**, **benchmarking different implementations**, and **evaluating performance trade-offs** between older and newer engines.
 
-Sometimes you don't want to tune a parameter — you just want to set it.  
-The `engine_params` argument is for passing fixed, non-tuned arguments directly to the model's engine.
+Beyond selecting engines, you can fine-tune their behavior using the `engine_params` argument, which allows you to pass fixed arguments directly to the underlying modeling functions  
+(for example, `num.trees`, `max.depth`, or `kernel`).
 
-For example, let's force the **ranger** engine to build 1000 trees and set its importance mode.
+This balance of **control** and **automation** makes **fastml** suitable for both rapid experimentation and carefully optimized research workflows.  
+It enables reproducible, side-by-side evaluation of modeling engines under a unified, transparent framework.
+
+## Setting Fixed Engine Parameters
+
+In some situations, you may want to **set specific model parameters manually** instead of tuning them across a search grid.  
+To do this, include the desired fixed parameters inside the `tune_params` argument and enable `use_default_tuning = TRUE`.  
+This ensures that **fastml** uses your predefined values during training without performing a parameter search.
+
+In the example below, we instruct the **ranger** engine of the Random Forest algorithm to build exactly 1000 trees and compute impurity-based variable importance.  
+
+All main model arguments are specified directly under `tune_params`:
 
 ```{r}
-set.seed(123)
+# Set fixed engine parameters
 model_fixed_params <- fastml(
-    data = iris_binary,
-    label = "Species",
-    algorithms = "rand_forest",
-    algorithm_engines = list(rand_forest = "ranger"),
-    
-    tune_params = list(
-        rand_forest = list(
-            ranger = list(
-                trees = 1000,
-                importance = "impurity" 
-            )
-        )
-    ),
-    use_default_tuning = TRUE
+  data = iris_binary,
+  label = "Species",
+  algorithms = "rand_forest",
+  algorithm_engines = list(rand_forest = "ranger"),
+  
+  # Provide fixed engine arguments inside tune_params
+  tune_params = list(
+    rand_forest = list(
+      ranger = list(
+        trees = 1000,
+        importance = "impurity"
+      )
+    )
+  ),
+  use_default_tuning = TRUE  # required to apply tune_params
 )
 
+# Inspect model parameters
 summary(model_fixed_params, type = "params")
-
 ```
 
-# The summary shows the parameters
-summary(model_fixed_params, type = "params")
-
-
-# Model Interpretation with fastexplain
-
-Training a model is half the battle. Understanding **why** it makes its predictions is crucial for trust, debugging, and deployment.
-
-`fastexplain` is a convenient wrapper, similar to `fastml` itself, that automates the most common **model-agnostic explanations**.  
-It primarily uses the powerful **DALEX** package to provide a *one-stop-shop* for model interpretation.
-
-The default `method = "dalex"` is the most powerful.  
-It bundles three key explanations into a single call.  
-Let's use it on the regression model (`model_reg`) we built in **Section 5**.
-
-> **Note:** You will need the **DALEX** package installed for this to work.
-
-```{r, eval=FALSE}
-install.packages("DALEX")
-```
-
-When we call `fastexplain`, it will automatically:
-
-1. Create a **DALEX explainer** for the best-performing model in the `fastml` object.  
-2. Calculate and plot **Permutation-Based Variable Importance**.  
-3. Calculate and plot **SHAP Value summaries**.  
-4. Calculate and plot **Partial Dependence Profiles** (if you provide the `features` argument).
-
-Let's run it on our regression model and ask for partial dependence plots for the **wt (Weight)** and **hp (Horsepower)** features.
-
-```{r}
-# This code assumes you have run the chunk from Section 5
-# to create the 'model_reg' object.
-if (!exists("model_reg")) {
-  data(mtcars)
-  set.seed(123)
-  model_reg <- fastml(
-    data = mtcars,
-    label = "mpg",
-    algorithms = c("linear_reg", "xgboost"),
-    metric = "rmse"
-  )
-}
-
-# Run the explanation
-if (requireNamespace("DALEX", quietly = TRUE)) {
-  
-  fastexplain(
-    model_reg, 
-    method = "dalex",
-    features = c("wt", "hp"),
-    shap_sample = 20, # Default is 5, use more for a stable plot
-    vi_iterations = 15 # Default is 10
-  )
-  
-}
-```
-
-When you run this, `fastexplain` automatically prints a series of tables and plots to your console:
-
-1. **Variable Importance:**  
-   A plot showing which features most impact model error when shuffled.
-
-2. **SHAP Summary:**  
-   A bar plot showing the mean absolute SHAP value, indicating the average magnitude of each feature’s contribution.
-
-3. **Partial Dependence:**  
-   Line plots (one for `wt` and one for `hp`) showing how the model’s prediction for `mpg` changes, on average, as that single feature’s value changes.
+This approach ensures reproducibility and consistency across runs by keeping model hyperparameters constant. It is particularly useful for standardized benchmarking, simulation studies, or sensitivity analyses where tuning variability is undesirable.
 
 # Using Advanced Backends: H2O
 
-`fastml` is not limited to **parsnip's default engines**; it also has built-in support for high-performance backends like **H2O**.  
-**H2O** is an open-source, in-memory platform for machine learning that can scale to large datasets efficiently.
+**fastml** extends beyond the standard **parsnip** modeling engines by supporting advanced, high-performance backends such as **H2O**.  
+**H2O** is an open-source, in-memory, distributed machine learning platform designed for scalability and speed,  
+capable of efficiently handling large datasets that exceed the limits of traditional in-memory R modeling workflows.
 
-### One-Time Setup
+By integrating **H2O** directly, **fastml** enables seamless access to its optimized implementations of algorithms such as:
 
-To use the H2O backend, you must have the `h2o` package installed and the `agua` package (which provides the parsnip bridge to H2O). You only need to do this once per R session.
+- **H2O Random Forest** (`rand_forest`, engine = `"h2o"`)  
+- **H2O Gradient Boosting Machine (GBM)** (`boost_tree`, engine = `"h2o"`)  
+- **H2O Deep Learning** (`mlp`, engine = `"h2o"`)  
+- **H2O Generalized Linear Model (GLM)** (`linear_reg`, engine = `"h2o"`)
+
+Using H2O through **fastml** provides parallelized training, automatic data distribution across CPU cores,  
+and highly efficient memory management—all while maintaining the same simple interface as standard engines.
+
+
+## One-Time Setup
+
+Before using **H2O** as a backend, ensure that both the **h2o** and **agua** packages are installed.  
+The `h2o` package provides access to the distributed machine learning platform,  
+while the `agua` package serves as a bridge between **parsnip** (and thus **fastml**) and the H2O framework.
+
+These packages only need to be installed once per R environment.
 
 ```{r, eval=FALSE}
 # 1. Install the packages
@@ -636,46 +747,181 @@ install.packages("h2o")
 install.packages("agua") # <-- This is the new, required package
 ```
 
+After installation, **fastml** automatically detects available **H2O** engines and registers them for all compatible algorithms.  
+No additional configuration is needed — once `h2o` and `agua` are installed, the backend is ready for use.
+
+This integration allows you to train high-performance, distributed models using the same unified **fastml** syntax.  
+Whether you are building tree ensembles, deep neural networks, or large-scale GLMs,  
+the interface remains consistent, while computation is offloaded to the **H2O** engine for efficiency and scalability.
+
 
 ```{r}
 # 2. Load and initialize the H2O cluster
 library(h2o)
-library(agua) # <-- You must load this package
+library(agua)  # must be loaded to enable H2O engines in parsnip/fastml
+
+# Initialize the H2O backend
 h2o.init()
 ```
 
-### Running an H2O Model
+Once initialized, **H2O** starts a local in-memory cluster that handles data storage, model training, and parallel computation.  
+The console output confirms successful initialization, displaying details such as available CPU cores, total memory, cluster name, and node configuration.
 
-Once H2O is running and `agua` is loaded, you can set the engine to `"h2o"` for any supported algorithm (like `rand_forest`).  
-`fastml` will automatically handle the conversion of your data frame to an **H2OFrame** for training.
+After this setup, **fastml** can seamlessly communicate with the H2O environment,  
+allowing you to train and evaluate large-scale models using distributed computation.  
+All H2O-based algorithms can now be accessed through the same unified **fastml** interface —  
+bringing scalability and performance without changing your workflow.
 
-Your helper files (like `plot.fastml.R` and `train_models.R`) include special logic to correctly handle H2O’s unique outputs, such as its different probability column names.
+## Running an H2O Model
+
+Once **H2O** is initialized and the `agua` package is loaded, you can specify `"h2o"` as the engine for any supported algorithm — for example, `rand_forest`.  
+**fastml** automatically converts your input data frame into an **H2OFrame** and handles model training within the H2O cluster.  
+
+Your helper scripts (such as `plot.fastml.R` and `train_models.R`) include logic to correctly manage H2O-specific behaviors, including different naming conventions for prediction columns.
+
 
 ```{r}
-# This code assumes you have run the chunk from Section 4
-# to create the 'iris_binary' object.
+# This code assumes that 'iris_binary' was created in Section 4.
+# If your R session was restarted, re-run this setup.
 
-# We'll re-run this setup in case the R session restarted
-# In a real workflow, you only run h2o.init() once.
+# Start the H2O cluster
+h2o.init()
 
-  # Start the H2O cluster
-  h2o.init()
-  
-  set.seed(123)
-  model_h2o <- fastml(
-    data = iris_binary,
-    label = "Species",
-    algorithms = "rand_forest",
-    algorithm_engines = list(rand_forest = "h2o")
-  )
+# Train a Random Forest model using the H2O engine
+model_h2o <- fastml(
+  data = iris_binary,
+  label = "Species",
+  algorithms = "rand_forest",
+  algorithm_engines = list(rand_forest = "h2o")
+)
 
-  # fastml's summary and plot functions work seamlessly
-  summary(model_h2o)
-  
-  # Don't forget to shut down the cluster when you're done
-  h2o.shutdown(prompt = FALSE)
+# Summarize model performance
+summary(model_h2o)
+
+# Visualize comparison metrics
+plot(model_h2o, type = "bar")
+
+# Shut down the H2O cluster when finished
+h2o.shutdown(prompt = FALSE)
 
 ```
-This demonstrates how fastml acts as a user-friendly "front-end" to powerful and complex backends, abstracting away the boilerplate code needed for data conversion and setup.
+
+Once initialized, **fastml** communicates directly with the **H2O** backend, preserving the same simple and consistent interface used for all other engines.  
+Under the hood, data are automatically converted to H2OFrames, and training is distributed across available CPU cores for faster computation.
+
+The `summary()` and `plot()` functions operate exactly as they do with standard engines,  
+allowing you to evaluate and visualize model performance without changing your workflow.  
+This seamless integration enables users to scale from small, local datasets to large, distributed environments with no additional configuration.
+
+# Model Interpretation with fastexplain
+
+Training a model is only the first step — understanding **why** it makes certain predictions is equally important for building trust, diagnosing issues, and ensuring responsible deployment.  
+
+The **fastexplain** function in **fastml** serves as a convenient, automated interface for **model-agnostic interpretability**.  
+It leverages the **DALEX** package to generate multiple complementary explanations in a single call, making interpretation accessible and consistent across models.
+
+By default, `method = "dalex"` is used, which combines three essential interpretability tools:
+
+1. **Feature Importance** — Quantifies each variable’s contribution to model performance.  
+2. **Partial Dependence Profiles** — Illustrates how predictions change as a single feature varies.  
+3. **SHAP (Shapley) Values** — Provides instance-level explanations showing how features influence individual predictions.
+
+Let’s apply `fastexplain()` to the regression model (`model_reg`) we trained in **Section 6**.
+
+> **Note:** The `DALEX` package must be installed to enable this functionality.
+
+```{r, eval=FALSE}
+install.packages("DALEX")
+```
+
+When you call `fastexplain()`, it automatically performs a sequence of interpretation steps for the best-performing model within the `fastml` object:
+
+1. Creates a **DALEX explainer** for the top-ranked model.  
+2. Computes and visualizes **Permutation-Based Variable Importance**.  
+3. Calculates and plots **SHAP Value Summaries** for local interpretability.  
+4. Generates **Partial Dependence Profiles** for specified features (if provided via the `features` argument).
+
+Let’s demonstrate this on our pbc regression model, visualizing how **bilirubin (bili)** and **age** influence the predicted serum **albumin** levels.
+
+```{r}
+  model_reg <- fastml(
+    data = pbc_baseline,
+    label = "albumin",
+    algorithms = c("xgboost"),
+    metric = "rmse",
+    impute_method = "medianImpute"
+  )
+
+  
+explain_model =fastexplain(
+    model_reg,
+    method = "dalex",
+    features = c("bili", "age"),  # specify variables for partial dependence
+    shap_sample = 20,          # number of samples for SHAP computation
+    vi_iterations = 15         # number of iterations for permutation importance
+  )
+```
+
+This single call creates a complete interpretability dashboard.  
+When you execute `fastexplain()`, it automatically performs and displays the interpretability workflow in your console.
+
+The output log confirms the process step-by-step, typically including messages such as:
+
+- `"A new explainer has been created!"` — indicating that a **DALEX explainer** has been successfully initialized for the selected model (e.g., *xgboost*).  
+- `"DALEX Variable Importance"` — computation and plotting of **permutation-based feature importance**.  
+- `"DALEX Model Profiles"` — generation of **partial dependence profiles** for selected features.  
+- `"DALEX Shapley values (SHAP)"` — calculation and visualization of **feature-level contribution summaries**.
+
+All plots are automatically rendered to the console for immediate inspection.  
+However, `fastexplain()` also returns an object (commonly stored as `explain_model`) that contains the underlying data from each explanation step.
+
+This allows for deeper exploration and customized visualization.
+
+1. **Variable Importance:**  
+A permutation-based importance plot shows how much each feature contributes to the degradation in model performance (loss) when its values are randomly shuffled.  
+Features causing a greater increase in loss are more influential, as they disrupt the model’s predictive structure when permuted.
+
+In this example, the `explain_model$variable_importance` data indicates that **edema**, **id**, and **stage** are the most critical predictors.  
+
+```{r}
+explain_model$variable_importance
+```
+
+These variables exhibit the largest `mean_dropout_loss` values — for instance, `edema` shows a mean dropout loss of approximately **0.730**, meaning that shuffling this feature leads to a substantial decline in predictive accuracy.
+
+This confirms that the model relies heavily on these variables when estimating outcomes, making them key drivers of the prediction mechanism.
+  
+
+
+2. **SHAP Summary:**  
+A bar plot of the mean absolute SHAP values quantifies the average magnitude of each feature’s contribution to model predictions.  
+This provides a global view of how strongly each variable influences the output, regardless of direction.
+
+The `explain_model$shap_values` data frame contains the underlying statistics for these contributions.  
+For example, in this model, the feature **stage** exhibits a strong average **negative** contribution to the predicted albumin levels (mean ≈ -0.056), while **edema** shows a notable **positive** contribution (mean ≈ 0.013).  
+   
+```{r}
+explain_model$shap_values
+```
+
+Together, these patterns reveal how different predictors systematically push the model’s predictions higher or lower,  
+offering interpretable insight into the biological or clinical relevance of each feature.
+
+3. **Partial Dependence:**  
+ Line plots (for example, for **bili** and **age**) visualize how the model’s predicted **albumin** values change as each feature varies, while all other variables are held constant.  
+These plots capture the *marginal effect* of each feature on the prediction, helping identify monotonic relationships, nonlinear trends, or thresholds.
+
+The `explain_model$model_profiles` object contains the raw data underlying these plots.  
+Within it, the `$agr_profiles` table provides the average predicted response (`_yhat_`, corresponding to albumin) for different values (`_x_`) of each feature —  
+these averaged predictions form the basis of the partial dependence curves.
+  
+```{r}
+explain_model$model_profiles
+```
+
+Inspecting this table allows for precise, data-level understanding of how each feature influences model output beyond the visual summaries.
+
+These visualizations form a comprehensive, model-agnostic explanation suite — clarifying both **which features matter most** and **how** they influence the predictions produced by the trained model.
+
 
 
