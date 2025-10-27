@@ -11,14 +11,10 @@ output:
     toc_float: true
     theme: default
     css: fastml_style.css
-  pdf_document:
-    toc: true
-    number_sections: true
-    latex_engine: xelatex
 vignette: >
   %\VignetteIndexEntry{Get Started with fastml}
-  %\VignetteEngine{knitr::rmarkdown}
   %\VignetteEncoding{UTF-8}
+  %\VignetteEngine{knitr::rmarkdown}
 ---
 
 [<img src="https://www.r-pkg.org/badges/version/fastml" alt="CRAN Version">](https://CRAN.R-project.org/package=fastml)

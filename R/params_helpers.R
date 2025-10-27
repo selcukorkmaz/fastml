@@ -28,6 +28,8 @@
 #'     \item Other algorithms, including \code{"svm_linear"}, \code{"svm_rbf"}, \code{"nearest_neighbor"}, \code{"naive_Bayes"}, \code{"mlp"}, \code{"deep_learning"}, \code{"elastic_net"}, \code{"bayes_glm"}, \code{"pls"}, \code{"linear_reg"}, \code{"ridge_reg"}, and \code{"lasso_reg"}, have their respective default parameter lists.
 #'   }
 #'
+#'@importFrom utils tail
+#'
 #' @export
 get_default_params <- function(algo, task, num_predictors = NULL, engine = NULL) {
   switch(algo,

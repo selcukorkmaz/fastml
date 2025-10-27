@@ -1,4 +1,4 @@
-utils::globalVariables(c("truth", "residual", "sensitivity", "specificity", "FalsePositiveRate", "TruePositiveRate", "Engine", "ModelEngine"))
+utils::globalVariables(c("truth", "residual", "sensitivity", "specificity", "FalsePositiveRate", "TruePositiveRate", "Engine", "ModelEngine", "metric_display"))
 
 #' Summary Function for fastml (Using yardstick for ROC Curves)
 #'
@@ -57,6 +57,8 @@ utils::globalVariables(c("truth", "residual", "sensitivity", "specificity", "Fal
 #' @importFrom rlang get_expr get_env sym
 #' @importFrom viridisLite viridis
 #' @importFrom tidyr pivot_wider
+#' @importFrom stats coef quantile approx AIC BIC logLik nobs setNames
+#' @importFrom utils capture.output head tail
 #'
 #' @export
 summary.fastml <- function(object,
@@ -1087,7 +1089,7 @@ summary.fastml <- function(object,
 
       extract_component <- function(obj, name) {
         res <- NULL
-        if (methods::is(obj, "S4") && methods::hasSlot(obj, name)) {
+        if (methods::is(obj, "S4")) {
           res <- tryCatch(methods::slot(obj, name), error = function(e) NULL)
         }
         if (is.null(res)) {
@@ -1161,9 +1163,9 @@ summary.fastml <- function(object,
           if (length(val) > 0) as.numeric(val)[1] else NA_real_
         }, error = function(e) NA_real_)
       }
-      if (!is.finite(loglik_val) && requireNamespace("rstpm2", quietly = TRUE)) {
+      if (!is.finite(loglik_val)) {
         loglik_val <- tryCatch({
-          val <- rstpm2::logLik(fit_obj)
+          val <- stats::logLik(fit_obj)
           if (length(val) > 0) as.numeric(val)[1] else NA_real_
         }, error = function(e) NA_real_)
       }
@@ -1604,9 +1606,9 @@ summary.fastml <- function(object,
         "<unknown>"
       }
       if (identical(objective, "survival:cox")) {
-        cat("  Objective: survival:cox — risk ranking only\n")
+        cat("  Objective: survival:cox  risk ranking only\n")
       } else if (identical(objective, "survival:aft")) {
-        cat("  Objective: survival:aft — full survival modeling\n")
+        cat("  Objective: survival:aft  full survival modeling\n")
       } else {
         cat("  Objective:", objective, "\n")
       }

@@ -49,6 +49,7 @@
 #' @importFrom rsample vfold_cv bootstraps validation_split
 #' @importFrom recipes all_nominal_predictors all_numeric_predictors all_outcomes all_predictors
 #' @importFrom finetune control_race tune_race_anova
+#' @importFrom rstpm2 stpm2
 #' @return A list of trained model objects.
 #' @export
 train_models <- function(train_data,
@@ -625,9 +626,11 @@ train_models <- function(train_data,
           warning("Package 'flexsurv' not installed; skipping piecewise_exp.")
           next
         }
+
         prep_dat <- get_prepped_data()
         baked_train <- prep_dat$data
         rec_prep <- prep_dat$recipe
+
         breaks_val <- NULL
         if ("breaks" %in% names(engine_args)) {
           breaks_val <- engine_args$breaks
@@ -641,10 +644,10 @@ train_models <- function(train_data,
           breaks_val <- engine_args$knots
           engine_args$knots <- NULL
         }
+
         breaks_val <- fastml_piecewise_normalize_breaks(breaks_val)
-        if (length(breaks_val) == 0) {
-          breaks_val <- NULL
-        }
+        if (length(breaks_val) == 0) breaks_val <- NULL
+
         if (is.null(breaks_val)) {
           event_times <- NULL
           if (!is.null(status_col) && status_col %in% names(train_data)) {
@@ -672,6 +675,7 @@ train_models <- function(train_data,
             breaks_val <- fastml_piecewise_normalize_breaks(quantiles)
           }
         }
+
         pw_spec <- fastml_piecewise_make_distribution(breaks_val)
         base_args <- list(
           formula = as.formula(paste(response_col, "~ .")),
@@ -682,7 +686,9 @@ train_models <- function(train_data,
         if (length(pw_spec$aux) > 0) {
           base_args$aux <- pw_spec$aux
         }
+
         fit <- fastml_fit_flexsurvreg(base_args, engine_args)
+
         extras <- list(
           distribution = "fastml_piecewise_exponential",
           distribution_label = "piecewise exponential",
@@ -694,6 +700,7 @@ train_models <- function(train_data,
         if (!is.null(status_col) && status_col %in% names(train_data)) {
           extras$train_status <- train_data[[status_col]]
         }
+
         spec <- create_native_spec(
           "piecewise_exp",
           engine,
@@ -701,7 +708,13 @@ train_models <- function(train_data,
           rec_prep,
           extras = extras
         )
-      } else if (algo == "royston_parmar") {
+
+        # ensure extras are attached to top-level spec
+        if (inherits(spec, "fastml_native_survival")) {
+          spec$extras <- extras
+        }
+      }
+      else if (algo == "royston_parmar") {
         if (!requireNamespace("rstpm2", quietly = TRUE)) {
           warning("Package 'rstpm2' not installed; skipping royston_parmar.")
           next
@@ -764,7 +777,7 @@ train_models <- function(train_data,
         }, error = function(e) NA_real_)
         if (!is.finite(loglik_val)) {
           loglik_val <- tryCatch({
-            val <- rstpm2::logLik(fit)
+            val <- stats::logLik(fit)
             if (length(val) > 0) as.numeric(val)[1] else NA_real_
           }, error = function(e) NA_real_)
         }
@@ -780,7 +793,7 @@ train_models <- function(train_data,
           if (length(val) > 0) as.numeric(val)[1] else NA_real_
         }, error = function(e) NA_real_)
         if (!is.finite(aic_val)) {
-          aic_val <- tryCatch(rstpm2::AIC(fit), error = function(e) NA_real_)
+          aic_val <- tryCatch(stats::AIC(fit), error = function(e) NA_real_)
         }
         if (!is.finite(aic_val)) {
           aic_val <- tryCatch({
@@ -794,7 +807,7 @@ train_models <- function(train_data,
           if (length(val) > 0) as.numeric(val)[1] else NA_real_
         }, error = function(e) NA_real_)
         if (!is.finite(bic_val)) {
-          bic_val <- tryCatch(rstpm2::BIC(fit), error = function(e) NA_real_)
+          bic_val <- tryCatch(stats::BIC(fit), error = function(e) NA_real_)
         }
         if (!is.finite(bic_val)) {
           bic_val <- tryCatch({
@@ -926,7 +939,7 @@ train_models <- function(train_data,
   }
 
   if (use_default_tuning && is.null(resamples)) {
-    warning("Tuning is skipped because resampling is disabled")
+    warning("'tune_params' are ignored when 'tuning_strategy' is 'none'")
   }
 
   models <- list()
@@ -1333,11 +1346,18 @@ train_models <- function(train_data,
             c(list(object = final_workflow, data = train_data), engine_args)
           )
         } else {
-          # If no tuning is required, simply fit the workflow.
-          model <- do.call(
-            parsnip::fit,
-            c(list(object = workflow_spec, data = train_data), engine_args)
-          )
+          # Rebuild the workflow with engine parameters applied correctly
+          if (length(engine_args) > 0) {
+            model_spec_with_engine <- do.call(
+              parsnip::set_engine,
+              c(list(model_spec, engine = engine), engine_args)
+            )
+            workflow_spec <- workflows::workflow() %>%
+              workflows::add_model(model_spec_with_engine) %>%
+              workflows::add_recipe(recipe)
+          }
+
+          model <- parsnip::fit(workflow_spec, data = train_data)
         }
         # Save the fitted model in the nested list under the current engine
         models[[algo]][[engine]] <- model

@@ -8,6 +8,15 @@
 #' @param label Name of the target variable. For survival analysis this should
 #'   be a character vector of length two giving the names of the time and status
 #'   columns.
+#' @param start_col Optional string. The name of the column specifying the
+#'   start time in counting process (e.g., `(start, stop, event)`) survival
+#'   data. Only used when \code{task = "survival"}.
+#' @param time_col String. The name of the column specifying the event or
+#'   censoring time (the "stop" time in counting process data). Only used
+#'   when \code{task = "survival"}.
+#' @param status_col String. The name of the column specifying the event
+#'   status (e.g., 0 for censored, 1 for event). Only used when
+#'   \code{task = "survival"}.
 #' @param task Type of task: "classification", "regression", or "survival".
 #' @param metric The performance metric to optimize (e.g., "accuracy", "rmse").
 #' @param event_class A single string. Either "first" or "second" to specify which level of truth to consider as the "event".

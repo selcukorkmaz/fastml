@@ -13,6 +13,15 @@
 #' @param label The name of the outcome variable (as a character string).
 #' @param event_class For binary classification, specifies which class is considered the positive class:
 #'   `"first"` or `"second"`.
+#' @param start_col Optional string. The name of the column specifying the
+#'   start time in counting process (e.g., `(start, stop, event)`) survival
+#'   data. Only used when \code{task = "survival"}.
+#' @param time_col String. The name of the column specifying the event or
+#'   censoring time (the "stop" time in counting process data). Only used
+#'   when \code{task = "survival"}.
+#' @param status_col String. The name of the column specifying the event
+#'   status (e.g., 0 for censored, 1 for event). Only used when
+#'   \code{task = "survival"}.
 #' @param engine A character string indicating the model engine (e.g., `"xgboost"`, `"randomForest"`). Used
 #'   to determine if class probabilities are supported. If `NULL`, probabilities are skipped.
 #' @param train_data A data frame containing the training data, required to refit finalized workflows.
@@ -48,7 +57,8 @@
 #' - For models with missing prediction lengths, a helpful imputation error is thrown to guide data preprocessing.
 #'
 #' @export
-
+#' @importFrom stats model.matrix formula median quantile setNames
+#' @importFrom utils head tail
 process_model <- function(model_obj,
                           model_id,
                           task,
@@ -513,7 +523,7 @@ process_model <- function(model_obj,
               n_obs <- nrow(mm_full)
               penalty <- final_model$penalty
               pred_lp <- tryCatch({
-                glmnet::predict(
+                predict(
                   final_model$fit,
                   newx = mm_full,
                   s = penalty,
@@ -533,7 +543,7 @@ process_model <- function(model_obj,
 
               if (needs_manual_lp) {
                 coef_mat <- tryCatch({
-                  glmnet::coef(final_model$fit, s = penalty)
+                  coef(final_model$fit, s = penalty)
                 }, error = function(e)
                   NULL)
 
@@ -597,7 +607,7 @@ process_model <- function(model_obj,
                 final_model$start_col %in% names(test_data)) {
               rp_newdata[[final_model$start_col]] <- test_data[[final_model$start_col]]
             }
-            as.numeric(rstpm2::predict(
+            as.numeric(predict(
               final_model$fit,
               newdata = rp_newdata,
               type = "lp"
@@ -849,7 +859,7 @@ process_model <- function(model_obj,
                 nd[[time_var]] <- eval_times[j]
               }
               preds <- tryCatch({
-                as.numeric(rstpm2::predict(
+                as.numeric(predict(
                   final_model$fit,
                   newdata = nd,
                   type = "surv"

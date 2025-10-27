@@ -5,7 +5,7 @@ test_that("fastml_flexsurv_survival_matrix preserves factor structure", {
   skip_if_not_installed("flexsurv")
   skip_if_not_installed("survival")
 
-  data(lung, package = "survival")
+  lung <- survival::lung
   lung <- stats::na.omit(lung[, c("time", "status", "age", "sex", "ph.ecog")])
   lung$sex <- factor(lung$sex, levels = c(1, 2), labels = c("male", "female"))
   lung$ph.ecog <- factor(lung$ph.ecog)
@@ -13,11 +13,13 @@ test_that("fastml_flexsurv_survival_matrix preserves factor structure", {
   lung$group <- factor(sample(c("A", "B", "C"), nrow(lung), replace = TRUE),
                        levels = c("A", "B", "C", "D"))
 
-  fit <- flexsurv::flexsurvreg(
-    survival::Surv(time, status) ~ age + sex + ph.ecog + group,
-    data = lung,
-    dist = "weibull"
-  )
+  suppressWarnings({
+    fit <- flexsurv::flexsurvreg(
+      survival::Surv(time, status) ~ age + sex + ph.ecog + group,
+      data = lung,
+      dist = "weibull"
+    )
+  })
 
   newdata <- lung[seq_len(min(6L, nrow(lung))), c("age", "sex", "ph.ecog", "group")]
   levels(newdata$group) <- levels(lung$group)
@@ -33,11 +35,12 @@ test_that("fastml_flexsurv_survival_matrix preserves factor structure", {
 })
 
 
+
 test_that("fastml_flexsurv_survival_matrix handles empty newdata", {
   skip_if_not_installed("flexsurv")
   skip_if_not_installed("survival")
 
-  data(lung, package = "survival")
+  lung <- survival::lung
   lung <- stats::na.omit(lung[, c("time", "status", "age", "sex")])
   lung$sex <- factor(lung$sex, levels = c(1, 2), labels = c("male", "female"))
 

@@ -57,6 +57,21 @@ fastml_prepare_xgb_matrix <- function(predictors, feature_names) {
   mat
 }
 
+#' Compute Breslow Baseline Hazard and Survival
+#'
+#' Fits a Cox model with an offset linear predictor to estimate the Breslow
+#' baseline cumulative hazard and corresponding survival function.
+#'
+#' @param time_vec Numeric vector of observed times.
+#' @param status_vec Numeric event indicator (1 = event, 0 = censored).
+#' @param lp_vec Numeric vector of linear predictors.
+#'
+#' @return A data frame containing \code{time}, \code{cumhaz}, and \code{surv}.
+#' Returns \code{NULL} if fitting fails or no valid data remain.
+#'
+#' @importFrom survival coxph Surv basehaz
+#' @keywords internal
+#' @noRd
 fastml_compute_breslow_baseline <- function(time_vec, status_vec, lp_vec) {
   df <- data.frame(
     time = as.numeric(time_vec),
@@ -85,6 +100,21 @@ fastml_compute_breslow_baseline <- function(time_vec, status_vec, lp_vec) {
   bh
 }
 
+#' Predict Linear Predictor from xgboost Booster
+#'
+#' Generates linear predictor (log-hazard or log-time) estimates from an
+#' xgboost survival model, handling differences between Cox and AFT objectives
+#' and ensuring shape consistency across xgboost versions.
+#'
+#' @param fit_obj A fitted xgboost survival model object containing a
+#' \code{booster} and \code{feature_names}.
+#' @param predictors A data frame or matrix of predictors for prediction.
+#'
+#' @return A numeric vector of predicted linear predictors (\code{lp}).
+#' Returns \code{NA} if prediction fails or model is invalid.
+#'
+#' @keywords internal
+#' @noRd
 fastml_xgb_predict_lp <- function(fit_obj, predictors) {
   booster <- fit_obj$booster
   n_obs <- if (!is.null(predictors)) nrow(predictors) else 0L
@@ -99,7 +129,7 @@ fastml_xgb_predict_lp <- function(fit_obj, predictors) {
 
   safe_margin_pred <- function(strict_shape = FALSE) {
     tryCatch(
-      xgboost::predict(
+      predict(
         booster,
         newdata = mat,
         outputmargin = TRUE,
@@ -121,7 +151,7 @@ fastml_xgb_predict_lp <- function(fit_obj, predictors) {
     # As a last resort, request the default prediction (expected survival
     # time) and convert it back to the location parameter on the log scale.
     pred_raw <- tryCatch(
-      xgboost::predict(booster, newdata = mat, strict_shape = TRUE),
+      predict(booster, newdata = mat, strict_shape = TRUE),
       error = function(e) NULL
     )
     if (!is.null(pred_raw) && length(pred_raw) > 0) {
@@ -145,6 +175,22 @@ fastml_xgb_predict_lp <- function(fit_obj, predictors) {
   pred
 }
 
+
+  #' Compute Survival Matrix for Cox xgboost Model
+  #'
+  #' Calculates survival probabilities at specified times using the Cox model’s
+  #' baseline cumulative hazard and predicted linear predictors from an
+  #' xgboost-based survival fit.
+  #'
+  #' @param fit_obj A fitted xgboost Cox model containing a baseline hazard.
+  #' @param lp_vec Numeric vector of linear predictors.
+  #' @param times Numeric vector of evaluation times.
+  #'
+#' @return A numeric matrix of survival probabilities with rows corresponding
+#' to observations and columns to times.
+#'
+#' @keywords internal
+#' @noRd
 fastml_xgb_survival_matrix_cox <- function(fit_obj, lp_vec, times) {
   baseline <- fit_obj$baseline
   if (is.null(baseline) || nrow(baseline) == 0 || length(times) == 0) {
@@ -194,6 +240,23 @@ fastml_xgb_survival_matrix_cox <- function(fit_obj, lp_vec, times) {
   mat
 }
 
+#' Compute Survival Probabilities for AFT Model
+#'
+#' Calculates survival probabilities for given times, location parameters,
+#' and distribution family in accelerated failure time (AFT) models.
+#'
+#' @param times Numeric vector of evaluation times.
+#' @param mu_vec Numeric vector of predicted location parameters.
+#' @param dist Character string specifying the AFT distribution
+#' (\code{"normal"}, \code{"logistic"}, or \code{"extreme"}).
+#' @param scale Numeric scale parameter.
+#'
+#' @return A numeric matrix of survival probabilities with rows corresponding
+#' to observations and columns to evaluation times.
+#'
+#' @importFrom stats pnorm
+#' @keywords internal
+#' @noRd
 fastml_aft_survival_prob <- function(times, mu_vec, dist, scale) {
   if (length(times) == 0) {
     return(matrix(numeric(), nrow = length(mu_vec), ncol = 0))
@@ -228,6 +291,24 @@ fastml_aft_survival_prob <- function(times, mu_vec, dist, scale) {
   mat
 }
 
+#' Compute Quantile Times for AFT Model
+#'
+#' Calculates quantile survival times corresponding to specified probabilities
+#' for an accelerated failure time (AFT) model with given distribution,
+#' location, and scale parameters.
+#'
+#' @param probs Numeric vector of quantile probabilities (between 0 and 1).
+#' @param mu_vec Numeric vector of predicted location parameters.
+#' @param dist Character string specifying the AFT distribution
+#' (\code{"normal"}, \code{"logistic"}, or \code{"extreme"}).
+#' @param scale Numeric scale parameter.
+#'
+#' @return A numeric matrix of quantile survival times with rows corresponding
+#' to observations and columns to probabilities.
+#'
+#' @importFrom stats qnorm
+#' @keywords internal
+#' @noRd
 fastml_aft_quantile_times <- function(probs, mu_vec, dist, scale) {
   if (length(mu_vec) == 0 || length(probs) == 0) {
     return(matrix(numeric(), nrow = length(mu_vec), ncol = length(probs)))
@@ -253,6 +334,23 @@ fastml_aft_quantile_times <- function(probs, mu_vec, dist, scale) {
   times
 }
 
+#' Compute Survival from Quantile Times
+#'
+#' Converts quantile-based survival time predictions into survival probability
+#' estimates for specified evaluation times.
+#'
+#' @param times Numeric vector of evaluation times.
+#' @param quantile_mat Numeric matrix of quantile survival times (rows = subjects,
+#' columns = quantiles).
+#' @param probs Numeric vector of quantile probabilities corresponding to
+#' columns of \code{quantile_mat}.
+#'
+#' @return A numeric matrix of survival probabilities with rows corresponding
+#' to subjects and columns to evaluation times.
+#'
+#' @importFrom utils tail
+#' @keywords internal
+#' @noRd
 fastml_aft_survival_from_quantiles <- function(times, quantile_mat, probs) {
   if (length(times) == 0) {
     return(matrix(numeric(), nrow = nrow(quantile_mat), ncol = 0))
@@ -321,6 +419,25 @@ fastml_aft_survival_from_quantiles <- function(times, quantile_mat, probs) {
   res
 }
 
+#' Predict AFT Survival Quantities from an XGBoost Model
+#'
+#' Computes location parameters, quantiles, and survival probabilities
+#' for an accelerated failure time (AFT) model trained with XGBoost.
+#'
+#' @param fit_obj A fitted XGBoost AFT model object.
+#' @param predictors A data frame or matrix of predictor variables.
+#' @param eval_times Optional numeric vector of evaluation times for survival estimation.
+#' @param quantile_probs Optional numeric vector of quantile probabilities
+#' to compute quantile survival times.
+#'
+#' @return A list containing:
+#' \item{mu}{Vector of location parameters.}
+#' \item{quantiles}{Matrix of quantile survival times.}
+#' \item{probs}{Vector of quantile probabilities.}
+#' \item{surv}{Matrix of survival probabilities (if \code{eval_times} provided).}
+#'
+#' @keywords internal
+#' @noRd
 fastml_xgb_aft_predict <- function(fit_obj, predictors, eval_times = NULL, quantile_probs = NULL) {
   if (is.null(fit_obj) || is.null(fit_obj$booster)) {
     return(list(mu = numeric(0), quantiles = NULL, probs = numeric(0), surv = NULL))
@@ -352,18 +469,22 @@ fastml_xgb_aft_predict <- function(fit_obj, predictors, eval_times = NULL, quant
   list(mu = mu_vec, quantiles = quantile_mat, probs = quantile_probs, surv = surv_mat)
 }
 
-#' Predict risk scores from a survival model
+#' Predict Risk Scores from a Survival Model
 #'
-#' Provides a uniform interface for obtaining linear predictors / risk scores
-#' from both native survival engines used by fastml (e.g. Cox PH, xgboost Cox)
-#' and parsnip/workflow objects.  The function is exported for end users.
+#' Provides a consistent interface for computing linear predictors (risk scores)
+#' across various survival modeling engines, including native \pkg{fastml} models
+#' (e.g., Cox proportional hazards, XGBoost Cox) and \pkg{parsnip}/workflow objects.
 #'
 #' @param fit A fitted survival model object.
-#' @param newdata A data frame of predictors for which to compute risk scores.
-#' @param ... Additional arguments passed to methods.
+#' @param newdata A data frame containing predictor variables for which to
+#' compute risk scores.
+#' @param ... Additional arguments passed to specific methods.
 #'
-#' @return A numeric vector of risk scores (higher implies greater risk).
+#' @return A numeric vector of risk scores, where higher values indicate
+#' greater predicted risk.
 #'
+#' @importFrom stats predict
+#' @keywords internal
 #' @export
 predict_risk <- function(fit, newdata, ...) {
   UseMethod("predict_risk")
@@ -372,6 +493,9 @@ predict_risk <- function(fit, newdata, ...) {
 #' @rdname predict_risk
 #' @method predict_risk fastml_native_survival
 #' @export
+#' @importFrom recipes bake
+#' @importFrom stats predict model.matrix median
+#' @keywords internal
 predict_risk.fastml_native_survival <- function(fit, newdata, ...) {
   if (missing(newdata)) {
     stop("Please supply 'newdata' when calling predict_risk().")
@@ -444,14 +568,14 @@ predict_risk.fastml_native_survival <- function(fit, newdata, ...) {
     }
     mm <- prepare_glmnet_newx(predictors)
     penalty <- fit$penalty
-    res <- tryCatch(glmnet::predict(fit$fit, newx = mm, s = penalty, type = "link"), error = function(e) NULL)
+    res <- tryCatch(predict(fit$fit, newx = mm, s = penalty, type = "link"), error = function(e) NULL)
     if (!is.null(res) && length(dim(res)) >= 2) {
       res <- as.matrix(res)[, 1, drop = TRUE]
     }
     if (!is.null(res)) {
       return(as.numeric(res))
     }
-    coef_mat <- tryCatch(glmnet::coef(fit$fit, s = penalty), error = function(e) NULL)
+    coef_mat <- tryCatch(coef(fit$fit, s = penalty), error = function(e) NULL)
     if (is.null(coef_mat)) {
       return(rep(NA_real_, nrow(predictors)))
     }

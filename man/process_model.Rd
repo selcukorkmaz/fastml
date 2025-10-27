@@ -39,6 +39,18 @@ process_model(
 \item{event_class}{For binary classification, specifies which class is considered the positive class:
 `"first"` or `"second"`.}
 
+\item{start_col}{Optional string. The name of the column specifying the
+start time in counting process (e.g., `(start, stop, event)`) survival
+data. Only used when \code{task = "survival"}.}
+
+\item{time_col}{String. The name of the column specifying the event or
+censoring time (the "stop" time in counting process data). Only used
+when \code{task = "survival"}.}
+
+\item{status_col}{String. The name of the column specifying the event
+status (e.g., 0 for censored, 1 for event). Only used when
+\code{task = "survival"}.}
+
 \item{engine}{A character string indicating the model engine (e.g., `"xgboost"`, `"randomForest"`). Used
 to determine if class probabilities are supported. If `NULL`, probabilities are skipped.}
 

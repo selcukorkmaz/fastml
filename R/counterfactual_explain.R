@@ -10,6 +10,7 @@
 #'
 #' @return A counterfactual explanation object.
 #' @importFrom DALEX explain
+#' @importFrom ceterisParibus calculate_oscillations
 #' @export
 #' @examples
 #' \dontrun{
@@ -19,6 +20,7 @@
 #' model <- fastml(data = iris, label = "Species")
 #' counterfactual_explain(model, iris[1, ])
 #' }
+
 counterfactual_explain <- function(object, observation, ...) {
   if (!inherits(object, "fastml")) {
     stop("The input must be a 'fastml' object.")
@@ -50,7 +52,7 @@ counterfactual_explain <- function(object, observation, ...) {
 
   explainer <- DALEX::explain(parsnip_fit, data = x,
                              y = train_data[[object$label]])
-  cf <- ceterisParibus::calculate_counterfactuals(explainer,
+  cf <- ceterisParibus::calculate_oscillations(explainer,
                                                   observation = observation, ...)
   plot(cf)
   invisible(cf)

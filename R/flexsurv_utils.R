@@ -4,6 +4,22 @@
 #' and prediction helpers for models fitted with flexsurv::flexsurvreg().
 #'
 #' @noRd
+NULL
+
+#' Fit flexsurvreg with error handling
+#'
+#' A wrapper around \code{flexsurv::flexsurvreg} that merges base and engine
+#' arguments and includes a fallback mechanism for singular hessian errors
+#' by retrying with \code{hessian = FALSE}.
+#'
+#' @param base_args A list of base arguments for \code{flexsurvreg}.
+#' @param engine_args A list of engine-specific arguments that can override
+#'   \code{base_args}.
+#'
+#' @return A fitted \code{flexsurvreg} object.
+#' @importFrom flexsurv flexsurvreg
+#' @keywords internal
+#' @noRd
 
 fastml_fit_flexsurvreg <- function(base_args, engine_args) {
   attempt <- tryCatch(
@@ -43,6 +59,24 @@ fastml_fit_flexsurvreg <- function(base_args, engine_args) {
   attempt
 }
 
+#' Generate Survival Matrix from a flexsurvreg Fit
+#'
+#' Robustly extracts survival probabilities from a \code{flexsurvreg} object
+#' for new data at specified times. It attempts multiple prediction methods
+#' (e.g., \code{predict}, \code{summary}) to create a standardized
+#' [n_obs, n_times] matrix.
+#'
+#' @param fit A fitted \code{flexsurvreg} object.
+#' @param newdata A data frame of new observations for prediction.
+#' @param times A numeric vector of evaluation times.
+#'
+#' @return A matrix of survival probabilities with rows corresponding to
+#'   \code{newdata} and columns to \code{times}. Returns \code{NULL} or a
+#'   matrix of \code{NA} on failure.
+#' @importFrom stats setNames
+#' @importFrom utils head tail
+#' @keywords internal
+#' @noRd
 fastml_flexsurv_survival_matrix <- function(fit, newdata, times) {
   if (!inherits(fit, "flexsurvreg")) {
     return(NULL)
@@ -389,7 +423,7 @@ fastml_flexsurv_survival_matrix <- function(fit, newdata, times) {
   predict_tbl <- NULL
   if (length(times) > 0 && n_obs > 0) {
     predict_tbl <- tryCatch(
-      flexsurv::predict(
+      predict(
         fit,
         newdata = newdata,
         type = "survival",
@@ -465,6 +499,30 @@ fastml_flexsurv_survival_matrix <- function(fit, newdata, times) {
   res
 }
 
+#' Standardized Prediction Function for Parametric Survival Models
+#'
+#' A wrapper for \code{flexsurvreg} predictions that conforms to the
+#' \code{fastml} internal prediction API. It returns both a survival
+#' probability matrix and a single risk score vector.
+#'
+#' @param fit A fitted \code{flexsurvreg} object.
+#' @param newdata A data frame of new observations.
+#' @param eval_times A numeric vector of times to evaluate survival.
+#' @param risk_time An optional specific time point used to calculate the
+#'   risk score. If \code{NULL}, defaults to the median or max of
+#'   \code{eval_times}.
+#'
+#' @return A list with two elements:
+#'   \describe{
+#'     \item{surv}{A matrix of survival probabilities (rows=subjects,
+#'       cols=eval_times) with an \code{eval_times} attribute.}
+#'     \item{risk}{A numeric vector of risk scores, typically \eqn{-log(S(t))}
+#'       at the \code{risk_time}.}
+#'   }
+#'
+#' @importFrom stats median
+#' @keywords internal
+#' @noRd
 fastml_parametric_surv_predict <- function(fit,
                                            newdata,
                                            eval_times,

@@ -33,6 +33,18 @@ evaluate_models(
 be a character vector of length two giving the names of the time and status
 columns.}
 
+\item{start_col}{Optional string. The name of the column specifying the
+start time in counting process (e.g., `(start, stop, event)`) survival
+data. Only used when \code{task = "survival"}.}
+
+\item{time_col}{String. The name of the column specifying the event or
+censoring time (the "stop" time in counting process data). Only used
+when \code{task = "survival"}.}
+
+\item{status_col}{String. The name of the column specifying the event
+status (e.g., 0 for censored, 1 for event). Only used when
+\code{task = "survival"}.}
+
 \item{task}{Type of task: "classification", "regression", or "survival".}
 
 \item{metric}{The performance metric to optimize (e.g., "accuracy", "rmse").}

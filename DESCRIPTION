@@ -1,7 +1,7 @@
 Package: fastml
 Type: Package
 Title: Fast Machine Learning Model Training and Evaluation
-Version: 0.6.3
+Version: 0.7.0
 Authors@R: c(person("Selcuk", "Korkmaz", email="selcukorkmaz@gmail.com", role=c("aut", "cre"),
                     comment = c(ORCID = "0000-0003-4632-6850")), 
              person("Dincer", "Goksuluk", email="dincer.goksuluk@gmail.com", role="aut",
@@ -17,6 +17,7 @@ URL: https://github.com/selcukorkmaz/fastml
 BugReports: https://github.com/selcukorkmaz/fastml/issues
 LazyData: true
 Imports:
+    methods,
     recipes,
     dplyr,
     ggplot2,
@@ -44,35 +45,38 @@ Imports:
     pROC,
     janitor,
     stringr,
-    DT, 
-    UpSetR, 
-    VIM, 
-    broom, 
-    dbscan, 
+    DT,
+    UpSetR,
+    VIM,
+    broom,
+    dbscan,
     ggpubr,
-    gridExtra, 
-    htmlwidgets, 
-    kableExtra, 
+    gridExtra,
+    htmlwidgets,
+    kableExtra,
     moments,
     naniar,
     plotly,
     scales,
     skimr,
     tidyr,
-    zoo,
-    knitr,
-    rmarkdown,
+    tidyselect,
     purrr,
     mice,
     missForest,
     survival,
     flexsurv,
-    rstpm2
+    rstpm2,
+    iml,
+    lime,
+    survRM2,
+    ceterisParibus,
+    xgboost,
+    knitr,
+    rmarkdown
 Suggests:
     testthat (>= 3.0.0),
     C50,
-    glmnet,
-    xgboost,
     ranger,
     aorsf,
     censored,
@@ -84,11 +88,10 @@ Suggests:
     lightgbm,
     rstanarm,
     mixOmics,
-    lime,
-    iml,
-    ceterisParibus,
     pdp,
     patchwork,
-    GGally
+    GGally,
+    glmnet
+VignetteBuilder: knitr
 RoxygenNote: 7.3.2
 Config/testthat/edition: 3

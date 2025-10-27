@@ -1,3 +1,24 @@
+#' Determine rounding digits for time horizons
+#'
+#' Computes a sensible number of decimal digits to round time horizons based on the minimal
+#' positive separation between unique finite times.
+#'
+#' @param times Numeric vector of times.
+#'
+#' @return Integer number of digits between 0 and 6.
+#'
+#' @details Uses the smallest strictly positive difference among sorted unique finite times,
+#' then returns \code{ceiling(-log10(min_diff))} truncated to \eqn{[0, 6]}.
+#'
+#' @keywords internal
+#' @examples
+#' # Not run: determine_round_digits(c(0.1, 0.12, 0.125))
+#' NULL
+#'
+#' @name determine_round_digits
+#' @rdname determine_round_digits
+#' @noMd
+#'
 determine_round_digits <- function(times) {
   times <- times[is.finite(times) & times > 0]
   if (length(times) <= 1) {
@@ -18,6 +39,18 @@ determine_round_digits <- function(times) {
   digits
 }
 
+#' Compute Tau Limit (t_max)
+#'
+#' Finds the latest time point \eqn{t_{max}} such that at least a certain proportion
+#' of subjects remain at risk.
+#'
+#' @param times Numeric vector of survival times.
+#' @param threshold Minimum proportion of subjects that must remain at risk.
+#'
+#' @return The computed \eqn{t_{max}} value, or \code{NA_real_} if no valid
+#'   times are provided.
+#' @keywords internal
+#' @noMd
 compute_tau_limit <- function(times, threshold) {
   times_valid <- sort(unique(times[is.finite(times) & times > 0]))
   if (length(times_valid) == 0) {
@@ -35,6 +68,21 @@ compute_tau_limit <- function(times, threshold) {
   }
 }
 
+#' Create Censoring Distribution Evaluator
+#'
+#' Creates a function to evaluate the survival function of the censoring
+#' distribution, \eqn{G(t) = P(C > t)}, using a Kaplan-Meier estimator.
+#'
+#' @param time_vec Numeric vector of survival/censoring times.
+#' @param status_vec Numeric vector of event statuses (1=event, 0=censored).
+#'
+#' @return A function that takes a numeric vector of times and returns the
+#'   estimated censoring survival probabilities \eqn{G(t)} at those times.
+#'
+#' @importFrom survival survfit Surv
+#' @importFrom utils head
+#' @keywords internal
+#' @noMd
 create_censor_eval <- function(time_vec, status_vec) {
   time_vec <- as.numeric(time_vec)
   status_vec <- ifelse(is.na(status_vec), 0, ifelse(status_vec > 0, 1, 0))
@@ -62,6 +110,17 @@ create_censor_eval <- function(time_vec, status_vec) {
   }
 }
 
+#' Assign Risk Groups
+#'
+#' Dichotomizes a continuous risk vector into "low" and "high" risk groups
+#' based on the median.
+#'
+#' @param risk_vec Numeric vector of predicted risk scores.
+#'
+#' @return A character vector of "low", "high", or \code{NA}.
+#'
+#' @importFrom stats median
+#' @keywords internal
 assign_risk_group <- function(risk_vec) {
   group <- rep(NA_character_, length(risk_vec))
   valid <- is.finite(risk_vec)
@@ -78,6 +137,24 @@ assign_risk_group <- function(risk_vec) {
   group
 }
 
+#' Compute Uno's C-index (Time-Dependent AUC)
+#'
+#' Calculates Uno's C-index (a time-dependent AUC measure) for survival data,
+#' weighted by the inverse probability of censoring (IPCW).
+#'
+#' @param train_time Numeric vector of training times (used for censor model).
+#' @param train_status Numeric vector of training statuses (used for censor model).
+#' @param test_time Numeric vector of test times.
+#' @param test_status Numeric vector of test statuses.
+#' @param risk_vec Numeric vector of predicted risk scores for test data.
+#' @param tau The time horizon \eqn{\tau} for evaluation. If \code{NA} or
+#'   \code{<= 0}, the maximum finite test time is used.
+#' @param censor_eval_fn A function (from \code{create_censor_eval}) that
+#'   evaluates the censoring survival function \eqn{G(t)}.
+#'
+#' @return The computed Uno's C-index, or \code{NA_real_} on failure.
+#' @keywords internal
+#' @noMd
 compute_uno_c_index <- function(train_time,
                                 train_status,
                                 test_time,
@@ -132,6 +209,32 @@ compute_uno_c_index <- function(train_time,
   val
 }
 
+#' Compute Difference in Restricted Mean Survival Time (RMST)
+#'
+#' Calculates the difference in RMST between "low" and "high" risk groups up to
+#' a time horizon \eqn{\tau}. Groups are defined by median-splitting the
+#' \code{risk_vec}.
+#'
+#' @param time_vec Numeric vector of test times.
+#' @param status_vec Numeric vector of test statuses.
+#' @param risk_vec Numeric vector of predicted risk scores for test data.
+#' @param tau The time horizon \eqn{\tau} for integration.
+#' @param surv_mat Optional. A matrix of individual survival predictions
+#'   (rows=subjects, cols=times) used for model-based RMST calculation.
+#' @param eval_times_full Optional. A numeric vector of time points
+#'   corresponding to the columns of \code{surv_mat}.
+#' @param model_type Optional string (e.log., "rstpm2", "flexsurv") indicating
+#'   if a model-based RMST calculation should be attempted.
+#'
+#' @return The RMST difference (RMST_low - RMST_high), or \code{NA_real_}.
+#'
+#' @importFrom survival survfit Surv
+#' @importFrom stats approxfun integrate median
+#' @keywords internal
+#' @noMd
+#' @importFrom utils head
+#' @importFrom utils tail
+#' @importFrom survRM2 rmst2
 compute_rmst_difference <- function(time_vec,
                                     status_vec,
                                     risk_vec,
@@ -405,6 +508,17 @@ compute_rmst_difference <- function(time_vec,
   rmst_low - rmst_high
 }
 
+#' Extract Time and Status from Survival Matrix
+#'
+#' Helper function to extract "time" and "status" columns from a matrix
+#' (like one returned by \code{survival::Surv()}), falling back to defaults.
+#'
+#' @param surv_matrix_vals A matrix, typically from \code{Surv(time, status)}.
+#' @param default_time Default time vector if not found.
+#' @param default_status Default status vector if not found.
+#'
+#' @return A list with elements \code{time} and \code{status}.
+#' @keywords internal
 get_surv_info <- function(surv_matrix_vals,
                           default_time,
                           default_status) {
@@ -423,6 +537,17 @@ get_surv_info <- function(surv_matrix_vals,
   list(time = time_out, status = status_out)
 }
 
+#' Map Brier Curve Values to Specific Horizons
+#'
+#' Extracts Brier score values from a pre-computed curve at specific
+#' time horizons by finding the closest matching evaluation time.
+#'
+#' @param curve Numeric vector of Brier scores from \code{compute_ibrier}.
+#' @param eval_times Numeric vector of times corresponding to \code{curve}.
+#' @param horizons Numeric vector of target time horizons to extract.
+#'
+#' @return A numeric vector of Brier scores corresponding to \code{horizons}.
+#' @keywords internal
 map_brier_values <- function(curve, eval_times, horizons) {
   if (length(horizons) == 0) {
     return(numeric(0))
@@ -443,11 +568,35 @@ map_brier_values <- function(curve, eval_times, horizons) {
   })
 }
 
+#' Clamp Values to [0, 1]
+#'
+#' Truncates a numeric vector so all values lie within the [0, 1] interval.
+#'
+#' @param x A numeric vector.
+#'
+#' @return The clamped numeric vector.
+#' @keywords internal
 clamp01 <- function(x) {
   x <- pmax(pmin(x, 1), 0)
   x
 }
 
+#' Align Survival Curve to Evaluation Times
+#'
+#' Aligns a survival curve (defined by time points and survival probabilities)
+#' to a new set of evaluation times using constant interpolation (last value
+#' carried forward). Ensures \eqn{S(0) = 1} and monotonicity.
+#'
+#' @param curve_times Numeric vector of time points from the survival curve.
+#' @param curve_surv Numeric vector of survival probabilities corresponding to
+#'   \code{curve_times}.
+#' @param eval_times Numeric vector of new time points to evaluate at.
+#'
+#' @return A numeric vector of survival probabilities at \code{eval_times}.
+#'
+#' @importFrom stats approx
+#' @keywords internal
+#' @noMd
 align_survival_curve <- function(curve_times, curve_surv, eval_times) {
   if (length(eval_times) == 0) {
     return(numeric(0))
@@ -492,6 +641,18 @@ align_survival_curve <- function(curve_times, curve_surv, eval_times) {
   res
 }
 
+#' Build Survival Matrix from survfit Object
+#'
+#' Extracts survival probabilities from a \code{survfit} object and aligns
+#' them to a common set of evaluation times, creating a matrix.
+#'
+#' @param fit_obj A \code{survfit} object.
+#' @param eval_times Numeric vector of evaluation times.
+#' @param n_obs Expected number of observations (rows).
+#'
+#' @return A matrix (rows=subjects, cols=eval_times) of survival
+#'   probabilities, or \code{NULL} on failure.
+#' @keywords internal
 build_survfit_matrix <- function(fit_obj, eval_times, n_obs) {
   if (is.null(fit_obj) || length(eval_times) == 0 || n_obs == 0) {
     return(NULL)
@@ -542,6 +703,20 @@ build_survfit_matrix <- function(fit_obj, eval_times, n_obs) {
   NULL
 }
 
+#' Extract survreg Linear Predictor and Scale
+#'
+#' Computes the linear predictor (lp) and scale parameter(s) for new data
+#' from a fitted \code{survreg} model.
+#'
+#' @param fit_obj A fitted \code{survreg} object.
+#' @param new_data A data frame with predictor variables.
+#'
+#' @return A list with elements \code{lp} (numeric vector) and \code{scale}
+#'   (numeric vector), or \code{NULL} on failure.
+#'
+#' @importFrom stats delete.response model.frame model.offset model.matrix na.pass
+#' @importFrom survival untangle.specials strata
+#' @keywords internal
 extract_survreg_components <- function(fit_obj, new_data) {
   if (is.null(fit_obj) || is.null(new_data)) {
     return(NULL)
@@ -652,6 +827,20 @@ extract_survreg_components <- function(fit_obj, new_data) {
   list(lp = lp, scale = scale_vec)
 }
 
+#' Compute Survival Matrix from survreg Model
+#'
+#' Generates a matrix of survival probabilities (rows=subjects, cols=times)
+#' from a fitted \code{survreg} model for new data.
+#'
+#' @param fit_obj A fitted \code{survreg} object.
+#' @param new_data A data frame with predictor variables.
+#' @param eval_times Numeric vector of evaluation times.
+#'
+#' @return A matrix of survival probabilities, or \code{NULL} on failure.
+#'
+#' @importFrom survival psurvreg
+#' @importFrom stats median
+#' @keywords internal
 compute_survreg_matrix <- function(fit_obj, new_data, eval_times) {
   if (!inherits(fit_obj, "survreg") || length(eval_times) == 0) {
     return(NULL)
@@ -734,6 +923,19 @@ compute_survreg_matrix <- function(fit_obj, new_data, eval_times) {
   res
 }
 
+#' Convert Various Prediction Formats to Survival Matrix
+#'
+#' Attempts to convert various survival prediction formats (e.g., list of
+#' data frames from \code{predict.model_fit} with type "survival", matrices)
+#' into a standardized \code{[n_obs, n_eval_times]} matrix.
+#'
+#' @param pred_obj The prediction object.
+#' @param eval_times Numeric vector of evaluation times.
+#' @param n_obs Expected number of observations (rows).
+#'
+#' @return A standardized matrix of survival probabilities, or \code{NULL}
+#'   on failure.
+#' @keywords internal
 convert_survival_predictions <- function(pred_obj, eval_times, n_obs) {
   if (is.null(pred_obj) || length(eval_times) == 0 || n_obs == 0) {
     return(NULL)
@@ -852,6 +1054,27 @@ convert_survival_predictions <- function(pred_obj, eval_times, n_obs) {
   res
 }
 
+#' Compute Integrated Brier Score and Curve
+#'
+#' Calculates the Brier score at specified evaluation times and the
+#' Integrated Brier Score (IBS) up to \eqn{\tau}, using IPCW to handle
+#' censoring.
+#'
+#' @param eval_times Numeric vector of evaluation time points.
+#' @param surv_mat Matrix of predicted survival probabilities
+#'   (rows=subjects, cols=eval_times).
+#' @param time_vec Numeric vector of test times.
+#' @param status_vec Numeric vector of test statuses.
+#' @param tau The time horizon \eqn{\tau} for integration.
+#' @param censor_eval_fn A function (from \code{create_censor_eval}) that
+#'   evaluates the censoring survival function \eqn{G(t)}.
+#'
+#' @return A list with \code{ibs} (the scalar IBS value) and \code{curve} (a
+#'   numeric vector of Brier scores at \code{eval_times}).
+#' @keywords internal
+#' @noMd
+#' @importFrom utils head
+#' @importFrom utils tail
 compute_ibrier <- function(eval_times,
                            surv_mat,
                            time_vec,

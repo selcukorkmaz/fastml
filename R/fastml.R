@@ -108,6 +108,7 @@ utils::globalVariables(c("Fraction", "Performance"))
 #' @importFrom mice mice complete
 #' @importFrom missForest missForest
 #' @importFrom purrr flatten
+#' @importFrom tidyselect all_of
 #' @return An object of class \code{fastml} containing the best model, performance metrics, and other information.
 #' @examples
 #' \donttest{
@@ -303,10 +304,15 @@ fastml <- function(data = NULL,
     if (verbose) message("Splitting data into training and test sets...")
     # Split into train/test
     if (stratify && task == "classification") {
-      split <- rsample::initial_split(data, prop = 1 - test_size, strata = label)
+      split <- rsample::initial_split(
+        data,
+        prop = 1 - test_size,
+        strata = tidyselect::all_of(label)
+      )
     } else {
       split <- rsample::initial_split(data, prop = 1 - test_size)
     }
+
     train_data <- rsample::training(split)
     test_data  <- rsample::testing(split)
   }

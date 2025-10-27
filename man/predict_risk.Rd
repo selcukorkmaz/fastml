@@ -5,7 +5,7 @@
 \alias{predict_risk.fastml_native_survival}
 \alias{predict_risk.workflow}
 \alias{predict_risk.default}
-\title{Predict risk scores from a survival model}
+\title{Predict Risk Scores from a Survival Model}
 \usage{
 predict_risk(fit, newdata, ...)
 
@@ -18,15 +18,18 @@ predict_risk(fit, newdata, ...)
 \arguments{
 \item{fit}{A fitted survival model object.}
 
-\item{newdata}{A data frame of predictors for which to compute risk scores.}
+\item{newdata}{A data frame containing predictor variables for which to
+compute risk scores.}
 
-\item{...}{Additional arguments passed to methods.}
+\item{...}{Additional arguments passed to specific methods.}
 }
 \value{
-A numeric vector of risk scores (higher implies greater risk).
+A numeric vector of risk scores, where higher values indicate
+greater predicted risk.
 }
 \description{
-Provides a uniform interface for obtaining linear predictors / risk scores
-from both native survival engines used by fastml (e.g. Cox PH, xgboost Cox)
-and parsnip/workflow objects.  The function is exported for end users.
+Provides a consistent interface for computing linear predictors (risk scores)
+across various survival modeling engines, including native \pkg{fastml} models
+(e.g., Cox proportional hazards, XGBoost Cox) and \pkg{parsnip}/workflow objects.
 }
+\keyword{internal}
