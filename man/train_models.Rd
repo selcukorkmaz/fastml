@@ -34,7 +34,8 @@ train_models(
   time_col = NULL,
   status_col = NULL,
   eval_times = NULL,
-  at_risk_threshold = 0.1
+  at_risk_threshold = 0.1,
+  audit_env = NULL
 )
 }
 \arguments{
@@ -62,8 +63,9 @@ applied).}
 \item{impute_method}{Advanced imputation method to apply within each resample.
 Only methods `"mice"`, `"missForest"`, or `"custom"` are supported.}
 
-\item{impute_custom_function}{Custom imputation function to use when
-`impute_method = "custom"`.}
+\item{impute_custom_function}{Custom imputation hook to use when
+`impute_method = "custom"`. Supply a list or environment containing
+\code{fit(data)} and \code{transform(data, state)} functions.}
 
 \item{impute_outcome_cols}{Character vector of outcome columns that should be
 excluded from imputation.}
@@ -119,6 +121,10 @@ to downstream evaluation helpers.}
 
 \item{at_risk_threshold}{Numeric cutoff used to determine the evaluation window
 for survival metrics within guarded resampling.}
+
+\item{audit_env}{Internal environment that carries audit findings for custom
+preprocessing hooks. Typically provided by \code{fastml()} and should be left
+as \code{NULL} when calling \code{train_models()} directly.}
 }
 \value{
 A list of trained model objects.

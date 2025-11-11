@@ -55,6 +55,10 @@
 #' @param eval_times Optional numeric vector of time horizons for survival metrics.
 #' @param at_risk_threshold Numeric cutoff used to determine the evaluation window
 #'   for survival metrics within guarded resampling.
+#' @param audit_env Internal environment that tracks security audit findings when
+#'   custom preprocessing hooks are executed. Typically supplied by
+#'   \code{fastml()} and should be left as \code{NULL} when calling
+#'   \code{train_models()} directly.
 #' @importFrom magrittr %>%
 #' @importFrom dplyr filter mutate select if_else starts_with
 #' @importFrom tibble tibble
@@ -99,9 +103,14 @@ train_models <- function(train_data,
                          time_col = NULL,
                          status_col = NULL,
                          eval_times = NULL,
-                         at_risk_threshold = 0.1) {
+                         at_risk_threshold = 0.1,
+                         audit_env = NULL) {
 
   set.seed(seed)
+
+  if (is.null(audit_env) || !is.environment(audit_env)) {
+    audit_env <- fastml_init_audit_env(FALSE)
+  }
 
   tuning_strategy <- match.arg(tuning_strategy, c("grid", "bayes", "none"))
 
@@ -996,7 +1005,8 @@ train_models <- function(train_data,
       resamples = resamples,
       impute_method = impute_method,
       impute_custom_function = impute_custom_function,
-      outcome_cols = impute_outcome_cols
+      outcome_cols = impute_outcome_cols,
+      audit_env = audit_env
     )
   }
 
