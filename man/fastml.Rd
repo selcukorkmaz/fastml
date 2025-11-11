@@ -114,10 +114,9 @@ hyperparameters to explore during tuning. Default is an empty list.}
   \item{\code{NULL}}{Equivalent to \code{"error"}. No imputation is performed, and the function will stop if missing values are present.}
 }
 When resampling is requested (e.g., cross-validation or bootstrapping),
-advanced imputation methods \code{"mice"}, \code{"missForest"}, and
-\code{"custom"} must be supplied as part of a recipe so they can be trained
-on each analysis fold. If these methods are requested directly while
-resampling, the function aborts to avoid information leakage.
+fastml() automatically fits the selected advanced imputation method inside
+each resample, applying the resulting imputer to that fold's assessment
+data before evaluation.
 Default is \code{"error"}.}
 
 \item{impute_custom_function}{A function that takes a data.frame as input and returns an imputed data.frame. Used only if \code{impute_method = "custom"}.}
