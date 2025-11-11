@@ -37,10 +37,24 @@ test_that("survival task works with mice imputation", {
       algorithms = c("rand_forest"),
       task = "survival",
       test_size = 0.3,
-      impute_method = "mice"
+      impute_method = "mice",
+      resampling_method = "none"
     )
   )
   expect_s3_class(res, "fastml")
+})
+
+test_that("advanced imputation is guarded when resampling is active", {
+  expect_error(
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("rand_forest"),
+      impute_method = "mice",
+      resampling_method = "cv"
+    ),
+    "Advanced imputation methods ('mice', 'missForest', 'custom') must be trained within each resample."
+  )
 })
 
 test_that("'label' is not available in the data", {
