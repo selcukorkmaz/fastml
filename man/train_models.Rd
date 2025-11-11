@@ -24,7 +24,13 @@ train_models(
   tuning_iterations = 10,
   early_stopping = FALSE,
   adaptive = FALSE,
-  algorithm_engines = NULL
+  algorithm_engines = NULL,
+  event_class = "first",
+  start_col = NULL,
+  time_col = NULL,
+  status_col = NULL,
+  eval_times = NULL,
+  at_risk_threshold = 0.1
 )
 }
 \arguments{
@@ -81,6 +87,21 @@ for the Bayesian strategy.}
 \item{adaptive}{Logical indicating whether to use adaptive/racing methods.}
 
 \item{algorithm_engines}{A named list specifying the engine to use for each algorithm.}
+
+\item{event_class}{Character string identifying the positive class when computing
+classification metrics ("first" or "second").}
+
+\item{start_col}{Optional name of the survival start time column passed through
+to downstream evaluation helpers.}
+
+\item{time_col}{Optional name of the survival stop time column.}
+
+\item{status_col}{Optional name of the survival status/event column.}
+
+\item{eval_times}{Optional numeric vector of time horizons for survival metrics.}
+
+\item{at_risk_threshold}{Numeric cutoff used to determine the evaluation window
+for survival metrics within guarded resampling.}
 }
 \value{
 A list of trained model objects.

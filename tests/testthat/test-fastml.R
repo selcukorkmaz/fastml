@@ -228,7 +228,8 @@ test_that("engine_params list does not break ranger training", {
       tuning_iterations = 10,
       early_stopping = FALSE,
       adaptive = FALSE,
-      algorithm_engines = list(rand_forest = "ranger")
+      algorithm_engines = list(rand_forest = "ranger"),
+      event_class = "first"
     ),
     regexp = NA
   )
@@ -493,6 +494,93 @@ test_that("adaptive ignored with bayesian tuning", {
       folds = 5
     ),
     "adaptive"
+  )
+})
+
+test_that("fold-unsafe preprocessing is blocked during resampling", {
+  skip_if_not_installed("rsample")
+
+  set.seed(101)
+  binary_iris <- iris[iris$Species != "virginica", ]
+  binary_iris$Species <- factor(binary_iris$Species)
+
+  idx <- sample(seq_len(nrow(binary_iris)), size = floor(0.7 * nrow(binary_iris)))
+  train_split <- binary_iris[idx, , drop = FALSE]
+  test_split <- binary_iris[-idx, , drop = FALSE]
+
+  guard_resamples <- rsample::apparent(train_split)
+
+  expect_error(
+    fastml(
+      train_data = train_split,
+      test_data = test_split,
+      label = "Species",
+      algorithms = "logistic_reg",
+      resamples = guard_resamples,
+      resampling_method = "cv",
+      folds = 5,
+      seed = 202
+    ),
+    "Detected preprocessing on the full training set",
+    fixed = TRUE
+  )
+})
+
+test_that("guarded folds avoid performance inflation", {
+  set.seed(2024)
+  noise_df <- data.frame(
+    x1 = rnorm(80),
+    x2 = rnorm(80),
+    x3 = rnorm(80),
+    y = factor(sample(c("A", "B"), 80, replace = TRUE))
+  )
+
+  res_noise <- fastml(
+    data = noise_df,
+    label = "y",
+    algorithms = "logistic_reg",
+    resampling_method = "cv",
+    folds = 4,
+    seed = 77
+  )
+
+  guard_metrics <- res_noise$resampling_results[["logistic_reg (glm)"]]$aggregated
+  noise_accuracy <- guard_metrics[guard_metrics$.metric == "accuracy", ".estimate", drop = TRUE]
+
+  expect_true(is.numeric(noise_accuracy))
+  expect_lt(noise_accuracy, 0.8)
+})
+
+test_that("guarded resampling is reproducible with fixed seeds", {
+  set.seed(404)
+  synth_df <- data.frame(
+    x1 = rnorm(60),
+    x2 = rnorm(60),
+    y = factor(sample(c("yes", "no"), 60, replace = TRUE))
+  )
+
+  fit_one <- fastml(
+    data = synth_df,
+    label = "y",
+    algorithms = "logistic_reg",
+    resampling_method = "cv",
+    folds = 3,
+    seed = 55
+  )
+
+  set.seed(404)
+  fit_two <- fastml(
+    data = synth_df,
+    label = "y",
+    algorithms = "logistic_reg",
+    resampling_method = "cv",
+    folds = 3,
+    seed = 55
+  )
+
+  expect_equal(
+    fit_one$resampling_results[["logistic_reg (glm)"]]$aggregated,
+    fit_two$resampling_results[["logistic_reg (glm)"]]$aggregated
   )
 })
 
