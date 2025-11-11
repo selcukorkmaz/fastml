@@ -12,6 +12,15 @@
 #' @param repeats Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").
 #' @param resamples Optional rsample object. If provided, custom resampling splits
 #'   will be used instead of those created internally.
+#' @param resample_base_data Optional data frame used to generate resamples when
+#'   different from `train_data` (e.g., before advanced imputation has been
+#'   applied).
+#' @param impute_method Advanced imputation method to apply within each resample.
+#'   Only methods `"mice"`, `"missForest"`, or `"custom"` are supported.
+#' @param impute_custom_function Custom imputation function to use when
+#'   `impute_method = "custom"`.
+#' @param impute_outcome_cols Character vector of outcome columns that should be
+#'   excluded from imputation.
 #' @param tune_params A named list of tuning ranges. For each algorithm, supply a
 #'   list of engine-specific parameter values, e.g.
 #'   \code{list(rand_forest = list(ranger = list(mtry = c(1, 3)))).}
@@ -69,6 +78,10 @@ train_models <- function(train_data,
                          folds,
                          repeats,
                          resamples = NULL,
+                         resample_base_data = NULL,
+                         impute_method = NULL,
+                         impute_custom_function = NULL,
+                         impute_outcome_cols = NULL,
                          tune_params,
                          engine_params = list(),
                          metric,
@@ -91,6 +104,12 @@ train_models <- function(train_data,
   set.seed(seed)
 
   tuning_strategy <- match.arg(tuning_strategy, c("grid", "bayes", "none"))
+
+  resample_data <- if (!is.null(resample_base_data)) resample_base_data else train_data
+  advanced_resample_imputation <-
+    !is.null(impute_method) &&
+    impute_method %in% c("mice", "missForest", "custom") &&
+    !is.null(impute_outcome_cols)
 
   if (tuning_strategy == "bayes" && adaptive) {
     warning("'adaptive' is not supported with Bayesian tuning. Setting adaptive = FALSE.")
@@ -918,17 +937,17 @@ train_models <- function(train_data,
       stop("'resamples' must be an 'rset' object")
     }
   } else if (resampling_method == "cv") {
-    if (nrow(train_data) < folds) {
+    if (nrow(resample_data) < folds) {
       stop(
         sprintf(
           "You requested %d-fold cross-validation, but your training set only has %d rows. \nThis prevents each fold from having at least one row. \nEither reduce 'folds', increase data, or use a different resampling method (e.g. 'boot').",
           folds,
-          nrow(train_data)
+          nrow(resample_data)
         )
       )
     }
     resamples <- vfold_cv(
-      train_data,
+      resample_data,
       v = folds,
       repeats = 1,
       strata = if (task == "classification")
@@ -937,7 +956,7 @@ train_models <- function(train_data,
         NULL
     )
   } else if (resampling_method == "boot") {
-    resamples <- bootstraps(train_data,
+    resamples <- bootstraps(resample_data,
                             times = folds,
                             strata = if (task == "classification")
                               all_of(label)
@@ -945,16 +964,16 @@ train_models <- function(train_data,
                               NULL)
   } else if (resampling_method == "repeatedcv") {
 
-    if (nrow(train_data) < folds) {
+    if (nrow(resample_data) < folds) {
       stop(
         sprintf(
           "You requested %d-fold cross-validation, but your training set only has %d rows. \nThis prevents each fold from having at least one row. \nEither reduce 'folds', increase data, or use a different resampling method (e.g. 'boot').",
-          folds, nrow(train_data)
+          folds, nrow(resample_data)
         )
       )
     }
     resamples <- vfold_cv(
-      train_data,
+      resample_data,
       v = folds,
       repeats = repeats,
       strata = if (task == "classification")
@@ -970,6 +989,15 @@ train_models <- function(train_data,
 
   if (use_default_tuning && is.null(resamples)) {
     warning("'tune_params' are ignored when 'tuning_strategy' is 'none'")
+  }
+
+  if (!is.null(resamples) && advanced_resample_imputation) {
+    resamples <- fastml_impute_resamples(
+      resamples = resamples,
+      impute_method = impute_method,
+      impute_custom_function = impute_custom_function,
+      outcome_cols = impute_outcome_cols
+    )
   }
 
   models <- list()

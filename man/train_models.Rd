@@ -13,6 +13,10 @@ train_models(
   folds,
   repeats,
   resamples = NULL,
+  resample_base_data = NULL,
+  impute_method = NULL,
+  impute_custom_function = NULL,
+  impute_outcome_cols = NULL,
   tune_params,
   engine_params = list(),
   metric,
@@ -50,6 +54,19 @@ train_models(
 
 \item{resamples}{Optional rsample object. If provided, custom resampling splits
 will be used instead of those created internally.}
+
+\item{resample_base_data}{Optional data frame used to generate resamples when
+different from \code{train_data} (for example, before advanced imputation has
+been applied).}
+
+\item{impute_method}{Advanced imputation method to apply inside each resample.
+Only \code{"mice"}, \code{"missForest"}, or \code{"custom"} are supported.}
+
+\item{impute_custom_function}{Custom function used when
+\code{impute_method = "custom"}.}
+
+\item{impute_outcome_cols}{Character vector of outcome columns that should be
+excluded from imputation.}
 
 \item{tune_params}{A named list of tuning ranges. For each algorithm, supply a
 list of engine-specific parameter values, e.g.
