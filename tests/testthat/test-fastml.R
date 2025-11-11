@@ -37,10 +37,92 @@ test_that("survival task works with mice imputation", {
       algorithms = c("rand_forest"),
       task = "survival",
       test_size = 0.3,
-      impute_method = "mice"
+      impute_method = "mice",
+      resampling_method = "none"
     )
   )
   expect_s3_class(res, "fastml")
+})
+
+test_that("advanced imputation is guarded when resampling is active", {
+  expect_error(
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("rand_forest"),
+      impute_method = "mice",
+      resampling_method = "cv"
+    ),
+    "Guarded Resampling Principle"
+  )
+})
+
+test_that("guarded cross-validation avoids leakage inflation", {
+  skip_if_not_installed("parsnip")
+  skip_if_not_installed("rsample")
+  skip_if_not_installed("recipes")
+
+  iris_bin <- iris[iris$Species != "setosa", ]
+  iris_bin$Species <- factor(iris_bin$Species)
+
+  res <- suppressWarnings(
+    fastml(
+      data = iris_bin,
+      label = "Species",
+      algorithms = "logistic_reg",
+      resampling_method = "cv",
+      folds = 3,
+      impute_method = "medianImpute",
+      use_default_tuning = FALSE,
+      tuning_strategy = "none",
+      seed = 321
+    )
+  )
+
+  perf <- res$performance[[1]]
+  acc <- perf[perf$.metric == "accuracy", ".estimate", drop = TRUE]
+  expect_length(acc, 1)
+  expect_gt(acc, 0.5)
+  expect_lt(acc, 1)
+})
+
+test_that("guarded cross-validation is reproducible with fixed seeds", {
+  skip_if_not_installed("parsnip")
+  skip_if_not_installed("rsample")
+  skip_if_not_installed("recipes")
+
+  iris_bin <- iris[iris$Species != "setosa", ]
+  iris_bin$Species <- factor(iris_bin$Species)
+
+  res1 <- suppressWarnings(
+    fastml(
+      data = iris_bin,
+      label = "Species",
+      algorithms = "logistic_reg",
+      resampling_method = "cv",
+      folds = 3,
+      impute_method = "medianImpute",
+      use_default_tuning = FALSE,
+      tuning_strategy = "none",
+      seed = 202
+    )
+  )
+
+  res2 <- suppressWarnings(
+    fastml(
+      data = iris_bin,
+      label = "Species",
+      algorithms = "logistic_reg",
+      resampling_method = "cv",
+      folds = 3,
+      impute_method = "medianImpute",
+      use_default_tuning = FALSE,
+      tuning_strategy = "none",
+      seed = 202
+    )
+  )
+
+  expect_equal(res1$performance, res2$performance)
 })
 
 test_that("'label' is not available in the data", {

@@ -57,6 +57,11 @@ utils::globalVariables(c("Fraction", "Performance"))
 #'     \item{\code{"error"}}{Do not perform imputation; if missing values are detected, stop execution with an error.}
 #'     \item{\code{NULL}}{Equivalent to \code{"error"}. No imputation is performed, and the function will stop if missing values are present.}
 #'   }
+#'   When resampling is requested (e.g., cross-validation or bootstrapping),
+#'   advanced imputation methods \code{"mice"}, \code{"missForest"}, and
+#'   \code{"custom"} must be supplied as part of a recipe so they can be trained
+#'   on each analysis fold. If these methods are requested directly while
+#'   resampling, the function aborts to avoid information leakage.
 #'   Default is \code{"error"}.
 #' @param impute_custom_function A function that takes a data.frame as input and returns an imputed data.frame. Used only if \code{impute_method = "custom"}.
 #' @param encode_categoricals Logical indicating whether to encode categorical variables. Default is \code{TRUE}.
@@ -184,6 +189,18 @@ fastml <- function(data = NULL,
 
   task <- match.arg(task, c("auto", "classification", "regression", "survival"))
   tuning_strategy <- match.arg(tuning_strategy, c("grid", "bayes", "none"))
+  if (is.null(resampling_method)) {
+    resampling_method <- "none"
+  } else {
+    resampling_method <- tolower(resampling_method)
+  }
+  resampling_active <- !is.null(resamples) || resampling_method != "none"
+  if (resampling_active) {
+    fastml_guard_activate(resampling_method)
+    on.exit(fastml_guard_deactivate(), add = TRUE)
+  } else {
+    fastml_guard_deactivate()
+  }
 
   # If explicit train/test provided, ensure both are given
   if (!is.null(train_data) || !is.null(test_data)) {
@@ -498,6 +515,11 @@ fastml <- function(data = NULL,
   if (is.null(recipe)) {
 
     if (!is.null(impute_method) && impute_method %in% c("mice", "missForest", "custom")) {
+
+      fastml_guard_check(
+        scope = "global",
+        operation = "advanced imputation ('mice', 'missForest', 'custom'). Provide these steps inside an untrained recipe so they are trained on each fold."
+      )
 
       outcome_cols <- unique(c(label, if (task == "survival") label_surv else character()))
       outcome_cols <- outcome_cols[outcome_cols %in% names(train_data)]
