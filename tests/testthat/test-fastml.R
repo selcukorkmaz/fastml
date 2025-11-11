@@ -44,17 +44,33 @@ test_that("survival task works with mice imputation", {
   expect_s3_class(res, "fastml")
 })
 
-test_that("advanced imputation is guarded when resampling is active", {
-  expect_error(
-    fastml(
-      data = iris,
-      label = "Species",
-      algorithms = c("rand_forest"),
-      impute_method = "mice",
-      resampling_method = "cv"
-    ),
-    "Advanced imputation methods ('mice', 'missForest', 'custom') must be trained within each resample."
+test_that("advanced imputation with resampling runs automatically", {
+  iris_missing <- iris
+  iris_missing$Sepal.Length[c(1, 5, 10)] <- NA
+
+  custom_imputer <- function(df) {
+    numeric_cols <- vapply(df, is.numeric, logical(1))
+    if (any(numeric_cols)) {
+      for (col in names(df)[numeric_cols]) {
+        col_mean <- mean(df[[col]], na.rm = TRUE)
+        df[[col]][is.na(df[[col]])] <- col_mean
+      }
+    }
+    df
+  }
+
+  result <- fastml(
+    data = iris_missing,
+    label = "Species",
+    algorithms = c("decision_tree"),
+    impute_method = "custom",
+    impute_custom_function = custom_imputer,
+    resampling_method = "cv",
+    folds = 3,
+    use_default_tuning = FALSE
   )
+
+  expect_s3_class(result, "fastml")
 })
 
 test_that("'label' is not available in the data", {
