@@ -43,7 +43,8 @@ fastml(
   bootstrap_ci = TRUE,
   bootstrap_samples = 500,
   bootstrap_seed = NULL,
-  at_risk_threshold = 0.1
+  at_risk_threshold = 0.1,
+  audit_mode = FALSE
 )
 }
 \arguments{
@@ -119,7 +120,8 @@ each resample, applying the resulting imputer to that fold's assessment
 data before evaluation.
 Default is \code{"error"}.}
 
-\item{impute_custom_function}{A function that takes a data.frame as input and returns an imputed data.frame. Used only if \code{impute_method = "custom"}.}
+\item{impute_custom_function}{A list or environment containing two functions: \code{fit(data)} and \code{transform(data, state)}.\cr
+The fit function must return a list with a \code{state} element (and may optionally include pre-imputed training data). The transform function receives new data along with the fitted state and must return a data frame. Used only if \code{impute_method = "custom"}.}
 
 \item{encode_categoricals}{Logical indicating whether to encode categorical variables. Default is \code{TRUE}.}
 
@@ -174,6 +176,8 @@ estimate confidence intervals.}
 metrics to determine the last follow-up time (\eqn{t_{max}}). The maximum
 time is set to the largest observed time where at least this proportion of
 subjects remain at risk.}
+
+\item{audit_mode}{Logical; if \code{TRUE}, enables runtime auditing of custom preprocessing hooks and records potentially unsafe behaviour (such as access to \code{.GlobalEnv} or file I/O). Audited runs are flagged as potentially unsafe when such activity is detected.}
 }
 \value{
 An object of class \code{fastml} containing the best model, performance metrics, and other information.

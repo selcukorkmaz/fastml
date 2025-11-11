@@ -5,20 +5,55 @@ fastml_apply_advanced_imputation <- function(train_data,
                                              outcome_cols,
                                              impute_method,
                                              impute_custom_function,
-                                             warn = TRUE) {
+                                             warn = TRUE,
+                                             audit_env = NULL) {
   advanced_methods <- c("mice", "missForest", "custom")
   if (is.null(impute_method) || !(impute_method %in% advanced_methods)) {
     return(list(train_data = train_data, test_data = test_data))
   }
 
   if (impute_method == "custom") {
-    if (!is.function(impute_custom_function)) {
-      stop("You selected impute_method='custom' but did not provide a valid `impute_custom_function`.")
+    hook <- fastml_validate_custom_hook(impute_custom_function, "Custom imputer")
+
+    fit_result <- fastml_run_user_hook(hook$fit, train_data, "custom imputer fit", audit_env)
+    fit_processed <- fastml_process_custom_fit_result(fit_result, "Custom imputer")
+    state <- fit_processed$state
+
+    if (!is.null(fit_processed$transformed)) {
+      train_data <- fastml_validate_transformed_data(fit_processed$transformed, "Custom imputer fit")
+    } else {
+      train_data <- fastml_validate_transformed_data(
+        fastml_run_user_hook(
+          hook$transform,
+          train_data,
+          "custom imputer transform (train)",
+          audit_env,
+          extra_args = list(state = state)
+        ),
+        "Custom imputer transform (train)"
+      )
     }
-    train_data <- impute_custom_function(train_data)
+
     if (!is.null(test_data) && nrow(test_data) > 0) {
-      test_data <- impute_custom_function(test_data)
+      test_data <- fastml_validate_transformed_data(
+        fastml_run_user_hook(
+          hook$transform,
+          test_data,
+          "custom imputer transform (test)",
+          audit_env,
+          extra_args = list(state = state)
+        ),
+        "Custom imputer transform (test)"
+      )
     }
+
+    fastml_register_audit(
+      audit_env,
+      "Custom imputer executed in guarded two-phase mode.",
+      severity = "info",
+      context = "custom_imputer"
+    )
+
     if (warn) {
       warning("Missing values have been imputed using the 'custom' method.")
     }
@@ -127,7 +162,8 @@ fastml_apply_advanced_imputation <- function(train_data,
 fastml_impute_resamples <- function(resamples,
                                     impute_method,
                                     impute_custom_function,
-                                    outcome_cols) {
+                                    outcome_cols,
+                                    audit_env = NULL) {
   if (is.null(resamples) || length(resamples$splits) == 0) {
     return(resamples)
   }
@@ -151,7 +187,8 @@ fastml_impute_resamples <- function(resamples,
       outcome_cols = outcome_cols,
       impute_method = impute_method,
       impute_custom_function = impute_custom_function,
-      warn = FALSE
+      warn = FALSE,
+      audit_env = audit_env
     )
 
     data[analysis_idx, ] <- imputed$train_data

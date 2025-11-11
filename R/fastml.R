@@ -62,7 +62,12 @@ utils::globalVariables(c("Fraction", "Performance"))
 #'   each resample, applying the resulting imputer to that fold's assessment
 #'   data before evaluation.
 #'   Default is \code{"error"}.
-#' @param impute_custom_function A function that takes a data.frame as input and returns an imputed data.frame. Used only if \code{impute_method = "custom"}.
+#' @param impute_custom_function A list or environment containing two functions,\cr
+#'   \code{fit(data)} and \code{transform(data, state)}. The fit function must
+#'   return a list with a \code{state} element (and may optionally include
+#'   \code{transformed} training data). The transform function receives a data
+#'   frame and the fitted state and must return a data frame. Used only when
+#'   \code{impute_method = "custom"}.
 #' @param encode_categoricals Logical indicating whether to encode categorical variables. Default is \code{TRUE}.
 #' @param scaling_methods Vector of scaling methods to apply. Default is \code{c("center", "scale")}.
 #' @param balance_method Method to handle class imbalance. One of \code{"none"},
@@ -99,6 +104,10 @@ utils::globalVariables(c("Fraction", "Performance"))
 #'   metrics to determine the last follow-up time (\eqn{t_{max}}). The maximum
 #'   time is set to the largest observed time where at least this proportion of
 #'   subjects remain at risk.
+#' @param audit_mode Logical; if \code{TRUE}, enables runtime auditing of custom
+#'   preprocessing hooks and records potentially unsafe behaviour (such as global
+#'   environment access or file I/O) while flagging the run as potentially
+#'   unsafe.
 #' @importFrom magrittr %>%
 #' @importFrom rsample initial_split training testing
 #' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake all_numeric_predictors all_predictors all_nominal_predictors all_outcomes step_zv step_rm
@@ -182,7 +191,10 @@ fastml <- function(data = NULL,
                    bootstrap_ci = TRUE,
                    bootstrap_samples = 500,
                    bootstrap_seed = NULL,
-                   at_risk_threshold = 0.1) {
+                   at_risk_threshold = 0.1,
+                   audit_mode = FALSE) {
+
+  audit_env <- fastml_init_audit_env(audit_mode)
 
   set.seed(seed)
 
@@ -502,6 +514,10 @@ fastml <- function(data = NULL,
   }
 
   # If user has provided a custom recipe, skip internal imputation logic
+  if (!is.null(recipe)) {
+    fastml_validate_user_recipe(recipe, audit_env)
+  }
+
   if (is.null(recipe)) {
     outcome_cols <- unique(c(label, if (task == "survival") label_surv else character()))
     outcome_cols <- outcome_cols[outcome_cols %in% names(train_data)]
@@ -515,7 +531,8 @@ fastml <- function(data = NULL,
         outcome_cols = outcome_cols,
         impute_method = impute_method,
         impute_custom_function = impute_custom_function,
-        warn = TRUE
+        warn = TRUE,
+        audit_env = audit_env
       )
       train_data <- imputed$train_data
       test_data <- imputed$test_data
@@ -624,14 +641,6 @@ fastml <- function(data = NULL,
     }
 
     # do not prep yet
-  } else {
-    # user provided a recipe
-    if (!inherits(recipe, "recipe")) {
-      stop("The provided recipe is not a valid recipe object.")
-    }
-    if (length(recipe$steps) > 0 && any(sapply(recipe$steps, function(x) x$trained))) {
-      stop("The provided recipe is already trained. Please supply an untrained recipe.")
-    }
   }
 
   if (verbose) message("Training models: ", paste(algorithms, collapse = ", "))
@@ -666,7 +675,8 @@ fastml <- function(data = NULL,
     time_col = time_col,
     status_col = status_col,
     eval_times = eval_times,
-    at_risk_threshold = at_risk_threshold
+    at_risk_threshold = at_risk_threshold,
+    audit_env = audit_env
   )
 
   models <- models[sapply(models, function(x) length(x) > 0)]
@@ -947,7 +957,14 @@ fastml <- function(data = NULL,
         tuning_iterations = tuning_iterations,
         early_stopping = early_stopping,
         adaptive = adaptive,
-        algorithm_engines = algorithm_engines
+        algorithm_engines = algorithm_engines,
+        event_class = event_class,
+        start_col = start_col,
+        time_col = time_col,
+        status_col = status_col,
+        eval_times = eval_times,
+        at_risk_threshold = at_risk_threshold,
+        audit_env = audit_env
       )
 
 
@@ -1013,7 +1030,7 @@ fastml <- function(data = NULL,
     processed_train_data = processed_train_data,
     label = label,
     task = task,
-    models =models,
+    models = models,
     metric = metric,
     positive_class = positive_class,
     event_class = event_class,
@@ -1021,7 +1038,8 @@ fastml <- function(data = NULL,
     survival_brier_times = survival_brier_times,
     survival_t_max = survival_t_max,
     metric_bootstrap = list(enabled = bootstrap_ci, samples = bootstrap_samples, seed = bootstrap_seed),
-    resampling_results = resampling_results
+    resampling_results = resampling_results,
+    audit = if (audit_env$enabled) list(log = audit_env$log, flagged = audit_env$unsafe) else NULL
   )
   class(result) <- "fastml"
   if (verbose) message("Training complete.")

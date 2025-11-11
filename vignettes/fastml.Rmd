@@ -560,9 +560,10 @@ This often yields better models in fewer iterations compared to exhaustive grid 
 By default, **fastml** applies an internal preprocessing pipeline that includes data cleaning, encoding, and scaling.  
 However, in many research or production scenarios, you may need to define **custom feature engineering steps** or domain-specific transformations.  
 
-To support this flexibility, **fastml** seamlessly integrates with the **tidymodels** ecosystem.  
-You can pass your own untrained `recipes` object through the `recipe` argument, and **fastml** will use it for all models—skipping its internal preprocessing.  
-This approach allows you to combine the simplicity of **fastml** with the full power of **tidymodels**’ preprocessing framework.
+To support this flexibility, **fastml** seamlessly integrates with the **tidymodels** ecosystem.
+You can pass your own **untrained** `recipes` object through the `recipe` argument, and **fastml** will use it for all models—skipping its internal preprocessing.
+Recipes that have already been `prep()`'d (or that cache external data) are rejected up-front to preserve the Guarded Resampling guarantees, so be sure to supply the raw recipe definition only.
+This approach allows you to combine the simplicity of **fastml** with the full power of **tidymodels**’ preprocessing framework while keeping data leakage in check.
 
 
 ```{r}
@@ -589,12 +590,33 @@ summary(model_recipe)
 
 When a custom `recipe` is supplied:
 
-- **fastml** disables its internal preprocessing steps, such as imputation, encoding, and scaling.  
-- The provided recipe is applied consistently across all algorithms, ensuring reproducibility.  
+- **fastml** disables its internal preprocessing steps, such as imputation, encoding, and scaling.
+- The provided recipe is applied consistently across all algorithms, ensuring reproducibility.
+- The recipe must remain self-contained: steps that reach into `.GlobalEnv`, external files, or pre-computed datasets are blocked because they jeopardize leakage protection.
 - You gain full control over feature engineering, transformations, and variable selection — ideal for advanced users already working within the **tidymodels** framework.
 
-This integration allows you to combine the automation and multi-model comparison strengths of **fastml** with the flexibility and transparency of **recipes**.  
+This integration allows you to combine the automation and multi-model comparison strengths of **fastml** with the flexibility and transparency of **recipes**.
 It bridges quick experimentation with advanced, fully customized preprocessing workflows, preserving both reproducibility and analytical control.
+
+## Guarded custom imputers and audit mode
+
+When `impute_method = "custom"`, fastml now expects a two-phase interface:
+
+```r
+list(
+  fit = function(train_data) {
+    # learn whatever statistics are needed and return them as `state`
+    list(state = ...)
+  },
+  transform = function(new_data, state) {
+    # apply the fitted state to a new partition; must return a data.frame
+  }
+)
+```
+
+The fit step sees only the fold's training partition, whereas the transform step works on assessment data using the stored state. This mirrors the built-in Guarded Resampling logic and prevents inadvertent leakage between resamples.
+
+Custom hooks execute inside a sandbox: attempts to touch `.GlobalEnv`, attach external data frames, or reach out to the filesystem trigger immediate errors. Enabling `audit_mode = TRUE` adds verbose diagnostics—logging suspicious operations (e.g., file I/O) and flagging the run as "potentially unsafe" so you can inspect the audit trail before trusting the results.
 
 ## Using Custom rsample Folds
 
