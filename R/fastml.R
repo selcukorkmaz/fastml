@@ -58,10 +58,9 @@ utils::globalVariables(c("Fraction", "Performance"))
 #'     \item{\code{NULL}}{Equivalent to \code{"error"}. No imputation is performed, and the function will stop if missing values are present.}
 #'   }
 #'   When resampling is requested (e.g., cross-validation or bootstrapping),
-#'   advanced imputation methods \code{"mice"}, \code{"missForest"}, and
-#'   \code{"custom"} must be supplied as part of a recipe so they can be trained
-#'   on each analysis fold. If these methods are requested directly while
-#'   resampling, the function aborts to avoid information leakage.
+#'   fastml() automatically fits the selected advanced imputation method inside
+#'   each resample, applying the resulting imputer to that fold's assessment
+#'   data before evaluation.
 #'   Default is \code{"error"}.
 #' @param impute_custom_function A function that takes a data.frame as input and returns an imputed data.frame. Used only if \code{impute_method = "custom"}.
 #' @param encode_categoricals Logical indicating whether to encode categorical variables. Default is \code{TRUE}.
@@ -462,6 +461,9 @@ fastml <- function(data = NULL,
   }
 
 
+  raw_train_data <- train_data
+  advanced_imputation_outcome_cols <- NULL
+
   if(!is.null(impute_method) && impute_method == "remove") {
     if (anyNA(train_data)) {
       train_data <- train_data %>%
@@ -499,130 +501,38 @@ fastml <- function(data = NULL,
     positive_class <- NULL
   }
 
-  ###############################################################################
-  # NEW BLOCK: Advanced Imputation (MICE, missForest, or custom) if no recipe supplied
-  ###############################################################################
-  # We handle advanced or custom imputation outside of the recipes step.
-  # We'll do it on train_data and test_data directly if requested.
-
   # If user has provided a custom recipe, skip internal imputation logic
   if (is.null(recipe)) {
+    outcome_cols <- unique(c(label, if (task == "survival") label_surv else character()))
+    outcome_cols <- outcome_cols[outcome_cols %in% names(train_data)]
+    advanced_methods <- c("mice", "missForest", "custom")
+    advanced_imputation <- !is.null(impute_method) && impute_method %in% advanced_methods
 
-    if (!is.null(impute_method) && impute_method %in% c("mice", "missForest", "custom")) {
-
-      if (resampling_active) {
-        stop(
-          "Advanced imputation methods ('mice', 'missForest', 'custom') must be trained within each resample. ",
-          "Provide these steps inside an untrained recipe or disable resampling (resampling_method = 'none')."
-        )
-      }
-
-      outcome_cols <- unique(c(label, if (task == "survival") label_surv else character()))
-      outcome_cols <- outcome_cols[outcome_cols %in% names(train_data)]
-
-      # If 'custom', user must provide a function
-      if (impute_method == "custom") {
-        if (!is.function(impute_custom_function)) {
-          stop("You selected impute_method='custom' but did not provide a valid `impute_custom_function`.")
-        }
-        # Apply user function to train/test
-        train_data <- impute_custom_function(train_data)
-        test_data <- impute_custom_function(test_data)
-
-        warning("Missing values in the training and test set have been imputed using the 'custom' method.")
-
-      } else if (impute_method == "mice") {
-        if (!requireNamespace("mice", quietly = TRUE)) {
-          stop("impute_method='mice' requires the 'mice' package to be installed.")
-        }
-        # Perform MICE on predictors only to avoid leaking outcome information.
-        train_predictor_cols <- setdiff(names(train_data), outcome_cols)
-        if (length(train_predictor_cols) > 0) {
-          train_predictors <- train_data[, train_predictor_cols, drop = FALSE]
-          matrix_cols_train <- vapply(train_predictors, is.matrix, logical(1))
-          if (any(matrix_cols_train)) {
-            train_matrix <- train_predictors[, matrix_cols_train, drop = FALSE]
-            train_non_matrix <- train_predictors[, !matrix_cols_train, drop = FALSE]
-            if (ncol(train_non_matrix) > 0) {
-              train_data_mice <- mice(train_non_matrix)
-              train_non_matrix <- complete(train_data_mice)
-            }
-            train_predictors <- cbind(train_non_matrix, train_matrix)
-            train_predictors <- train_predictors[, train_predictor_cols, drop = FALSE]
-          } else {
-            train_data_mice <- mice(train_predictors)
-            train_predictors <- complete(train_data_mice)
-          }
-          train_data[, train_predictor_cols] <- train_predictors[, train_predictor_cols, drop = FALSE]
-        }
-
-        warning("Missing values in the training set have been imputed using the 'mice' method.")
-
-        # Repeat for test predictors when needed
-        if (anyNA(test_data)) {
-          test_predictor_cols <- setdiff(names(test_data), outcome_cols)
-          if (length(test_predictor_cols) > 0) {
-            test_predictors <- test_data[, test_predictor_cols, drop = FALSE]
-            matrix_cols_test <- vapply(test_predictors, is.matrix, logical(1))
-            if (any(matrix_cols_test)) {
-              test_matrix <- test_predictors[, matrix_cols_test, drop = FALSE]
-              test_non_matrix <- test_predictors[, !matrix_cols_test, drop = FALSE]
-              if (ncol(test_non_matrix) > 0) {
-                test_data_mice <- mice(test_non_matrix)
-                test_non_matrix <- complete(test_data_mice)
-              }
-              test_predictors <- cbind(test_non_matrix, test_matrix)
-              test_predictors <- test_predictors[, test_predictor_cols, drop = FALSE]
-            } else {
-              test_data_mice <- mice(test_predictors)
-              test_predictors <- complete(test_data_mice)
-            }
-            test_data[, test_predictor_cols] <- test_predictors[, test_predictor_cols, drop = FALSE]
-          }
-
-          warning("Missing values in the test set have been imputed using the 'mice' method.")
-
-        }
-
-      } else if (impute_method == "missForest") {
-        if (!requireNamespace("missForest", quietly = TRUE)) {
-          stop("impute_method='missForest' requires the 'missForest' package to be installed.")
-        }
-        train_predictor_cols <- setdiff(names(train_data), outcome_cols)
-        if (length(train_predictor_cols) > 0) {
-          train_data_imp <- missForest(train_data[, train_predictor_cols, drop = FALSE], verbose = FALSE)
-          imputed_train <- train_data_imp$ximp
-          train_data[, train_predictor_cols] <- imputed_train[, train_predictor_cols, drop = FALSE]
-        }
-
-        warning("Missing values in the training set have been imputed using the 'missForest' method.")
-
-        # Similarly for test_data if needed
-        if (anyNA(test_data)) {
-          test_predictor_cols <- setdiff(names(test_data), outcome_cols)
-          if (length(test_predictor_cols) > 0) {
-            test_data_imp <- missForest(test_data[, test_predictor_cols, drop = FALSE], verbose = FALSE)
-            imputed_test <- test_data_imp$ximp
-            test_data[, test_predictor_cols] <- imputed_test[, test_predictor_cols, drop = FALSE]
-          }
-
-          warning("Missing values in the test set have been imputed using the 'missForest' method.")
-
-        }
-      }
-
-      # If user has requested advanced or custom imputation, we won't also do recipe-based steps
-      # for imputation. We'll effectively skip those inside the recipes below.
-      # We'll keep a note to skip recipe imputation steps:
+    if (advanced_imputation) {
+      imputed <- fastml_apply_advanced_imputation(
+        train_data = train_data,
+        test_data = test_data,
+        outcome_cols = outcome_cols,
+        impute_method = impute_method,
+        impute_custom_function = impute_custom_function,
+        warn = TRUE
+      )
+      train_data <- imputed$train_data
+      test_data <- imputed$test_data
+      advanced_imputation_outcome_cols <- outcome_cols
       skip_recipe_imputation <- TRUE
-
     } else {
       skip_recipe_imputation <- FALSE
     }
-
   } else {
     # If user provided a recipe, do not do advanced or custom imputation outside
     skip_recipe_imputation <- TRUE
+    advanced_imputation <- FALSE
+  }
+
+  resample_base_data <- NULL
+  if (advanced_imputation && resampling_active && is.null(recipe)) {
+    resample_base_data <- raw_train_data
   }
   ###############################################################################
 
@@ -735,6 +645,10 @@ fastml <- function(data = NULL,
     folds = folds,
     repeats = repeats,
     resamples = resamples,
+    resample_base_data = resample_base_data,
+    impute_method = if (advanced_imputation && is.null(recipe)) impute_method else NULL,
+    impute_custom_function = if (advanced_imputation && is.null(recipe)) impute_custom_function else NULL,
+    impute_outcome_cols = advanced_imputation_outcome_cols,
     tune_params = tune_params,
     engine_params = engine_params,
     metric = metric,
@@ -1014,10 +928,14 @@ fastml <- function(data = NULL,
         label = label,
         task = task,
         algorithms = algorithms,
-       resampling_method = resampling_method,
-       folds = folds,
-       repeats = repeats,
-       resamples = resamples,
+        resampling_method = resampling_method,
+        folds = folds,
+        repeats = repeats,
+        resamples = resamples,
+        resample_base_data = resample_base_data,
+        impute_method = if (advanced_imputation && is.null(recipe)) impute_method else NULL,
+        impute_custom_function = if (advanced_imputation && is.null(recipe)) impute_custom_function else NULL,
+        impute_outcome_cols = advanced_imputation_outcome_cols,
         tune_params = tune_params,
         engine_params = engine_params,
         metric = metric,
