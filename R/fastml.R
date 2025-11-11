@@ -746,12 +746,21 @@ fastml <- function(data = NULL,
     tuning_iterations = tuning_iterations,
     early_stopping = early_stopping,
     adaptive = adaptive,
-    algorithm_engines = algorithm_engines
+    algorithm_engines = algorithm_engines,
+    event_class = event_class,
+    start_col = start_col,
+    time_col = time_col,
+    status_col = status_col,
+    eval_times = eval_times,
+    at_risk_threshold = at_risk_threshold
   )
 
   models <- models[sapply(models, function(x) length(x) > 0)]
 
   engine_names <- get_engine_names(models)
+
+  resampling_results <- attr(models, "guarded_resampling")
+  attr(models, "guarded_resampling") <- NULL
 
   if (length(models) == 0) {
     stop("No models were successfully trained.")
@@ -827,6 +836,29 @@ fastml <- function(data = NULL,
 
   # Replace models with normalized, consistently named map
   models <- model_map
+
+  if (!is.null(resampling_results)) {
+    resampling_named <- list()
+    for (alg in names(resampling_results)) {
+      alg_entry <- resampling_results[[alg]]
+      if (is.list(alg_entry) && !inherits(alg_entry, "data.frame")) {
+        for (eng in names(alg_entry)) {
+          combined_name <- paste0(alg, " (", eng, ")")
+          resampling_named[[combined_name]] <- alg_entry[[eng]]
+        }
+      } else if (!is.null(alg_entry)) {
+        eng_candidates <- tryCatch(engine_names[[alg]], error = function(e) NULL)
+        eng <- if (!is.null(eng_candidates) && length(eng_candidates) >= 1 && !is.na(eng_candidates[1])) {
+          eng_candidates[1]
+        } else {
+          tryCatch(get_default_engine(alg, task), error = function(e) "unknown")
+        }
+        combined_name <- paste0(alg, " (", eng, ")")
+        resampling_named[[combined_name]] <- alg_entry
+      }
+    }
+    resampling_results <- resampling_named
+  }
 
 
   # Now apply the function over the flattened list
@@ -1070,7 +1102,8 @@ fastml <- function(data = NULL,
     engine_names = engine_names,
     survival_brier_times = survival_brier_times,
     survival_t_max = survival_t_max,
-    metric_bootstrap = list(enabled = bootstrap_ci, samples = bootstrap_samples, seed = bootstrap_seed)
+    metric_bootstrap = list(enabled = bootstrap_ci, samples = bootstrap_samples, seed = bootstrap_seed),
+    resampling_results = resampling_results
   )
   class(result) <- "fastml"
   if (verbose) message("Training complete.")

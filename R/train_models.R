@@ -37,6 +37,15 @@
 #' @param early_stopping Logical for early stopping in Bayesian tuning.
 #' @param adaptive Logical indicating whether to use adaptive/racing methods.
 #' @param algorithm_engines A named list specifying the engine to use for each algorithm.
+#' @param event_class Character string identifying the positive class when computing
+#'   classification metrics ("first" or "second").
+#' @param start_col Optional name of the survival start time column passed through
+#'   to downstream evaluation helpers.
+#' @param time_col Optional name of the survival stop time column.
+#' @param status_col Optional name of the survival status/event column.
+#' @param eval_times Optional numeric vector of time horizons for survival metrics.
+#' @param at_risk_threshold Numeric cutoff used to determine the evaluation window
+#'   for survival metrics within guarded resampling.
 #' @importFrom magrittr %>%
 #' @importFrom dplyr filter mutate select if_else starts_with
 #' @importFrom tibble tibble
@@ -71,7 +80,13 @@ train_models <- function(train_data,
                          tuning_iterations = 10,
                          early_stopping = FALSE,
                          adaptive = FALSE,
-                         algorithm_engines = NULL) {
+                         algorithm_engines = NULL,
+                         event_class = "first",
+                         start_col = NULL,
+                         time_col = NULL,
+                         status_col = NULL,
+                         eval_times = NULL,
+                         at_risk_threshold = 0.1) {
 
   set.seed(seed)
 
@@ -146,6 +161,8 @@ train_models <- function(train_data,
       class(spec) <- c("fastml_native_survival", "fastml_model")
       spec
     }
+
+    resampling_summaries <- list()
 
     for (algo in algorithms) {
       engine <- get_engine(algo, get_default_engine(algo, task))
@@ -834,6 +851,15 @@ train_models <- function(train_data,
         fit_engine_args <- engine_args
       }
 
+      if (!is.null(resamples)) {
+        stop(
+          paste(
+            "Guarded resampling for survival models is not yet implemented for native engines.",
+            "Please supply parsnip-compatible specifications or disable resampling."
+          )
+        )
+      }
+
       if (inherits(spec, "fastml_native_survival")) {
         models[[algo]] <- spec
       } else {
@@ -845,6 +871,10 @@ train_models <- function(train_data,
           c(list(object = wf, data = train_data), fit_engine_args)
         )
       }
+    }
+
+    if (length(resampling_summaries) > 0) {
+      attr(models, "guarded_resampling") <- resampling_summaries
     }
 
     return(models)
@@ -943,6 +973,7 @@ train_models <- function(train_data,
   }
 
   models <- list()
+  resampling_summaries <- list()
 
   # A helper function to choose the engine for an algorithm
   get_engine <- function(algo, default_engine) {
@@ -1239,6 +1270,30 @@ train_models <- function(train_data,
         add_model(if(inherits(model_spec,"model_spec")) model_spec else model_spec[[1]]) %>%
         add_recipe(recipe)
 
+      if (!perform_tuning && !is.null(resamples)) {
+        res_summary <- fastml_guarded_resample_fit(
+          workflow_spec = workflow_spec,
+          resamples = resamples,
+          original_train_rows = nrow(train_data),
+          task = task,
+          label = label,
+          metric = metric,
+          event_class = event_class,
+          engine = engine,
+          start_col = start_col,
+          time_col = time_col,
+          status_col = status_col,
+          eval_times = eval_times,
+          at_risk_threshold = at_risk_threshold
+        )
+        if (!is.null(res_summary)) {
+          if (is.null(resampling_summaries[[algo]])) {
+            resampling_summaries[[algo]] <- list()
+          }
+          resampling_summaries[[algo]][[engine]] <- res_summary
+        }
+      }
+
       # Fit the model (with tuning if requested)
       tryCatch({
         if (perform_tuning && !all(vapply(engine_tune_params, is.null, logical(1)))) {
@@ -1377,6 +1432,10 @@ train_models <- function(train_data,
 
   if (length(models) == 0) {
     stop("No models were successfully trained. Please check your data and parameters.")
+  }
+
+  if (length(resampling_summaries) > 0) {
+    attr(models, "guarded_resampling") <- resampling_summaries
   }
 
   return(models)
