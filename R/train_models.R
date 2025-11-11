@@ -851,7 +851,7 @@ train_models <- function(train_data,
         fit_engine_args <- engine_args
       }
 
-      if (!is.null(resamples)) {
+      if (!is.null(resamples) && inherits(spec, "fastml_native_survival")) {
         stop(
           paste(
             "Guarded resampling for survival models is not yet implemented for native engines.",
