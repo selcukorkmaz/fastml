@@ -110,7 +110,7 @@ utils::globalVariables(c("Fraction", "Performance"))
 #'   unsafe.
 #' @importFrom magrittr %>%
 #' @importFrom rsample initial_split training testing
-#' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake all_numeric_predictors all_predictors all_nominal_predictors all_outcomes step_zv step_rm
+#' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake all_numeric_predictors all_predictors all_nominal_predictors all_outcomes step_zv step_rm step_novel
 #' @importFrom dplyr filter pull rename_with mutate across where select all_of group_by sample_n ungroup
 #' @importFrom rlang sym
 #' @importFrom stats as.formula complete.cases
@@ -623,7 +623,9 @@ fastml <- function(data = NULL,
 
     # If encoding needed
     if (encode_categoricals) {
-      recipe <- recipe %>% step_dummy(all_nominal_predictors(), -all_outcomes())
+      recipe <- recipe %>%
+        step_novel(all_nominal_predictors(), -all_outcomes()) %>%
+        step_dummy(all_nominal_predictors(), -all_outcomes())
 
       # Encoding can introduce zero-variance predictors (e.g., unused levels),
       # which would otherwise trigger warnings during subsequent scaling steps.
