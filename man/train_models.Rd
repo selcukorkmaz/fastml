@@ -12,6 +12,13 @@ train_models(
   resampling_method,
   folds,
   repeats,
+  group_cols = NULL,
+  block_col = NULL,
+  block_size = NULL,
+  initial_window = NULL,
+  assess_window = NULL,
+  skip = 0,
+  outer_folds = NULL,
   resamples = NULL,
   resample_base_data = NULL,
   impute_method = NULL,
@@ -47,11 +54,37 @@ train_models(
 
 \item{algorithms}{Vector of algorithm names to train.}
 
-\item{resampling_method}{Resampling method for cross-validation (e.g., "cv", "repeatedcv", "boot", "none").}
+\item{resampling_method}{Resampling method for cross-validation. Supported
+options include standard \code{"cv"}, \code{"repeatedcv"}, and
+\code{"boot"}, as well as grouped resampling via \code{"grouped_cv"},
+blocked/rolling schemes via \code{"blocked_cv"} or \code{"rolling_origin"},
+nested resampling via \code{"nested_cv"}, and the passthrough
+\code{"none"} option.}
 
 \item{folds}{Number of folds for cross-validation.}
 
 \item{repeats}{Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").}
+
+\item{group_cols}{Optional character vector of grouping columns used with
+`resampling_method = "grouped_cv"`.}
+
+\item{block_col}{Optional name of the ordering column used with blocked or
+rolling resampling.}
+
+\item{block_size}{Optional integer specifying the block size for
+`resampling_method = "blocked_cv"`.}
+
+\item{initial_window}{Optional integer specifying the initial window size for
+rolling resampling.}
+
+\item{assess_window}{Optional integer specifying the assessment window size
+for rolling resampling.}
+
+\item{skip}{Optional integer number of resamples to skip between rolling
+resamples.}
+
+\item{outer_folds}{Optional integer specifying the number of outer folds for
+`resampling_method = "nested_cv"`.}
 
 \item{resamples}{Optional rsample object. If provided, custom resampling splits
 will be used instead of those created internally.}
