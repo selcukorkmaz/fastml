@@ -66,7 +66,10 @@ nested resampling via \code{"nested_cv"}, and the passthrough
 \item{repeats}{Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").}
 
 \item{group_cols}{Optional character vector of grouping columns used with
-`resampling_method = "grouped_cv"`.}
+`resampling_method = "grouped_cv"`. For classification problems the outcome
+column is used to request grouped stratification where supported; if class
+imbalance prevents stratification, grouped folds are still created and a
+warning is emitted to document the limitation.}
 
 \item{block_col}{Optional name of the ordering column used with blocked or
 rolling resampling.}
