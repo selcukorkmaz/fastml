@@ -235,8 +235,7 @@ fastml_fetch_sandbox_function <- function(name) {
     if (!base::requireNamespace(pkg, quietly = TRUE)) {
       next
     }
-    ns <- base::asNamespace(pkg)
-    if (exists(name, envir = ns, inherits = FALSE)) {
+    if (name %in% base::getNamespaceExports(pkg)) {
       return(base::getExportedValue(pkg, name))
     }
   }
