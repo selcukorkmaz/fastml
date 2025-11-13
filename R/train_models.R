@@ -1,5 +1,130 @@
+make_grouped_cv <- function(data, group_cols, v = 5, strata = NULL, repeats = 1) {
+  if (is.null(group_cols) || length(group_cols) == 0) {
+    stop("'group_cols' must be provided when using grouped resampling.")
+  }
+  missing_cols <- setdiff(group_cols, colnames(data))
+  if (length(missing_cols) > 0) {
+    stop(
+      sprintf(
+        "The following grouping columns were not found in the data: %s",
+        paste(missing_cols, collapse = ", ")
+      )
+    )
+  }
+  if (!is.numeric(v) || length(v) != 1 || v < 2 || v != as.integer(v)) {
+    stop("'folds' must be an integer greater than or equal to 2 for 'grouped_cv'.")
+  }
+  if (!is.numeric(repeats) || length(repeats) != 1 || repeats <= 0 ||
+      repeats != as.integer(repeats)) {
+    stop("'repeats' must be a positive integer when using 'grouped_cv'.")
+  }
+
+  prepared_data <- data
+  if (length(group_cols) > 1) {
+    prepared_data <- prepared_data %>%
+      dplyr::mutate(
+        .fastml_group = interaction(!!!rlang::syms(group_cols), drop = TRUE)
+      )
+    group_sym <- rlang::sym(".fastml_group")
+  } else {
+    group_sym <- rlang::sym(group_cols[[1]])
+  }
+
+  group_values <- prepared_data[[rlang::as_string(group_sym)]]
+  if (any(is.na(group_values))) {
+    stop("Grouping columns contain missing values, which are not supported for grouped resampling.")
+  }
+
+  n_groups <- dplyr::n_distinct(group_values)
+  if (n_groups < v) {
+    stop(
+      sprintf(
+        "'folds' cannot exceed the number of groups for 'grouped_cv'. Found %d unique groups for %d-fold CV.",
+        n_groups, v
+      )
+    )
+  }
+
+  strata_sym <- NULL
+  if (!is.null(strata)) {
+    if (!strata %in% colnames(prepared_data)) {
+      warning(
+        sprintf(
+          "Column '%s' requested for stratification was not found; proceeding without stratification.",
+          strata
+        )
+      )
+      strata <- NULL
+    } else {
+      strata_sym <- rlang::sym(strata)
+      groups_per_stratum <- prepared_data %>%
+        dplyr::distinct(!!group_sym, !!strata_sym) %>%
+        dplyr::count(!!strata_sym, name = "n_groups")
+      insufficient <- groups_per_stratum[groups_per_stratum$n_groups < v, , drop = FALSE]
+      if (nrow(insufficient) > 0) {
+        strata_values <- unique(insufficient[[rlang::as_string(strata_sym)]])
+        warning(
+          sprintf(
+            paste0(
+              "Unable to stratify grouped folds because the following strata have fewer than %d groups: %s.",
+              " Proceeding without stratification."
+            ),
+            v,
+            paste(strata_values, collapse = ", ")
+          )
+        )
+        strata <- NULL
+        strata_sym <- NULL
+      }
+    }
+  } else {
+    # Without strata, grouped CV may yield imbalanced class distributions across folds.
+    # This is documented here because rsample currently lacks native grouped-stratified
+    # splitting when no stratification column is supplied.
+  }
+
+  try_grouped_cv <- function(strata_column) {
+    if (is.null(strata_column)) {
+      rsample::group_vfold_cv(
+        prepared_data,
+        group = !!group_sym,
+        v = v,
+        repeats = repeats
+      )
+    } else {
+      rsample::group_vfold_cv(
+        prepared_data,
+        group = !!group_sym,
+        v = v,
+        repeats = repeats,
+        strata = !!strata_column
+      )
+    }
+  }
+
+  resamples <- tryCatch(
+    try_grouped_cv(strata_sym),
+    error = function(err) {
+      if (!is.null(strata_sym)) {
+        warning(
+          sprintf(
+            paste0(
+              "Grouped stratification failed: %s. Proceeding without stratification."
+            ),
+            conditionMessage(err)
+          )
+        )
+        return(try_grouped_cv(NULL))
+      }
+      stop(err)
+    }
+  )
+
+  resamples
+}
+
 #' Train Specified Machine Learning Algorithms on the Training Data
-#'
+#' 
 #' Trains specified machine learning algorithms on the preprocessed training data.
 #'
 #' @param train_data Preprocessed training data frame.
@@ -21,7 +146,10 @@
 #'   different from `train_data` (e.g., before advanced imputation has been
 #'   applied).
 #' @param group_cols Optional character vector of grouping columns used with
-#'   `resampling_method = "grouped_cv"`.
+#'   `resampling_method = "grouped_cv"`. For classification problems the outcome
+#'   column is used to request grouped stratification where supported; if class
+#'   imbalance prevents stratification, grouped folds are still created and a
+#'   warning is emitted to document the limitation.
 #' @param block_col Optional name of the ordering column used with blocked or
 #'   rolling resampling.
 #' @param block_size Optional integer specifying the block size for
@@ -1034,40 +1162,12 @@ train_models <- function(train_data,
         NULL
     )
   } else if (resampling_method == "grouped_cv") {
-    if (is.null(group_cols) || length(group_cols) == 0) {
-      stop("'group_cols' must be provided when using 'grouped_cv'.")
-    }
-    missing_cols <- setdiff(group_cols, colnames(resample_data))
-    if (length(missing_cols) > 0) {
-      stop(
-        sprintf(
-          "The following grouping columns were not found in the data: %s",
-          paste(missing_cols, collapse = ", ")
-        )
-      )
-    }
     repeats_arg <- if (is.null(repeats)) 1 else repeats
-    if (!is.numeric(repeats_arg) || length(repeats_arg) != 1 || repeats_arg <= 0 ||
-        repeats_arg != as.integer(repeats_arg)) {
-      stop("'repeats' must be a positive integer when using 'grouped_cv'.")
-    }
-    if (length(group_cols) > 1) {
-      resample_data <- resample_data %>%
-        dplyr::mutate(
-          .fastml_group = interaction(!!!rlang::syms(group_cols), drop = TRUE)
-        )
-      grouping_sym <- rlang::sym(".fastml_group")
-    } else {
-      grouping_sym <- rlang::sym(group_cols[[1]])
-    }
-    n_groups <- dplyr::n_distinct(resample_data[[rlang::as_string(grouping_sym)]])
-    if (folds > n_groups) {
-      stop("'folds' cannot exceed the number of groups for 'grouped_cv'.")
-    }
-    resamples <- rsample::group_vfold_cv(
-      resample_data,
-      group = !!grouping_sym,
+    resamples <- make_grouped_cv(
+      data = resample_data,
+      group_cols = group_cols,
       v = folds,
+      strata = if (task == "classification") label else NULL,
       repeats = repeats_arg
     )
   } else if (resampling_method %in% c("blocked_cv", "rolling_origin")) {
