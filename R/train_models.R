@@ -1092,7 +1092,7 @@ train_models <- function(train_data,
         dplyr::mutate(
           .fastml_block = ceiling(dplyr::row_number() / block_size)
         )
-      n_blocks <- dplyr::n_distinct(.fastml_block)
+      n_blocks <- dplyr::n_distinct(resample_data$.fastml_block)
       if (folds > n_blocks) {
         stop("'folds' cannot exceed the number of derived blocks.")
       }
