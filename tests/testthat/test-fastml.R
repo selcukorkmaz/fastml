@@ -26,6 +26,30 @@ test_that("rand_forest defaults to aorsf engine for survival", {
   expect_identical(get_default_engine("rand_forest", "survival"), "aorsf")
 })
 
+test_that("fastml handles novel categorical predictor levels", {
+  set.seed(123)
+  df <- data.frame(
+    cat = factor(c(rep("a", 40), rep("b", 40), rep("c", 20))),
+    num = rnorm(100),
+    target = factor(rep(c("yes", "no"), each = 50))
+  )
+
+  train_df <- df[1:80, ]
+  test_df <- df[81:100, ]
+
+  expect_s3_class(
+    fastml(
+      train_data = train_df,
+      test_data = test_df,
+      label = "target",
+      algorithms = c("decision_tree"),
+      resampling_method = "none",
+      use_default_tuning = FALSE
+    ),
+    "fastml"
+  )
+})
+
 test_that("survival task works with mice imputation", {
   skip_if_not_installed("aorsf")
   skip_if_not_installed("censored")
