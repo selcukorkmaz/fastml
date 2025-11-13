@@ -50,6 +50,52 @@ fastml_env_inherits_global <- function(env) {
   FALSE
 }
 
+fastml_global_env_helper_names <- function() {
+  c("globalenv", "parent.frame", "sys.frame", "sys.frames", "parent.env")
+}
+
+fastml_language_invokes_global_env <- function(expr) {
+  if (!is.language(expr)) {
+    return(FALSE)
+  }
+
+  if (is.symbol(expr)) {
+    sym <- as.character(expr)
+    return(identical(sym, ".GlobalEnv") || sym %in% fastml_global_env_helper_names())
+  }
+
+  if (!is.call(expr)) {
+    return(FALSE)
+  }
+
+  fn <- expr[[1]]
+  helper_names <- fastml_global_env_helper_names()
+
+  if (is.symbol(fn)) {
+    fn_name <- as.character(fn)
+    if (fn_name %in% helper_names) {
+      return(TRUE)
+    }
+  } else if (is.call(fn)) {
+    fn_head <- as.character(fn[[1]])
+    if (fn_head %in% c("::", ":::")) {
+      ns_symbol <- fn[[3]]
+      if (is.symbol(ns_symbol) && as.character(ns_symbol) %in% helper_names) {
+        return(TRUE)
+      }
+    }
+  }
+
+  args <- as.list(expr)[-1]
+  for (arg in args) {
+    if (fastml_language_invokes_global_env(arg)) {
+      return(TRUE)
+    }
+  }
+
+  FALSE
+}
+
 fastml_recipe_step_contains_external_reference <- function(step, depth = 0, max_depth = 6) {
   if (depth > max_depth) {
     return(FALSE)
@@ -59,19 +105,19 @@ fastml_recipe_step_contains_external_reference <- function(step, depth = 0, max_
     return(fastml_env_inherits_global(step))
   }
 
-    if (is.function(step)) {
-      if (fastml_env_inherits_global(environment(step))) {
-        return(TRUE)
-      }
-      return(fastml_recipe_step_contains_external_reference(body(step), depth + 1, max_depth))
+  if (is.function(step)) {
+    if (fastml_env_inherits_global(environment(step))) {
+      return(TRUE)
     }
+    return(fastml_recipe_step_contains_external_reference(body(step), depth + 1, max_depth))
+  }
 
   if (is.list(step)) {
-      for (element in step) {
-        if (fastml_recipe_step_contains_external_reference(element, depth + 1, max_depth)) {
-          return(TRUE)
-        }
+    for (element in step) {
+      if (fastml_recipe_step_contains_external_reference(element, depth + 1, max_depth)) {
+        return(TRUE)
       }
+    }
     return(FALSE)
   }
 
@@ -83,10 +129,24 @@ fastml_recipe_step_contains_external_reference <- function(step, depth = 0, max_
     return(FALSE)
   }
 
+  if (is.symbol(step)) {
+    sym <- as.character(step)
+    return(identical(sym, ".GlobalEnv") || sym %in% fastml_global_env_helper_names())
+  }
+
+  if (is.character(step)) {
+    return(any(step %in% c(".GlobalEnv", fastml_global_env_helper_names())))
+  }
+
   if (is.language(step)) {
-    names_in_expr <- all.names(step, functions = TRUE)
-    if (".GlobalEnv" %in% names_in_expr) {
+    if (fastml_language_invokes_global_env(step)) {
       return(TRUE)
+    }
+    components <- as.list(step)
+    for (component in components) {
+      if (fastml_recipe_step_contains_external_reference(component, depth + 1, max_depth)) {
+        return(TRUE)
+      }
     }
     return(FALSE)
   }
@@ -146,6 +206,43 @@ fastml_audit_io_functions <- function() {
   )
 }
 
+fastml_sandbox_default_packages <- function() {
+  c("stats", "utils", "graphics", "grDevices", "methods", "datasets")
+}
+
+fastml_populate_sandbox_defaults <- function(env) {
+  for (pkg in fastml_sandbox_default_packages()) {
+    if (!base::requireNamespace(pkg, quietly = TRUE)) {
+      next
+    }
+    exports <- base::getNamespaceExports(pkg)
+    for (nm in exports) {
+      if (identical(nm, ".GlobalEnv")) {
+        next
+      }
+      if (!exists(nm, envir = env, inherits = FALSE)) {
+        env[[nm]] <- base::getExportedValue(pkg, nm)
+      }
+    }
+  }
+}
+
+fastml_fetch_sandbox_function <- function(name) {
+  if (exists(name, envir = baseenv(), inherits = FALSE)) {
+    return(get(name, envir = baseenv(), inherits = FALSE))
+  }
+  for (pkg in fastml_sandbox_default_packages()) {
+    if (!base::requireNamespace(pkg, quietly = TRUE)) {
+      next
+    }
+    ns <- base::asNamespace(pkg)
+    if (exists(name, envir = ns, inherits = FALSE)) {
+      return(base::getExportedValue(pkg, name))
+    }
+  }
+  NULL
+}
+
 fastml_build_sandbox_env <- function(audit_env, context) {
   env <- new.env(parent = baseenv())
 
@@ -184,12 +281,14 @@ fastml_build_sandbox_env <- function(audit_env, context) {
   }
   environment(env$get) <- baseenv()
 
+  fastml_populate_sandbox_defaults(env)
+
   if (!is.null(audit_env) && isTRUE(audit_env$enabled)) {
     for (fn_name in fastml_audit_io_functions()) {
-      if (!exists(fn_name, envir = baseenv(), inherits = TRUE)) {
+      base_fun <- fastml_fetch_sandbox_function(fn_name)
+      if (is.null(base_fun)) {
         next
       }
-      base_fun <- get(fn_name, envir = baseenv())
       env[[fn_name]] <- (function(fun, name) {
         function(...) {
           msg <- sprintf("fastml audit: %s attempted to call %s(), which may access external resources.", context, name)
