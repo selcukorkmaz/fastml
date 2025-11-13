@@ -547,6 +547,38 @@ fastml <- function(data = NULL,
     advanced_imputation <- FALSE
   }
 
+  if (is.null(recipe) && task == "classification" && "discrim_quad" %in% algorithms) {
+    predictor_cols <- setdiff(names(train_data), label)
+    numeric_predictors <- predictor_cols[vapply(train_data[predictor_cols], is.numeric, logical(1))]
+
+    if (length(numeric_predictors) > 0) {
+      zero_var_by_class <- vapply(numeric_predictors, function(col) {
+        values <- train_data[[col]]
+        split_vals <- split(values, train_data[[label]])
+        any(vapply(split_vals, function(class_values) {
+          class_values <- class_values[!is.na(class_values)]
+          length(class_values) <= 1 || isTRUE(all.equal(stats::var(class_values), 0))
+        }, logical(1)))
+      }, logical(1))
+
+      cols_to_drop <- names(zero_var_by_class)[zero_var_by_class]
+
+      if (length(cols_to_drop) > 0) {
+        warning(
+          sprintf(
+            "Removed %d predictor%s with zero variance within at least one class to stabilize Quadratic Discriminant Analysis: %s.",
+            length(cols_to_drop),
+            ifelse(length(cols_to_drop) == 1, "", "s"),
+            paste(cols_to_drop, collapse = ", ")
+          )
+        )
+
+        train_data <- dplyr::select(train_data, -dplyr::all_of(cols_to_drop))
+        test_data <- dplyr::select(test_data, -dplyr::all_of(cols_to_drop))
+      }
+    }
+  }
+
   resample_base_data <- NULL
   if (advanced_imputation && resampling_active && is.null(recipe)) {
     resample_base_data <- raw_train_data
