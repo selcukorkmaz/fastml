@@ -7,7 +7,12 @@
 #' @param label Name of the target variable.
 #' @param task Type of task: "classification", "regression", or "survival".
 #' @param algorithms Vector of algorithm names to train.
-#' @param resampling_method Resampling method for cross-validation (e.g., "cv", "repeatedcv", "boot", "none").
+#' @param resampling_method Resampling method for cross-validation. Supported
+#'   options include standard \code{"cv"}, \code{"repeatedcv"}, and
+#'   \code{"boot"}, as well as grouped resampling via \code{"grouped_cv"},
+#'   blocked/rolling schemes via \code{"blocked_cv"} or \code{"rolling_origin"},
+#'   nested resampling via \code{"nested_cv"}, and the passthrough
+#'   \code{"none"} option.
 #' @param folds Number of folds for cross-validation.
 #' @param repeats Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").
 #' @param resamples Optional rsample object. If provided, custom resampling splits
@@ -15,6 +20,20 @@
 #' @param resample_base_data Optional data frame used to generate resamples when
 #'   different from `train_data` (e.g., before advanced imputation has been
 #'   applied).
+#' @param group_cols Optional character vector of grouping columns used with
+#'   `resampling_method = "grouped_cv"`.
+#' @param block_col Optional name of the ordering column used with blocked or
+#'   rolling resampling.
+#' @param block_size Optional integer specifying the block size for
+#'   `resampling_method = "blocked_cv"`.
+#' @param initial_window Optional integer specifying the initial window size for
+#'   rolling resampling.
+#' @param assess_window Optional integer specifying the assessment window size
+#'   for rolling resampling.
+#' @param skip Optional integer number of resamples to skip between rolling
+#'   resamples.
+#' @param outer_folds Optional integer specifying the number of outer folds for
+#'   `resampling_method = "nested_cv"`.
 #' @param impute_method Advanced imputation method to apply within each resample.
 #'   Only methods `"mice"`, `"missForest"`, or `"custom"` are supported.
 #' @param impute_custom_function Custom imputation function to use when
@@ -60,15 +79,17 @@
 #'   \code{fastml()} and should be left as \code{NULL} when calling
 #'   \code{train_models()} directly.
 #' @importFrom magrittr %>%
-#' @importFrom dplyr filter mutate select if_else starts_with
+#' @importFrom dplyr filter mutate select if_else starts_with arrange row_number
+#'   n_distinct
 #' @importFrom tibble tibble
-#' @importFrom rlang sym
+#' @importFrom rlang sym syms call2 call_modify expr as_string
 #' @importFrom dials range_set value_set grid_regular grid_latin_hypercube finalize
 #' @importFrom parsnip fit extract_parameter_set_dials
 #' @importFrom workflows workflow add_model add_recipe
 #' @importFrom tune tune_grid control_grid select_best finalize_workflow finalize_model tune_bayes control_grid control_bayes
 #' @importFrom yardstick metric_set accuracy kap roc_auc sens spec precision f_meas rmse rsq mae new_class_metric
-#' @importFrom rsample vfold_cv bootstraps validation_split
+#' @importFrom rsample vfold_cv bootstraps validation_split group_vfold_cv
+#'   rolling_origin nested_cv
 #' @importFrom recipes all_nominal_predictors all_numeric_predictors all_outcomes all_predictors
 #' @importFrom finetune control_race tune_race_anova
 #' @importFrom rstpm2 stpm2
@@ -81,6 +102,13 @@ train_models <- function(train_data,
                          resampling_method,
                          folds,
                          repeats,
+                         group_cols = NULL,
+                         block_col = NULL,
+                         block_size = NULL,
+                         initial_window = NULL,
+                         assess_window = NULL,
+                         skip = 0,
+                         outer_folds = NULL,
                          resamples = NULL,
                          resample_base_data = NULL,
                          impute_method = NULL,
@@ -115,6 +143,21 @@ train_models <- function(train_data,
   tuning_strategy <- match.arg(tuning_strategy, c("grid", "bayes", "none"))
 
   resample_data <- if (!is.null(resample_base_data)) resample_base_data else train_data
+
+  supported_resampling <- c(
+    "cv",
+    "repeatedcv",
+    "boot",
+    "grouped_cv",
+    "blocked_cv",
+    "rolling_origin",
+    "nested_cv",
+    "none"
+  )
+
+  if (!resampling_method %in% supported_resampling) {
+    stop("Unsupported resampling method.")
+  }
   advanced_resample_imputation <-
     !is.null(impute_method) &&
     impute_method %in% c("mice", "missForest", "custom") &&
@@ -990,10 +1033,130 @@ train_models <- function(train_data,
       else
         NULL
     )
+  } else if (resampling_method == "grouped_cv") {
+    if (is.null(group_cols) || length(group_cols) == 0) {
+      stop("'group_cols' must be provided when using 'grouped_cv'.")
+    }
+    missing_cols <- setdiff(group_cols, colnames(resample_data))
+    if (length(missing_cols) > 0) {
+      stop(
+        sprintf(
+          "The following grouping columns were not found in the data: %s",
+          paste(missing_cols, collapse = ", ")
+        )
+      )
+    }
+    repeats_arg <- if (is.null(repeats)) 1 else repeats
+    if (!is.numeric(repeats_arg) || length(repeats_arg) != 1 || repeats_arg <= 0 ||
+        repeats_arg != as.integer(repeats_arg)) {
+      stop("'repeats' must be a positive integer when using 'grouped_cv'.")
+    }
+    if (length(group_cols) > 1) {
+      resample_data <- resample_data %>%
+        dplyr::mutate(
+          .fastml_group = interaction(!!!rlang::syms(group_cols), drop = TRUE)
+        )
+      grouping_sym <- rlang::sym(".fastml_group")
+    } else {
+      grouping_sym <- rlang::sym(group_cols[[1]])
+    }
+    n_groups <- dplyr::n_distinct(resample_data[[rlang::as_string(grouping_sym)]])
+    if (folds > n_groups) {
+      stop("'folds' cannot exceed the number of groups for 'grouped_cv'.")
+    }
+    resamples <- rsample::group_vfold_cv(
+      resample_data,
+      group = !!grouping_sym,
+      v = folds,
+      repeats = repeats_arg
+    )
+  } else if (resampling_method %in% c("blocked_cv", "rolling_origin")) {
+    if (is.null(block_col) || length(block_col) != 1) {
+      stop("'block_col' must be provided when using blocked or rolling resampling.")
+    }
+    if (!block_col %in% colnames(resample_data)) {
+      stop(sprintf("'%s' was not found in the data.", block_col))
+    }
+    block_sym <- rlang::sym(block_col)
+    resample_data <- resample_data %>% dplyr::arrange(!!block_sym)
+
+    if (resampling_method == "blocked_cv") {
+      if (is.null(block_size)) {
+        stop("'block_size' must be provided when using 'blocked_cv'.")
+      }
+      if (!is.numeric(block_size) || length(block_size) != 1 || block_size <= 0 ||
+          block_size != as.integer(block_size)) {
+        stop("'block_size' must be a positive integer.")
+      }
+      resample_data <- resample_data %>%
+        dplyr::mutate(
+          .fastml_block = ceiling(dplyr::row_number() / block_size)
+        )
+      n_blocks <- dplyr::n_distinct(.fastml_block)
+      if (folds > n_blocks) {
+        stop("'folds' cannot exceed the number of derived blocks.")
+      }
+      resamples <- rsample::group_vfold_cv(
+        resample_data,
+        group = !!rlang::sym(".fastml_block"),
+        v = folds
+      )
+    } else {
+      if (is.null(initial_window) || is.null(assess_window)) {
+        stop("Both 'initial_window' and 'assess_window' must be provided for rolling resampling.")
+      }
+      window_args <- list(initial_window = initial_window, assess_window = assess_window)
+      for (nm in names(window_args)) {
+        value <- window_args[[nm]]
+        if (!is.numeric(value) || length(value) != 1 || value <= 0 ||
+            value != as.integer(value)) {
+          stop(sprintf("'%s' must be a positive integer.", nm))
+        }
+      }
+      if (!is.numeric(skip) || length(skip) != 1 || skip < 0 || skip != as.integer(skip)) {
+        stop("'skip' must be a non-negative integer.")
+      }
+      resamples <- rsample::rolling_origin(
+        resample_data,
+        initial = initial_window,
+        assess = assess_window,
+        skip = skip
+      )
+    }
+  } else if (resampling_method == "nested_cv") {
+    if (is.null(outer_folds)) {
+      stop("'outer_folds' must be provided when using 'nested_cv'.")
+    }
+    if (!is.numeric(outer_folds) || length(outer_folds) != 1 || outer_folds < 2 ||
+        outer_folds != as.integer(outer_folds)) {
+      stop("'outer_folds' must be an integer greater than or equal to 2.")
+    }
+    label_sym <- rlang::sym(label)
+    outer_call <- rlang::call2(
+      rlang::expr(rsample::vfold_cv),
+      v = as.integer(outer_folds)
+    )
+    repeats_arg <- if (is.null(repeats)) 1 else repeats
+    if (!is.numeric(repeats_arg) || length(repeats_arg) != 1 || repeats_arg <= 0 ||
+        repeats_arg != as.integer(repeats_arg)) {
+      stop("'repeats' must be a positive integer when using 'nested_cv'.")
+    }
+    inner_call <- rlang::call2(
+      rlang::expr(rsample::vfold_cv),
+      v = folds,
+      repeats = repeats_arg
+    )
+    if (task == "classification") {
+      outer_call <- rlang::call_modify(outer_call, strata = label_sym)
+      inner_call <- rlang::call_modify(inner_call, strata = label_sym)
+    }
+    resamples <- rsample::nested_cv(
+      resample_data,
+      outside = outer_call,
+      inside = inner_call
+    )
   } else if (resampling_method == "none") {
     resamples <- NULL
-  } else {
-    stop("Unsupported resampling method.")
   }
 
   if (use_default_tuning && is.null(resamples)) {
