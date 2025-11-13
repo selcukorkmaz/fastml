@@ -124,7 +124,7 @@ make_grouped_cv <- function(data, group_cols, v = 5, strata = NULL, repeats = 1)
 }
 
 #' Train Specified Machine Learning Algorithms on the Training Data
-#' 
+#'
 #' Trains specified machine learning algorithms on the preprocessed training data.
 #'
 #' @param train_data Preprocessed training data frame.
@@ -1432,12 +1432,12 @@ train_models <- function(train_data,
                                }
                              },
 
-
                              "C5_rules" = {
                                define_C5_rules_spec(task,
                                                     tuning = perform_tuning,
                                                     engine = engine)
                              },
+
                              "xgboost" = {
                                define_xgboost_spec(task,
                                                    train_data,
@@ -1446,6 +1446,7 @@ train_models <- function(train_data,
                                                    engine = engine,
                                                    early_stopping = early_stopping)
                              },
+
                              "lightgbm" = {
                                define_lightgbm_spec(task,
                                                     train_data,
@@ -1454,72 +1455,87 @@ train_models <- function(train_data,
                                                     engine = engine,
                                                     early_stopping = early_stopping)
                              },
+
                              "decision_tree" = {
                                define_decision_tree_spec(task,
                                                          tuning = perform_tuning,
                                                          engine = engine)
                              },
+
                              "svm_linear" = {
                                define_svm_linear_spec(task,
                                                       tuning = perform_tuning,
                                                       engine = engine)
                              },
+
                              "svm_rbf" = {
                                define_svm_rbf_spec(task,
                                                    tuning = perform_tuning,
                                                    engine = engine)
                              },
+
                              "nearest_neighbor" = {
                                define_nearest_neighbor_spec(task,
                                                             tuning = perform_tuning,
                                                             engine = engine)
                              },
+
                              "naive_Bayes" = {
                                define_naive_Bayes_spec(task,
                                                        tuning = perform_tuning,
                                                        engine = engine)
                              },
+
                              "mlp" = {
                                define_mlp_spec(task,
                                                tuning = perform_tuning,
                                                engine = engine)
                              },
+
                              "discrim_linear" = {
                                define_discrim_linear_spec(task,
                                                           engine = engine)
                              },
+
                              "discrim_quad" = {
                                define_discrim_quad_spec(task,
                                                         engine = engine)
                              },
+
                              "bag_tree" = {
                                define_bag_tree_spec(task,
                                                     tuning = perform_tuning,
                                                     engine = engine)
                              },
+
                              "elastic_net" = {
                                define_elastic_net_spec(task,
                                                        tuning = perform_tuning,
                                                        engine = engine)
                              },
+
                              "bayes_glm" = {
                                define_bayes_glm_spec(task,
                                                      engine = engine)
                              },
+
                              "pls" = {
                                define_pls_spec(task,
                                                tuning = perform_tuning,
                                                engine = engine)
                              },
+
                              "linear_reg" = {
                                define_linear_reg_spec(task,
                                                       engine = engine)
                              },
+
                              "ridge_reg" = {
                                define_ridge_reg_spec(task,
                                                             tuning = perform_tuning,
                                                             engine = engine)
                              },
+
                              "lasso_reg" = {
                                define_lasso_reg_spec(task,
                                                             tuning = perform_tuning,
