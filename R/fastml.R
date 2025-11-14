@@ -724,6 +724,9 @@ fastml <- function(data = NULL,
   nested_results <- attr(models, "nested_cv_results")
   attr(models, "nested_cv_results") <- NULL
 
+  resampling_plan <- attr(models, "resampling_plan")
+  attr(models, "resampling_plan") <- NULL
+
   if (length(models) == 0) {
     stop("No models were successfully trained.")
   }
@@ -1100,6 +1103,7 @@ fastml <- function(data = NULL,
     survival_t_max = survival_t_max,
     metric_bootstrap = list(enabled = bootstrap_ci, samples = bootstrap_samples, seed = bootstrap_seed),
     resampling_results = resampling_results,
+    resampling_plan = resampling_plan,
     nested_cv = nested_results,
     audit = if (audit_env$enabled) list(log = audit_env$log, flagged = audit_env$unsafe) else NULL
   )
