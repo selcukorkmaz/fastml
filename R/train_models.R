@@ -123,6 +123,89 @@ make_grouped_cv <- function(data, group_cols, v = 5, strata = NULL, repeats = 1)
   resamples
 }
 
+make_blocked_cv <- function(data, block_col, block_size) {
+  if (is.null(block_col) || length(block_col) != 1) {
+    stop("'block_col' must be provided when using blocked resampling.")
+  }
+  if (is.null(block_size)) {
+    stop("'block_size' must be provided when using blocked resampling.")
+  }
+  if (!block_col %in% colnames(data)) {
+    stop(sprintf("Column '%s' was not found in the data.", block_col))
+  }
+  if (!is.numeric(block_size) || length(block_size) != 1 || block_size <= 0 ||
+      block_size != as.integer(block_size)) {
+    stop("'block_size' must be a positive integer.")
+  }
+  if (any(is.na(data[[block_col]]))) {
+    stop(sprintf("Column '%s' contains missing values which are not supported for blocked resampling.", block_col))
+  }
+  if (!identical(order(data[[block_col]]), seq_len(nrow(data)))) {
+    stop(sprintf("Data must be sorted by '%s' in ascending order before applying blocked resampling.", block_col))
+  }
+
+  block_ids <- ceiling(seq_len(nrow(data)) / block_size)
+  n_blocks <- length(unique(block_ids))
+  if (n_blocks < 2) {
+    stop("'block_size' results in fewer than two blocks, which is insufficient for blocked resampling.")
+  }
+
+  list(
+    data = data,
+    block_ids = block_ids,
+    n_blocks = n_blocks
+  )
+}
+
+make_rolling_origin_cv <- function(data,
+                                   block_col,
+                                   initial_window,
+                                   assess_window,
+                                   skip = 0) {
+  if (is.null(block_col) || length(block_col) != 1) {
+    stop("'block_col' must be provided when using rolling resampling.")
+  }
+  if (!block_col %in% colnames(data)) {
+    stop(sprintf("Column '%s' was not found in the data.", block_col))
+  }
+  if (any(is.na(data[[block_col]]))) {
+    stop(sprintf("Column '%s' contains missing values which are not supported for rolling resampling.", block_col))
+  }
+  if (!identical(order(data[[block_col]]), seq_len(nrow(data)))) {
+    stop(sprintf("Data must be sorted by '%s' in ascending order before applying rolling resampling.", block_col))
+  }
+
+  window_args <- list(
+    initial_window = initial_window,
+    assess_window = assess_window,
+    skip = skip
+  )
+
+  if (is.null(window_args$initial_window) || is.null(window_args$assess_window)) {
+    stop("Both 'initial_window' and 'assess_window' must be provided for rolling resampling.")
+  }
+
+  for (nm in c("initial_window", "assess_window")) {
+    value <- window_args[[nm]]
+    if (!is.numeric(value) || length(value) != 1 || value <= 0 ||
+        value != as.integer(value)) {
+      stop(sprintf("'%s' must be a positive integer.", nm))
+    }
+  }
+
+  if (!is.numeric(window_args$skip) || length(window_args$skip) != 1 ||
+      window_args$skip < 0 || window_args$skip != as.integer(window_args$skip)) {
+    stop("'skip' must be a non-negative integer.")
+  }
+
+  rsample::rolling_origin(
+    data,
+    initial = window_args$initial_window,
+    assess = window_args$assess_window,
+    skip = window_args$skip
+  )
+}
+
 #' Train Specified Machine Learning Algorithms on the Training Data
 #'
 #' Trains specified machine learning algorithms on the preprocessed training data.
@@ -1174,52 +1257,45 @@ train_models <- function(train_data,
     if (is.null(block_col) || length(block_col) != 1) {
       stop("'block_col' must be provided when using blocked or rolling resampling.")
     }
-    if (!block_col %in% colnames(resample_data)) {
-      stop(sprintf("'%s' was not found in the data.", block_col))
-    }
-    block_sym <- rlang::sym(block_col)
-    resample_data <- resample_data %>% dplyr::arrange(!!block_sym)
 
     if (resampling_method == "blocked_cv") {
-      if (is.null(block_size)) {
-        stop("'block_size' must be provided when using 'blocked_cv'.")
+      blocked_info <- make_blocked_cv(
+        data = resample_data,
+        block_col = block_col,
+        block_size = block_size
+      )
+
+      if (!is.numeric(folds) || length(folds) != 1 || folds < 2 || folds != as.integer(folds)) {
+        stop("'folds' must be an integer greater than or equal to 2 for 'blocked_cv'.")
       }
-      if (!is.numeric(block_size) || length(block_size) != 1 || block_size <= 0 ||
-          block_size != as.integer(block_size)) {
-        stop("'block_size' must be a positive integer.")
-      }
-      resample_data <- resample_data %>%
-        dplyr::mutate(
-          .fastml_block = ceiling(dplyr::row_number() / block_size)
-        )
-      n_blocks <- dplyr::n_distinct(resample_data$.fastml_block)
-      if (folds > n_blocks) {
+
+      if (folds > blocked_info$n_blocks) {
         stop("'folds' cannot exceed the number of derived blocks.")
       }
+
+      block_group_col <- ".fastml_block"
+      blocked_data <- blocked_info$data
+      blocked_data[[block_group_col]] <- blocked_info$block_ids
+
       resamples <- rsample::group_vfold_cv(
-        resample_data,
-        group = !!rlang::sym(".fastml_block"),
+        blocked_data,
+        group = !!rlang::sym(block_group_col),
         v = folds
       )
-    } else {
-      if (is.null(initial_window) || is.null(assess_window)) {
-        stop("Both 'initial_window' and 'assess_window' must be provided for rolling resampling.")
-      }
-      window_args <- list(initial_window = initial_window, assess_window = assess_window)
-      for (nm in names(window_args)) {
-        value <- window_args[[nm]]
-        if (!is.numeric(value) || length(value) != 1 || value <= 0 ||
-            value != as.integer(value)) {
-          stop(sprintf("'%s' must be a positive integer.", nm))
+
+      resamples$splits <- lapply(
+        resamples$splits,
+        function(split) {
+          split$data[[block_group_col]] <- NULL
+          split
         }
-      }
-      if (!is.numeric(skip) || length(skip) != 1 || skip < 0 || skip != as.integer(skip)) {
-        stop("'skip' must be a non-negative integer.")
-      }
-      resamples <- rsample::rolling_origin(
-        resample_data,
-        initial = initial_window,
-        assess = assess_window,
+      )
+    } else {
+      resamples <- make_rolling_origin_cv(
+        data = resample_data,
+        block_col = block_col,
+        initial_window = initial_window,
+        assess_window = assess_window,
         skip = skip
       )
     }
