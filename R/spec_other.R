@@ -3,13 +3,27 @@
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip set_mode set_engine discrim_quad
 #' @noRd
-define_discrim_quad_spec <- function(task, engine = "MASS") {
+define_discrim_quad_spec <- function(task, engine = "sparsediscrim") {
   if (task != "classification") {
     stop("discrim_quad is only applicable for classification tasks.")
   }
+  if (identical(engine, "sparsediscrim") &&
+      !requireNamespace("sparsediscrim", quietly = TRUE)) {
+    stop(
+      "Engine 'sparsediscrim' for discrim_quad requires the 'sparsediscrim' package. Please install it or choose a different engine."
+    )
+  }
+
   model_spec <- discrim_quad() %>%
-    set_mode("classification") %>%
-    set_engine(engine)
+    set_mode("classification")
+
+  if (identical(engine, "sparsediscrim")) {
+    model_spec <- model_spec %>%
+      set_engine(engine, regularization_method = "diagonal")
+  } else {
+    model_spec <- model_spec %>%
+      set_engine(engine)
+  }
   list(model_spec = model_spec)
 }
 

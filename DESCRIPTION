@@ -81,6 +81,7 @@ Suggests:
     aorsf,
     censored,
     crayon,
+    sparsediscrim,
     kernlab,
     klaR,
     kknn,
