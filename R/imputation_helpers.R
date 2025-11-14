@@ -200,5 +200,21 @@ fastml_impute_resamples <- function(resamples,
     split
   })
 
+  if (!is.null(resamples$inner_resamples)) {
+    resamples$inner_resamples <- lapply(resamples$inner_resamples, function(inner) {
+      if (inherits(inner, "rset")) {
+        fastml_impute_resamples(
+          resamples = inner,
+          impute_method = impute_method,
+          impute_custom_function = impute_custom_function,
+          outcome_cols = outcome_cols,
+          audit_env = audit_env
+        )
+      } else {
+        inner
+      }
+    })
+  }
+
   resamples
 }

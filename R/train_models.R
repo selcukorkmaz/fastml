@@ -206,6 +206,304 @@ make_rolling_origin_cv <- function(data,
   )
 }
 
+make_nested_cv <- function(data,
+                           outer_folds = 5,
+                           inner_folds = 5,
+                           group_cols = NULL,
+                           strata = NULL) {
+  if (!is.numeric(outer_folds) || length(outer_folds) != 1 || outer_folds < 2 ||
+      outer_folds != as.integer(outer_folds)) {
+    stop("'outer_folds' must be an integer greater than or equal to 2.")
+  }
+
+  if (!is.numeric(inner_folds) || length(inner_folds) != 1 || inner_folds < 2 ||
+      inner_folds != as.integer(inner_folds)) {
+    stop("'inner_folds' must be an integer greater than or equal to 2.")
+  }
+
+  strata_sym <- if (!is.null(strata)) rlang::sym(strata) else NULL
+
+  outer_resamples <- if (!is.null(group_cols) && length(group_cols) > 0) {
+    make_grouped_cv(
+      data = data,
+      group_cols = group_cols,
+      v = outer_folds,
+      strata = strata,
+      repeats = 1
+    )
+  } else {
+    if (is.null(strata_sym)) {
+      rsample::vfold_cv(data, v = outer_folds)
+    } else {
+      rsample::vfold_cv(data, v = outer_folds, strata = !!strata_sym)
+    }
+  }
+
+  nested_tbl <- outer_resamples
+  nested_tbl$inner_resamples <- vector("list", length(outer_resamples$splits))
+
+  for (i in seq_along(outer_resamples$splits)) {
+    outer_analysis <- rsample::analysis(outer_resamples$splits[[i]])
+    if (!is.null(group_cols) && length(group_cols) > 0) {
+      inner_resamples <- make_grouped_cv(
+        data = outer_analysis,
+        group_cols = group_cols,
+        v = inner_folds,
+        strata = strata,
+        repeats = 1
+      )
+    } else {
+      if (is.null(strata_sym)) {
+        inner_resamples <- rsample::vfold_cv(outer_analysis, v = inner_folds)
+      } else {
+        inner_resamples <- rsample::vfold_cv(
+          outer_analysis,
+          v = inner_folds,
+          strata = !!strata_sym
+        )
+      }
+    }
+    nested_tbl$inner_resamples[[i]] <- inner_resamples
+  }
+
+  class(nested_tbl) <- unique(c("nested_cv", class(outer_resamples)))
+  nested_tbl
+}
+
+fastml_run_nested_cv <- function(workflow_spec,
+                                 nested_resamples,
+                                 train_data,
+                                 label,
+                                 task,
+                                 metric,
+                                 metrics,
+                                 engine,
+                                 engine_args,
+                                 tune_params_template,
+                                 engine_tune_params,
+                                 tuning_strategy,
+                                 tuning_iterations,
+                                 adaptive,
+                                 early_stopping,
+                                 ctrl_grid,
+                                 ctrl_bayes,
+                                 ctrl_race,
+                                 my_metrics,
+                                 do_tuning,
+                                 event_class,
+                                 start_col,
+                                 time_col,
+                                 status_col,
+                                 eval_times,
+                                 at_risk_threshold,
+                                 seed,
+                                 update_params_fn) {
+  if (!inherits(nested_resamples, "rset") ||
+      is.null(nested_resamples$inner_resamples)) {
+    stop("'nested_resamples' must be a nested resampling object with inner resamples.")
+  }
+
+  outer_ids <- nested_resamples$id
+  inner_list <- nested_resamples$inner_resamples
+  outer_splits <- nested_resamples$splits
+
+  inner_results <- vector("list", length(outer_splits))
+  outer_metrics <- vector("list", length(outer_splits))
+  best_params_list <- vector("list", length(outer_splits))
+
+  metric_direction <- tryCatch({
+    if (requireNamespace("yardstick", quietly = TRUE) &&
+        exists(metric, envir = asNamespace("yardstick"), inherits = FALSE)) {
+      attr(get(metric, envir = asNamespace("yardstick")), "direction", exact = TRUE)
+    } else {
+      NA_character_
+    }
+  }, error = function(e) NA_character_)
+
+  lower_is_better <- if (!is.na(metric_direction) && !is.null(metric_direction)) {
+    identical(metric_direction, "minimize")
+  } else {
+    metric %in% c("rmse", "mae", "ibs", "logloss", "mse", "brier_score") ||
+      grepl("brier", metric, fixed = TRUE)
+  }
+
+  for (i in seq_along(outer_splits)) {
+    current_split <- outer_splits[[i]]
+    if (is.null(current_split)) {
+      next
+    }
+
+    inner_resamples <- inner_list[[i]]
+    if (do_tuning && (is.null(inner_resamples) || !inherits(inner_resamples, "rset"))) {
+      stop("Inner resamples must be an 'rset' object when tuning is enabled.")
+    }
+
+    outer_train <- rsample::analysis(current_split)
+    outer_assess <- rsample::assessment(current_split)
+
+    current_workflow <- workflow_spec
+    best_params <- NULL
+
+    if (do_tuning) {
+      params_current <- tune_params_template
+      if (!is.null(params_current)) {
+        params_current <- finalize(
+          params_current,
+          x = outer_train %>% dplyr::select(-dplyr::all_of(label))
+        )
+      }
+
+      if (!is.null(params_current) && !is.null(engine_tune_params)) {
+        params_current <- update_params_fn(params_current, engine_tune_params)
+      }
+
+      grid_current <- NULL
+      if (!is.null(params_current) && nrow(params_current) > 0) {
+        if (tuning_strategy == "grid" && !adaptive) {
+          grid_current <- grid_regular(params_current, levels = 3)
+        }
+      }
+
+      tuning_args <- c(
+        list(
+          object = workflow_spec,
+          resamples = inner_resamples,
+          metrics = if (!is.null(my_metrics)) my_metrics else metrics
+        ),
+        engine_args
+      )
+
+      if (tuning_strategy == "bayes") {
+        tuning_args$param_info <- params_current
+        tuning_args$iter <- tuning_iterations
+        tuning_args$control <- ctrl_bayes
+        model_tuned <- do.call(tune_bayes, tuning_args)
+      } else if (adaptive) {
+        tuning_args$param_info <- params_current
+        tuning_args$grid <- if (is.null(grid_current)) 20 else grid_current
+        tuning_args$control <- ctrl_race
+        model_tuned <- do.call(tune_race_anova, tuning_args)
+      } else {
+        grid_arg <- if (!is.null(grid_current)) {
+          grid_current
+        } else {
+          5
+        }
+        tuning_args$grid <- grid_arg
+        tuning_args$control <- ctrl_grid
+        model_tuned <- do.call(tune::tune_grid, tuning_args)
+      }
+
+      inner_results[[i]] <- model_tuned
+      best_params <- tryCatch({
+        select_best(model_tuned, metric = metric)
+      }, error = function(e) NULL)
+
+      if (!is.null(best_params)) {
+        best_params_list[[i]] <- best_params
+        current_workflow <- finalize_workflow(workflow_spec, best_params)
+      }
+    }
+
+    fitted_outer <- tryCatch({
+      do.call(
+        parsnip::fit,
+        c(list(object = current_workflow, data = outer_train), engine_args)
+      )
+    }, error = function(e) {
+      warning(sprintf("Outer fit failed for split '%s': %s", outer_ids[[i]], e$message))
+      NULL
+    })
+
+    if (!is.null(fitted_outer)) {
+      eval_result <- tryCatch({
+        process_model(
+          model_obj = fitted_outer,
+          model_id = paste0("outer_", outer_ids[[i]]),
+          task = task,
+          test_data = outer_assess,
+          label = label,
+          event_class = event_class,
+          start_col = start_col,
+          time_col = time_col,
+          status_col = status_col,
+          engine = engine,
+          train_data = outer_train,
+          metric = metric,
+          eval_times_user = eval_times,
+          bootstrap_ci = FALSE,
+          bootstrap_samples = 1,
+          bootstrap_seed = seed,
+          at_risk_threshold = at_risk_threshold
+        )
+      }, error = function(e) {
+        warning(sprintf("Evaluation failed for outer split '%s': %s", outer_ids[[i]], e$message))
+        NULL
+      })
+
+      if (!is.null(eval_result) && !is.null(eval_result$performance)) {
+        outer_metrics[[i]] <- eval_result$performance %>%
+          dplyr::mutate(outer_id = outer_ids[[i]])
+      }
+    }
+  }
+
+  outer_metrics <- outer_metrics[!vapply(outer_metrics, is.null, logical(1))]
+  outer_performance <- if (length(outer_metrics) > 0) {
+    dplyr::bind_rows(outer_metrics)
+  } else {
+    NULL
+  }
+
+  metric_values <- if (length(outer_metrics) > 0) {
+    vapply(outer_metrics, function(tbl) {
+      metric_row <- tbl[tbl$.metric == metric, ".estimate", drop = TRUE]
+      if (length(metric_row) == 0) NA_real_ else as.numeric(metric_row[1])
+    }, numeric(1))
+  } else {
+    numeric(0)
+  }
+
+  final_params <- NULL
+  selected_outer_id <- NULL
+  if (do_tuning && length(metric_values) > 0 && any(is.finite(metric_values))) {
+    if (lower_is_better) {
+      idx <- which.min(metric_values)
+    } else {
+      idx <- which.max(metric_values)
+    }
+    if (length(idx) > 0 && is.finite(metric_values[idx])) {
+      final_params <- best_params_list[[idx]]
+      if (!is.null(final_params) && !is.null(outer_ids)) {
+        selected_outer_id <- outer_ids[[idx]]
+        final_params <- final_params %>%
+          dplyr::mutate(outer_id = selected_outer_id, .before = 1)
+      }
+    }
+  }
+
+  final_workflow <- if (!is.null(final_params)) {
+    finalize_workflow(workflow_spec, final_params %>% dplyr::select(-outer_id))
+  } else {
+    workflow_spec
+  }
+
+  final_model <- do.call(
+    parsnip::fit,
+    c(list(object = final_workflow, data = train_data), engine_args)
+  )
+
+  list(
+    final_model = final_model,
+    details = list(
+      inner_results = inner_results,
+      outer_performance = outer_performance,
+      final_params = final_params,
+      selected_outer_id = selected_outer_id
+    )
+  )
+}
+
 #' Train Specified Machine Learning Algorithms on the Training Data
 #'
 #' Trains specified machine learning algorithms on the preprocessed training data.
@@ -1307,29 +1605,17 @@ train_models <- function(train_data,
         outer_folds != as.integer(outer_folds)) {
       stop("'outer_folds' must be an integer greater than or equal to 2.")
     }
-    label_sym <- rlang::sym(label)
-    outer_call <- rlang::call2(
-      rlang::expr(rsample::vfold_cv),
-      v = as.integer(outer_folds)
-    )
-    repeats_arg <- if (is.null(repeats)) 1 else repeats
-    if (!is.numeric(repeats_arg) || length(repeats_arg) != 1 || repeats_arg <= 0 ||
-        repeats_arg != as.integer(repeats_arg)) {
-      stop("'repeats' must be a positive integer when using 'nested_cv'.")
+    inner_folds <- if (is.null(folds)) 5 else folds
+    if (!is.numeric(inner_folds) || length(inner_folds) != 1 || inner_folds < 2 ||
+        inner_folds != as.integer(inner_folds)) {
+      stop("'folds' must be an integer greater than or equal to 2 for inner resampling.")
     }
-    inner_call <- rlang::call2(
-      rlang::expr(rsample::vfold_cv),
-      v = folds,
-      repeats = repeats_arg
-    )
-    if (task == "classification") {
-      outer_call <- rlang::call_modify(outer_call, strata = label_sym)
-      inner_call <- rlang::call_modify(inner_call, strata = label_sym)
-    }
-    resamples <- rsample::nested_cv(
-      resample_data,
-      outside = outer_call,
-      inside = inner_call
+    resamples <- make_nested_cv(
+      data = resample_data,
+      outer_folds = outer_folds,
+      inner_folds = inner_folds,
+      group_cols = group_cols,
+      strata = if (task == "classification") label else NULL
     )
   } else if (resampling_method == "none") {
     resamples <- NULL
@@ -1351,6 +1637,8 @@ train_models <- function(train_data,
 
   models <- list()
   resampling_summaries <- list()
+  nested_mode <- identical(resampling_method, "nested_cv")
+  nested_details <- list()
 
   # A helper function to choose the engine for an algorithm
   get_engine <- function(algo, default_engine) {
@@ -1629,41 +1917,45 @@ train_models <- function(train_data,
       if(!is.null(model_spec)){
 
       # Set up tuning parameters and grid (if needed)
+      tune_params_model <- NULL
+      tune_params_template <- NULL
+      tune_grid_values <- NULL
+
       if (perform_tuning) {
-
-        if(inherits(model_spec, "model_spec")){
-          tune_params_model <- extract_parameter_set_dials(model_spec)
-        }else{
-        tune_params_model <- extract_parameter_set_dials(model_spec[[1]])
-        }
-        tune_params_model <- finalize(
-          tune_params_model,
-          x = train_data %>% dplyr::select(-dplyr::all_of(label))
-        )
-
-        if (!is.null(engine_tune_params)) {
-          tune_params_model <- update_params(tune_params_model, engine_tune_params)
-        }
-
-        if (nrow(tune_params_model) > 0) {
-          if (tuning_strategy == "grid" && !adaptive) {
-            tune_grid_values <- grid_regular(tune_params_model, levels = 3)
-          } else {
-            tune_grid_values <- NULL
-          }
+        param_source <- if (inherits(model_spec, "model_spec")) {
+          model_spec
         } else {
-          tune_grid_values <- NULL
+          model_spec[[1]]
         }
-      } else {
-        tune_grid_values <- NULL
+
+        param_set <- extract_parameter_set_dials(param_source)
+
+        if (nested_mode) {
+          tune_params_template <- param_set
+        } else {
+          tune_params_model <- finalize(
+            param_set,
+            x = train_data %>% dplyr::select(-dplyr::all_of(label))
+          )
+
+          if (!is.null(engine_tune_params)) {
+            tune_params_model <- update_params(tune_params_model, engine_tune_params)
+          }
+
+          if (nrow(tune_params_model) > 0 && tuning_strategy == "grid" && !adaptive) {
+            tune_grid_values <- grid_regular(tune_params_model, levels = 3)
+          }
+        }
       }
+
+      do_tuning <- perform_tuning && !all(vapply(engine_tune_params, is.null, logical(1)))
 
       # Create the workflow
       workflow_spec <- workflow() %>%
         add_model(if(inherits(model_spec,"model_spec")) model_spec else model_spec[[1]]) %>%
         add_recipe(recipe)
 
-      if (!perform_tuning && !is.null(resamples)) {
+      if (!perform_tuning && !nested_mode && !is.null(resamples)) {
         res_summary <- fastml_guarded_resample_fit(
           workflow_spec = workflow_spec,
           resamples = resamples,
@@ -1689,9 +1981,10 @@ train_models <- function(train_data,
 
       # Fit the model (with tuning if requested)
       tryCatch({
-        if (perform_tuning && !all(vapply(engine_tune_params, is.null, logical(1)))) {
-          # Set up control objects for tuning
+        allow_par <- TRUE
+        my_metrics <- NULL
 
+        if (do_tuning) {
           if (algo == "rand_forest" && engine == "h2o") {
 
             roc_auc_h2o <- function(data, truth, ...) {
@@ -1722,15 +2015,58 @@ train_models <- function(train_data,
             allow_par = TRUE
             my_metrics = NULL
           }
+        }
 
-          ctrl_grid <- control_grid(save_pred = TRUE, allow_par = allow_par)
-          ctrl_bayes <- control_bayes(save_pred = TRUE)
-          ctrl_race <- control_race(save_pred = TRUE)
+        ctrl_grid <- control_grid(save_pred = TRUE, allow_par = allow_par)
+        ctrl_bayes <- control_bayes(save_pred = TRUE)
+        ctrl_race <- control_race(save_pred = TRUE)
 
-          if (early_stopping && tuning_strategy == "bayes") {
-            ctrl_bayes <- control_bayes(save_pred = TRUE, no_improve = 5)
+        if (early_stopping && tuning_strategy == "bayes") {
+          ctrl_bayes <- control_bayes(save_pred = TRUE, no_improve = 5)
+        }
+
+        if (nested_mode) {
+          nested_fit <- fastml_run_nested_cv(
+            workflow_spec = workflow_spec,
+            nested_resamples = resamples,
+            train_data = train_data,
+            label = label,
+            task = task,
+            metric = metric,
+            metrics = metrics,
+            engine = engine,
+            engine_args = engine_args,
+            tune_params_template = if (do_tuning) tune_params_template else NULL,
+            engine_tune_params = engine_tune_params,
+            tuning_strategy = tuning_strategy,
+            tuning_iterations = tuning_iterations,
+            adaptive = adaptive,
+            early_stopping = early_stopping,
+            ctrl_grid = ctrl_grid,
+            ctrl_bayes = ctrl_bayes,
+            ctrl_race = ctrl_race,
+            my_metrics = my_metrics,
+            do_tuning = do_tuning,
+            event_class = event_class,
+            start_col = start_col,
+            time_col = time_col,
+            status_col = status_col,
+            eval_times = eval_times,
+            at_risk_threshold = at_risk_threshold,
+            seed = seed,
+            update_params_fn = update_params
+          )
+
+          model <- nested_fit$final_model
+
+          if (!is.null(nested_fit$details)) {
+            if (is.null(nested_details[[algo]])) {
+              nested_details[[algo]] <- list()
+            }
+            nested_details[[algo]][[engine]] <- nested_fit$details
           }
-
+        } else if (do_tuning) {
+          # Set up control objects for tuning
           if (is.null(resamples)) {
             stop("Tuning cannot be performed without resamples.")
           }
@@ -1829,6 +2165,10 @@ train_models <- function(train_data,
 
   if (length(resampling_summaries) > 0) {
     attr(models, "guarded_resampling") <- resampling_summaries
+  }
+
+  if (nested_mode && length(nested_details) > 0) {
+    attr(models, "nested_cv_results") <- nested_details
   }
 
   return(models)
