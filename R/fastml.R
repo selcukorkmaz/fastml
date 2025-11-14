@@ -721,6 +721,9 @@ fastml <- function(data = NULL,
   resampling_results <- attr(models, "guarded_resampling")
   attr(models, "guarded_resampling") <- NULL
 
+  nested_results <- attr(models, "nested_cv_results")
+  attr(models, "nested_cv_results") <- NULL
+
   if (length(models) == 0) {
     stop("No models were successfully trained.")
   }
@@ -817,6 +820,29 @@ fastml <- function(data = NULL,
       }
     }
     resampling_results <- resampling_named
+  }
+
+  if (!is.null(nested_results)) {
+    nested_named <- list()
+    for (alg in names(nested_results)) {
+      alg_entry <- nested_results[[alg]]
+      if (is.list(alg_entry) && !inherits(alg_entry, "data.frame")) {
+        for (eng in names(alg_entry)) {
+          combined_name <- paste0(alg, " (", eng, ")")
+          nested_named[[combined_name]] <- alg_entry[[eng]]
+        }
+      } else if (!is.null(alg_entry)) {
+        eng_candidates <- tryCatch(engine_names[[alg]], error = function(e) NULL)
+        eng <- if (!is.null(eng_candidates) && length(eng_candidates) >= 1 && !is.na(eng_candidates[1])) {
+          eng_candidates[1]
+        } else {
+          tryCatch(get_default_engine(alg, task), error = function(e) "unknown")
+        }
+        combined_name <- paste0(alg, " (", eng, ")")
+        nested_named[[combined_name]] <- alg_entry
+      }
+    }
+    nested_results <- nested_named
   }
 
 
@@ -1074,6 +1100,7 @@ fastml <- function(data = NULL,
     survival_t_max = survival_t_max,
     metric_bootstrap = list(enabled = bootstrap_ci, samples = bootstrap_samples, seed = bootstrap_seed),
     resampling_results = resampling_results,
+    nested_cv = nested_results,
     audit = if (audit_env$enabled) list(log = audit_env$log, flagged = audit_env$unsafe) else NULL
   )
   class(result) <- "fastml"
