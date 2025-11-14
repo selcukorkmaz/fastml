@@ -1493,9 +1493,19 @@ train_models <- function(train_data,
     metrics <- metric_set(rmse, rsq, mae)
   }
 
+  resample_plan <- NULL
+
   if (!is.null(resamples)) {
-    if (!inherits(resamples, "rset")) {
-      stop("'resamples' must be an 'rset' object")
+    if (fastml_is_resample_plan(resamples)) {
+      resample_plan <- fastml_resample_validate(resamples)
+    } else if (inherits(resamples, "rset")) {
+      resample_plan <- fastml_new_resample_plan(
+        splits = resamples,
+        method = resampling_method %||% "custom",
+        params = list(source = "user_provided")
+      )
+    } else {
+      stop("'resamples' must be an 'rset' object or a fastml resampling plan")
     }
   } else if (resampling_method == "cv") {
     if (nrow(resample_data) < folds) {
@@ -1507,7 +1517,7 @@ train_models <- function(train_data,
         )
       )
     }
-    resamples <- vfold_cv(
+    resamples_obj <- vfold_cv(
       resample_data,
       v = folds,
       repeats = 1,
@@ -1516,13 +1526,23 @@ train_models <- function(train_data,
       else
         NULL
     )
+    resample_plan <- fastml_new_resample_plan(
+      splits = resamples_obj,
+      method = "cv",
+      params = list(v = folds, repeats = 1, strata = if (task == "classification") label else NULL)
+    )
   } else if (resampling_method == "boot") {
-    resamples <- bootstraps(resample_data,
-                            times = folds,
-                            strata = if (task == "classification")
-                              all_of(label)
-                            else
-                              NULL)
+    resamples_obj <- bootstraps(resample_data,
+                                times = folds,
+                                strata = if (task == "classification")
+                                  all_of(label)
+                                else
+                                  NULL)
+    resample_plan <- fastml_new_resample_plan(
+      splits = resamples_obj,
+      method = "boot",
+      params = list(times = folds, strata = if (task == "classification") label else NULL)
+    )
   } else if (resampling_method == "repeatedcv") {
 
     if (nrow(resample_data) < folds) {
@@ -1533,7 +1553,7 @@ train_models <- function(train_data,
         )
       )
     }
-    resamples <- vfold_cv(
+    resamples_obj <- vfold_cv(
       resample_data,
       v = folds,
       repeats = repeats,
@@ -1542,14 +1562,29 @@ train_models <- function(train_data,
       else
         NULL
     )
+    resample_plan <- fastml_new_resample_plan(
+      splits = resamples_obj,
+      method = "repeatedcv",
+      params = list(v = folds, repeats = repeats, strata = if (task == "classification") label else NULL)
+    )
   } else if (resampling_method == "grouped_cv") {
     repeats_arg <- if (is.null(repeats)) 1 else repeats
-    resamples <- make_grouped_cv(
+    resamples_obj <- make_grouped_cv(
       data = resample_data,
       group_cols = group_cols,
       v = folds,
       strata = if (task == "classification") label else NULL,
       repeats = repeats_arg
+    )
+    resample_plan <- fastml_new_resample_plan(
+      splits = resamples_obj,
+      method = "grouped_cv",
+      params = list(
+        group_cols = group_cols,
+        v = folds,
+        repeats = repeats_arg,
+        strata = if (task == "classification") label else NULL
+      )
     )
   } else if (resampling_method %in% c("blocked_cv", "rolling_origin")) {
     if (is.null(block_col) || length(block_col) != 1) {
@@ -1575,26 +1610,46 @@ train_models <- function(train_data,
       blocked_data <- blocked_info$data
       blocked_data[[block_group_col]] <- blocked_info$block_ids
 
-      resamples <- rsample::group_vfold_cv(
+      resamples_obj <- rsample::group_vfold_cv(
         blocked_data,
         group = !!rlang::sym(block_group_col),
         v = folds
       )
 
-      resamples$splits <- lapply(
-        resamples$splits,
+      resamples_obj$splits <- lapply(
+        resamples_obj$splits,
         function(split) {
           split$data[[block_group_col]] <- NULL
           split
         }
       )
+
+      resample_plan <- fastml_new_resample_plan(
+        splits = resamples_obj,
+        method = "blocked_cv",
+        params = list(
+          block_col = block_col,
+          block_size = block_size,
+          v = folds
+        )
+      )
     } else {
-      resamples <- make_rolling_origin_cv(
+      resamples_obj <- make_rolling_origin_cv(
         data = resample_data,
         block_col = block_col,
         initial_window = initial_window,
         assess_window = assess_window,
         skip = skip
+      )
+      resample_plan <- fastml_new_resample_plan(
+        splits = resamples_obj,
+        method = "rolling_origin",
+        params = list(
+          block_col = block_col,
+          initial_window = initial_window,
+          assess_window = assess_window,
+          skip = skip
+        )
       )
     }
   } else if (resampling_method == "nested_cv") {
@@ -1610,34 +1665,53 @@ train_models <- function(train_data,
         inner_folds != as.integer(inner_folds)) {
       stop("'folds' must be an integer greater than or equal to 2 for inner resampling.")
     }
-    resamples <- make_nested_cv(
+    resamples_obj <- make_nested_cv(
       data = resample_data,
       outer_folds = outer_folds,
       inner_folds = inner_folds,
       group_cols = group_cols,
       strata = if (task == "classification") label else NULL
     )
+    resample_plan <- fastml_new_resample_plan(
+      splits = resamples_obj,
+      method = "nested_cv",
+      params = list(
+        outer_folds = outer_folds,
+        inner_folds = inner_folds,
+        group_cols = group_cols,
+        strata = if (task == "classification") label else NULL
+      )
+    )
   } else if (resampling_method == "none") {
-    resamples <- NULL
+    resample_plan <- NULL
   }
+
+  resamples <- if (!is.null(resample_plan)) fastml_resample_splits(resample_plan) else NULL
 
   if (use_default_tuning && is.null(resamples)) {
     warning("'tune_params' are ignored when 'tuning_strategy' is 'none'")
   }
 
-  if (!is.null(resamples) && advanced_resample_imputation) {
-    resamples <- fastml_impute_resamples(
-      resamples = resamples,
+  if (!is.null(resample_plan) && advanced_resample_imputation) {
+    resample_plan <- fastml_impute_resamples(
+      resamples = resample_plan,
       impute_method = impute_method,
       impute_custom_function = impute_custom_function,
       outcome_cols = impute_outcome_cols,
       audit_env = audit_env
     )
+    resamples <- fastml_resample_splits(resample_plan)
   }
 
   models <- list()
   resampling_summaries <- list()
-  nested_mode <- identical(resampling_method, "nested_cv")
+  resample_method_meta <- if (!is.null(resample_plan)) {
+    fastml_resample_method(resample_plan) %||% resampling_method
+  } else {
+    resampling_method
+  }
+
+  nested_mode <- identical(resample_method_meta, "nested_cv")
   nested_details <- list()
 
   # A helper function to choose the engine for an algorithm
@@ -1958,7 +2032,7 @@ train_models <- function(train_data,
       if (!perform_tuning && !nested_mode && !is.null(resamples)) {
         res_summary <- fastml_guarded_resample_fit(
           workflow_spec = workflow_spec,
-          resamples = resamples,
+          resamples = if (!is.null(resample_plan)) resample_plan else resamples,
           original_train_rows = nrow(train_data),
           task = task,
           label = label,
@@ -2169,6 +2243,10 @@ train_models <- function(train_data,
 
   if (nested_mode && length(nested_details) > 0) {
     attr(models, "nested_cv_results") <- nested_details
+  }
+
+  if (!is.null(resample_plan)) {
+    attr(models, "resampling_plan") <- resample_plan
   }
 
   return(models)

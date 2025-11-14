@@ -89,6 +89,10 @@ summary.fastml <- function(object,
   positive_class <- object$positive_class
   engine_names <- object$engine_names
   brier_time_lookup <- object$survival_brier_times
+  resampling_plan <- object$resampling_plan
+  resampling_desc <- fastml_describe_resampling(resampling_plan)
+
+  cat(sprintf("Resampling strategy: %s\n", resampling_desc))
 
   resolve_engine_name <- function(model_name, default_engine = NA_character_) {
     if (!is.null(engine_names) && !is.null(engine_names[[model_name]])) {

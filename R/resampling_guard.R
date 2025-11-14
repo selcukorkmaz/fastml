@@ -34,6 +34,12 @@ fastml_guarded_resample_fit <- function(workflow_spec,
                                         status_col = NULL,
                                         eval_times = NULL,
                                         at_risk_threshold = 0.1) {
+  plan <- NULL
+  if (fastml_is_resample_plan(resamples)) {
+    plan <- fastml_resample_validate(resamples)
+    resamples <- fastml_resample_splits(plan)
+  }
+
   if (!inherits(resamples, "rset")) {
     stop("'resamples' must be an 'rset' object for guarded resampling.")
   }
@@ -96,8 +102,14 @@ fastml_guarded_resample_fit <- function(workflow_spec,
     dplyr::group_by(.metric, .estimator) %>%
     dplyr::summarise(.estimate = mean(.estimate, na.rm = TRUE), .groups = "drop")
 
-  list(
+  result <- list(
     aggregated = aggregated,
     folds = fold_metrics_df
   )
+
+  if (!is.null(plan)) {
+    result$metadata <- fastml_resample_metadata(plan)
+  }
+
+  result
 }

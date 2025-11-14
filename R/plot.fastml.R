@@ -78,6 +78,9 @@ plot.fastml <- function(x,
   optimized_metric <- x$metric
   positive_class   <- x$positive_class
   engine_names     <- x$engine_names
+  resampling_plan  <- x$resampling_plan
+  resampling_desc  <- fastml_describe_resampling(resampling_plan)
+  resampling_caption <- paste("Resampling:", resampling_desc)
 
   # Rebuild performance_wide (robust to single- or multi-engine structures)
   metrics_list <- lapply(names(performance), function(model_name) {
@@ -260,7 +263,8 @@ plot.fastml <- function(x,
       ggplot2::labs(
         title = "Model Performance Comparison",
         x     = "Model",
-        y     = "Metric Value"
+        y     = "Metric Value",
+        caption = resampling_caption
       )
 
     if (task == "classification") {
@@ -405,7 +409,8 @@ plot.fastml <- function(x,
             theme_minimal() +
             labs(title = "ROC Curves for Models",
                  x = "1 - Specificity",
-                 y = "Sensitivity") +
+                 y = "Sensitivity",
+                 caption = resampling_caption) +
             theme(plot.title = element_text(hjust = 0.5)) +
             # Use sorted keys to label the legend with AUC values
             scale_color_manual(values = 1:length(sorted_keys),
@@ -466,7 +471,10 @@ plot.fastml <- function(x,
               estimate = !!rlang::sym(pred_col),
               event_level = x$event_class
             ) +
-              ggplot2::labs(title = paste("Calibration Plot for", model_name))
+              ggplot2::labs(
+                title = paste("Calibration Plot for", model_name),
+                caption = resampling_caption
+              )
             print(p_cal)
           }
         } else {
@@ -509,13 +517,23 @@ plot.fastml <- function(x,
         p_truth_pred <- ggplot2::ggplot(df_best_all, ggplot2::aes(x = estimate, y = truth)) +
           ggplot2::geom_point(alpha = 0.6) +
           ggplot2::geom_abline(linetype = "dashed", color = "red") +
-          ggplot2::labs(title = "Truth vs Predicted", x = "Predicted", y = "Truth") +
+          ggplot2::labs(
+            title = "Truth vs Predicted",
+            x = "Predicted",
+            y = "Truth",
+            caption = resampling_caption
+          ) +
           ggplot2::theme_bw()
         print(p_truth_pred)
 
         p_resid_hist <- ggplot2::ggplot(df_best_all, ggplot2::aes(x = residual)) +
           ggplot2::geom_histogram(bins = 30, fill = "steelblue", color = "white", alpha = 0.7) +
-          ggplot2::labs(title = "Residual Distribution", x = "Residual", y = "Count") +
+          ggplot2::labs(
+            title = "Residual Distribution",
+            x = "Residual",
+            y = "Count",
+            caption = resampling_caption
+          ) +
           ggplot2::theme_bw()
         print(p_resid_hist)
       } else {

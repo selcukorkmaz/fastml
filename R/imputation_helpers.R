@@ -164,11 +164,15 @@ fastml_impute_resamples <- function(resamples,
                                     impute_custom_function,
                                     outcome_cols,
                                     audit_env = NULL) {
-  if (is.null(resamples) || length(resamples$splits) == 0) {
+  is_plan <- fastml_is_resample_plan(resamples)
+  plan <- if (is_plan) fastml_resample_validate(resamples) else NULL
+  resample_obj <- if (is_plan) fastml_resample_splits(plan) else resamples
+
+  if (is.null(resample_obj) || length(resample_obj$splits) == 0) {
     return(resamples)
   }
 
-  resamples$splits <- lapply(resamples$splits, function(split) {
+  resample_obj$splits <- lapply(resample_obj$splits, function(split) {
     data <- split$data
     analysis_idx <- split$in_id
     assessment_idx <-
@@ -200,8 +204,8 @@ fastml_impute_resamples <- function(resamples,
     split
   })
 
-  if (!is.null(resamples$inner_resamples)) {
-    resamples$inner_resamples <- lapply(resamples$inner_resamples, function(inner) {
+  if (!is.null(resample_obj$inner_resamples)) {
+    resample_obj$inner_resamples <- lapply(resample_obj$inner_resamples, function(inner) {
       if (inherits(inner, "rset")) {
         fastml_impute_resamples(
           resamples = inner,
@@ -216,5 +220,10 @@ fastml_impute_resamples <- function(resamples,
     })
   }
 
-  resamples
+  if (is_plan) {
+    plan <- fastml_resample_update_splits(plan, resample_obj)
+    return(plan)
+  }
+
+  resample_obj
 }
