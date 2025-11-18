@@ -37,21 +37,24 @@
 \begin{document}
 
 \section{Introduction}
-The rapid expansion of model-building toolkits in R has improved analyst productivity but has also fragmented workflows across disparate interfaces. Cross-validation, preprocessing, and explainability are often scattered across packages, leaving analysts to hand-stitch pipelines while guarding against data leakage. \pkg{fastml} addresses these challenges by providing a unified grammar for end-to-end machine learning that emphasizes fold-isolated preprocessing, standardized result objects, and explainability via \pkg{DALEX}. The package is built on the \pkg{tidymodels} ecosystem and \pkg{rsample} resampling infrastructure, but it wraps these components into a cohesive interface that lowers the entry barrier for applied users while retaining methodological rigor.
+The rapid expansion of model-building toolkits in R has improved analyst productivity but has also fragmented workflows across disparate interfaces. Cross-validation, preprocessing, and explainability are often scattered across packages, leaving analysts to hand-stitch pipelines while guarding against data leakage. \pkg{fastml} addresses these challenges by providing a unified grammar for end-to-end machine learning that emphasizes fold-isolated preprocessing, standardized result objects, and explainability via \pkg{DALEX}. The package is built on the \pkg{tidymodels} ecosystem and \pkg{rsample} resampling infrastructure, but it wraps these components into a cohesive interface that lowers the entry barrier for applied users while retaining methodological rigor. In addition to the canonical supervised learning tasks, \pkg{fastml} offers defaults for survival analysis, automatic task detection from the outcome type, and a minimal interface that chooses sensible preprocessing recipes while exposing hooks for customization.
 
 \section{Design Philosophy and Statistical Framework}
 \subsection{Leakage-guarded resampling}
 A central goal of \pkg{fastml} is to ensure that estimates of out-of-sample performance remain unbiased. All preprocessing---including imputation, encoding, and scaling---is executed separately within each resampling split. Recipes are estimated on the analysis portion of each split and then applied to the corresponding assessment data. This “fold-isolated” design prevents information leakage and keeps performance estimates aligned with deployment conditions.
 
 \subsection{Resampling strategies}
-The package exposes a spectrum of resampling options. Standard $K$-fold cross-validation is available alongside repeated CV, validation splits, and nested CV for hyperparameter tuning. Grouped or blocked resampling can be configured using \pkg{rsample} specifications to respect subject-level grouping or temporal structure, while stratification preserves outcome balance for classification tasks. Each strategy yields consistent performance objects that can be aggregated or compared across models.
+The package exposes a spectrum of resampling options. Standard $K$-fold cross-validation is available alongside repeated CV, validation splits, and nested CV for hyperparameter tuning. Grouped or blocked resampling can be configured using \pkg{rsample} specifications to respect subject-level grouping or temporal structure, while stratification preserves outcome balance for classification tasks. Each strategy yields consistent performance objects that can be aggregated or compared across models, and seeds are set per split to guarantee reproducibility even under parallel execution.
 
 \subsection{Hyperparameter tuning and model selection}
-\pkg{fastml} supports grid and Bayesian optimization for tuning through the \code{tuning\_strategy} argument. Search spaces are derived from \pkg{dials} parameter definitions, and tuning is executed inside the chosen resampling scheme. By default, the package selects the best-performing workflow based on the primary metric (e.g., accuracy or concordance index), yet it also returns full tuning histories, enabling users to audit trade-offs and rerank candidates.
+\pkg{fastml} supports grid and Bayesian optimization for tuning through the \code{tuning\_strategy} argument, with iterations controlled by \code{tuning\_iterations} for Bayesian search. Search spaces are derived from \pkg{dials} parameter definitions, and tuning is executed inside the chosen resampling scheme. By default, the package selects the best-performing workflow based on the primary metric (e.g., accuracy or concordance index), yet it also returns full tuning histories, enabling users to audit trade-offs, rerank candidates, and export tuned hyperparameters for downstream deployment.
+
+\subsection{Task detection and default preprocessing}
+The interface inspects the outcome column to detect whether the task is classification, regression, or survival analysis. Default recipes reflect this decision: categorical outcomes trigger class balancing options, continuous outcomes adopt robust scaling, and survival outcomes invoke censoring-aware transformations. Users can override defaults through explicit recipe steps, but the built-in heuristics reduce boilerplate and encourage consistent preprocessing across models.
 
 \section{Software Architecture and Data Flow}
 \subsection{Pipeline orchestration}
-The core pipeline proceeds through data validation, recipe construction, model specification, resampling, tuning, and performance summarization. Internally, \pkg{fastml} builds \pkg{workflows} objects that encapsulate both preprocessing and model components, ensuring that the same transformations are replayed during assessment and prediction. Logging captures seeds, resampling splits, and tuning grids, facilitating reproducibility.
+The core pipeline proceeds through data validation, recipe construction, model specification, resampling, tuning, and performance summarization. Internally, \pkg{fastml} builds \pkg{workflows} objects that encapsulate both preprocessing and model components, ensuring that the same transformations are replayed during assessment and prediction. Logging captures seeds, resampling splits, and tuning grids, facilitating reproducibility. Because \pkg{fastml} standardizes the interface across algorithms, adding or removing models simply adjusts the list of workflow specifications without altering downstream evaluation code.
 
 \subsection{Standardized result objects}
 The package returns structured S3 objects containing model definitions, preprocessing recipes, resampling artifacts, and fitted workflows. Accessor functions such as \code{summary.fastml()} and \code{plot.fastml()} expose harmonized summaries across model families. Predictions for new data reuse the stored recipe to guarantee consistency, while helper functions like \code{get\_best\_workflows()} provide direct access to the top-performing candidates.
@@ -59,25 +62,28 @@ The package returns structured S3 objects containing model definitions, preproce
 \subsection{Parallelization and reproducibility}
 Parallel execution is available through \pkg{future} and \pkg{doFuture}. Users can register a plan (e.g., \code{multisession}) prior to calling \code{fastml()}, and seeds are managed per resample to yield reproducible results. Optional logging of session information and package versions supports long-term reproducibility, especially when deploying models in regulated environments.
 
+\subsection{Visualization and reporting}
+Plot methods generate bar charts for metric comparisons, ROC or precision--recall curves for classification, residual and calibration plots for regression, and survival curve overlays for time-to-event models. Summaries are returned as tidy tibbles that can be exported directly to reporting pipelines or dashboards.
+
 \section{Methodology and Algorithms}
 \subsection{Supported learners}
-\pkg{fastml} ships with curated specifications that cover linear models, tree-based ensembles, support vector machines, $k$-nearest neighbors, neural networks, and survival models (e.g., Cox regression, flexible parametric models via \pkg{flexsurv}, and boosted survival models using \pkg{xgboost}). Default hyperparameter ranges are defined for each learner, and users can override them or supply custom \pkg{parsnip} model specifications.
+\pkg{fastml} ships with curated specifications that cover linear models, tree-based ensembles, support vector machines, $k$-nearest neighbors, neural networks, and survival models (e.g., Cox regression, flexible parametric models via \pkg{flexsurv}, and boosted survival models using \pkg{xgboost}). Default hyperparameter ranges are defined for each learner, and users can override them or supply custom \pkg{parsnip} model specifications. The catalog includes boosted trees, random forests, gradient boosting, penalized generalized linear models, and deep multilayer perceptrons, allowing users to mix classical and modern algorithms within the same evaluation rubric.
 
 \subsection{Evaluation metrics}
 Classification workflows report accuracy, area under the ROC curve, sensitivity, specificity, and F1 scores, while regression workflows summarize root-mean-squared error, mean absolute error, and $R^2$. Survival analysis uses concordance indices, integrated Brier scores, and restricted mean survival time differences. All metrics are calculated within resampling folds to avoid optimistic bias.
 
 \subsection{Model diagnostics}
-Diagnostic visualizations include calibration curves, residual plots for regression, and cumulative hazard comparisons for survival models. Interaction strength and variable importance can be probed through \code{fastexplain()} (Section~\ref{sec:fastexplain}) to highlight influential predictors and potential non-linearities.
+Diagnostic visualizations include calibration curves, residual plots for regression, and cumulative hazard comparisons for survival models. Interaction strength and variable importance can be probed through \code{fastexplain()} (Section~\ref{sec:fastexplain}) to highlight influential predictors and potential non-linearities. Built-in checks for class imbalance, outliers, and multicollinearity guide users toward appropriate preprocessing choices before tuning.
 
 \section{Core Functions}
 \subsection{Exploratory profiling with \code{fast\_explore()}}
-\code{fast\_explore()} provides a rapid overview of dataset structure, reporting missingness, outcome balance, and basic summaries of numeric and categorical predictors. The function is intended as a preflight check to guide recipe selection (e.g., the need for imputation or class balancing).
+\code{fast\_explore()} provides a rapid overview of dataset structure, reporting missingness, outcome balance, and basic summaries of numeric and categorical predictors. The function is intended as a preflight check to guide recipe selection (e.g., the need for imputation or class balancing). Output is returned as tidy tables that can be directly plotted or incorporated into reproducible notebooks.
 
 \subsection{Model training via \code{fastml()}}
-\code{fastml()} orchestrates the full modeling pipeline. Users supply a data frame and a target label; optional arguments control resampling design, model sets, tuning strategies, and parallel execution. The function returns a \code{fastml} object containing tuned workflows, performance summaries, and metadata on preprocessing steps.
+\code{fastml()} orchestrates the full modeling pipeline. Users supply a data frame and a target label; optional arguments control resampling design, model sets, tuning strategies, and parallel execution. The function returns a \code{fastml} object containing tuned workflows, performance summaries, and metadata on preprocessing steps. Task detection automatically routes survival outcomes to censoring-aware engines while leaving room for custom parsnip specifications when advanced control is needed.
 
 \subsection{Interpretability with \code{fastexplain()}\label{sec:fastexplain}}
-\code{fastexplain()} bridges model training and interpretability. Methods include permutation feature importance, partial dependence, accumulated local effects, individual conditional expectation curves, surrogate trees, SHAP-like decompositions via \pkg{iml}, and counterfactual explanations. For survival models, \code{fastexplain()} can report time-dependent effects and risk group comparisons using integrated Brier scores.
+\code{fastexplain()} bridges model training and interpretability. Methods include permutation feature importance, partial dependence, accumulated local effects, individual conditional expectation curves, surrogate trees, SHAP-like decompositions via \pkg{iml}, and counterfactual explanations. For survival models, \code{fastexplain()} can report time-dependent effects and risk group comparisons using integrated Brier scores. Visual outputs can be layered with \pkg{ggplot2} themes, while tabular summaries provide export-ready artifacts for governance reviews.
 
 \section{Reproducible Workflow Example}
 The following example illustrates a binary classification workflow on the classic \code{iris} dataset. To keep the focus on model-building steps, plotting output is summarized rather than displayed in full.
@@ -130,6 +136,8 @@ R> summary(model_fit)
 \end{CodeOutput}
 \end{CodeChunk}
 
+Additional diagnostics are available via \code{plot(model\_fit, type = "roc")} for ROC curves or \code{plot(model\_fit, type = "bar")} for grouped metric comparisons, enabling rapid visual vetting of candidates.
+
 \subsection{Explainability}
 \begin{CodeChunk}
 \begin{CodeInput}
@@ -137,6 +145,17 @@ R> fastexplain(model_fit, method = "ale", features = "Petal.Length")
 \end{CodeInput}
 \begin{CodeOutput}
 # Returns accumulated local effect curves summarizing feature impact.
+\end{CodeOutput}
+\end{CodeChunk}
+
+Alternative methods illustrate the breadth of interpretability tools:
+\begin{CodeChunk}
+\begin{CodeInput}
+R> fastexplain(model_fit, method = "surrogate")
+R> fastexplain(model_fit, method = "interaction")
+\end{CodeInput}
+\begin{CodeOutput}
+# Fits a shallow tree surrogate and quantifies interaction strength to aid feature selection.
 \end{CodeOutput}
 \end{CodeChunk}
 
@@ -163,13 +182,15 @@ Explainability modules leverage \pkg{DALEX} for model-agnostic diagnostics. Perm
     Explainability & \pkg{DALEX}, ICE, counterfactuals & Limited & Add-ons (e.g., \pkg{DALEX}) & Add-ons (e.g., \pkg{iml}) \\
     Automation & Auto-tuned multi-model runs & Manual & Flexible but verbose & Strong batch tools \\
     Output structure & Standardized S3 object & Model-specific & Tibbles of results & Task/Learner/Resample objects \\
+    Task auto-detection & Classification, regression, survival & Absent & Absent & Absent \\
+    Visualization & Built-in plots for metrics and curves & Limited & Available via \pkg{yardstick}/\pkg{tune} & Available via addons \\
     \hline
   \end{tabular}
   \caption{Comparison of \pkg{fastml} with related machine learning toolkits in R.}
 \end{table}
 
 \section{Discussion and Conclusion}
-\pkg{fastml} combines leakage-guarded resampling, fold-isolated preprocessing, and unified explainability into a concise interface. By standardizing result objects and leveraging \pkg{tidymodels} components, it reduces boilerplate without obscuring the underlying workflow. Limitations include reliance on \pkg{tidymodels} defaults for some model engines and the current focus on single-outcome supervised learning. Future work will extend support for multitask and probabilistic forecasting, add automated fairness diagnostics, and broaden survival modeling options. The design choices in \pkg{fastml} demonstrate that principled defaults and transparent pipelines can coexist, enabling analysts to prototype rapidly while preserving statistical validity.
+\pkg{fastml} combines leakage-guarded resampling, fold-isolated preprocessing, and unified explainability into a concise interface. By standardizing result objects and leveraging \pkg{tidymodels} components, it reduces boilerplate without obscuring the underlying workflow. Limitations include reliance on \pkg{tidymodels} defaults for some model engines and the current focus on single-outcome supervised learning. Future work will extend support for multitask and probabilistic forecasting, add automated fairness diagnostics, and broaden survival modeling options. The design choices in \pkg{fastml} demonstrate that principled defaults and transparent pipelines can coexist, enabling analysts to prototype rapidly while preserving statistical validity. In practice, practitioners benefit from rapid baseline construction, consistent reporting artifacts, and seamless interpretability that shortens the path from raw data to defensible decisions.
 
 \section*{Acknowledgments}
 We thank the \pkg{fastml} user community for feedback on early releases and the maintainers of the \pkg{tidymodels} and \pkg{DALEX} ecosystems for foundational tools.
