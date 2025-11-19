@@ -672,6 +672,17 @@ train_models <- function(train_data,
     impute_method %in% c("mice", "missForest", "custom") &&
     !is.null(impute_outcome_cols)
 
+  if (!is.null(repeats) && length(repeats) == 1 && is.na(repeats)) {
+    repeats <- NULL
+  }
+  if (!is.null(repeats)) {
+    if (!is.numeric(repeats) || length(repeats) != 1 ||
+        !isTRUE(all.equal(repeats, round(repeats))) || repeats <= 0) {
+      stop("'repeats' must be a positive integer when supplied.", call. = FALSE)
+    }
+    repeats <- as.integer(round(repeats))
+  }
+
   if (tuning_strategy == "bayes" && adaptive) {
     warning("'adaptive' is not supported with Bayesian tuning. Setting adaptive = FALSE.")
     adaptive <- FALSE
@@ -1553,10 +1564,11 @@ train_models <- function(train_data,
         )
       )
     }
+    repeats_val <- if (is.null(repeats)) 1L else repeats
     resamples_obj <- vfold_cv(
       resample_data,
       v = folds,
-      repeats = repeats,
+      repeats = repeats_val,
       strata = if (task == "classification")
         all_of(label)
       else
@@ -1565,10 +1577,10 @@ train_models <- function(train_data,
     resample_plan <- fastml_new_resample_plan(
       splits = resamples_obj,
       method = "repeatedcv",
-      params = list(v = folds, repeats = repeats, strata = if (task == "classification") label else NULL)
+      params = list(v = folds, repeats = repeats_val, strata = if (task == "classification") label else NULL)
     )
   } else if (resampling_method == "grouped_cv") {
-    repeats_arg <- if (is.null(repeats)) 1 else repeats
+    repeats_arg <- if (is.null(repeats)) 1L else repeats
     resamples_obj <- make_grouped_cv(
       data = resample_data,
       group_cols = group_cols,

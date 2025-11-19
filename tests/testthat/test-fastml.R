@@ -107,6 +107,176 @@ test_that("advanced imputation with resampling runs automatically", {
   expect_s3_class(result, "fastml")
 })
 
+test_that("grouped_cv requires grouping columns", {
+  binary_iris <- iris[iris$Species != "virginica", ]
+  binary_iris$Species <- droplevels(binary_iris$Species)
+
+  expect_error(
+    fastml(
+      data = binary_iris,
+      label = "Species",
+      algorithms = c("logistic_reg"),
+      resampling_method = "grouped_cv",
+      folds = 3,
+      use_default_tuning = FALSE
+    ),
+    "group_cols",
+    ignore.case = TRUE
+  )
+})
+
+test_that("grouped_cv keeps groups intact across folds", {
+  skip_if_not_installed("rsample")
+
+  binary_iris <- iris[iris$Species != "virginica", ]
+  binary_iris$Species <- droplevels(binary_iris$Species)
+  binary_iris$patient <- rep(seq_len(nrow(binary_iris) / 2), each = 2)
+
+  grouped_fit <- fastml(
+    data = binary_iris,
+    label = "Species",
+    algorithms = c("logistic_reg"),
+    resampling_method = "grouped_cv",
+    group_cols = "patient",
+    folds = 5,
+    use_default_tuning = FALSE,
+    seed = 42
+  )
+
+  plan <- grouped_fit$resampling_plan
+  expect_equal(fastml:::fastml_resample_method(plan), "grouped_cv")
+  splits <- fastml:::fastml_resample_splits(plan)$splits
+  invisible(
+    lapply(
+      splits,
+      function(split) {
+        analysis_groups <- unique(rsample::analysis(split)$patient)
+        assessment_groups <- unique(rsample::assessment(split)$patient)
+        expect_length(intersect(analysis_groups, assessment_groups), 0)
+      }
+    )
+  )
+})
+
+test_that("blocked_cv enforces ordered data", {
+  set.seed(99)
+  blocked_df <- data.frame(
+    time_id = sample(seq_len(60)),
+    x1 = rnorm(60),
+    response = factor(sample(c("yes", "no"), 60, replace = TRUE))
+  )
+
+  expect_error(
+    fastml(
+      data = blocked_df,
+      label = "response",
+      algorithms = c("logistic_reg"),
+      resampling_method = "blocked_cv",
+      block_col = "time_id",
+      block_size = 5,
+      folds = 4,
+      use_default_tuning = FALSE
+    ),
+    "sorted",
+    ignore.case = TRUE
+  )
+})
+
+test_that("blocked_cv builds resamples when ordering is valid", {
+  set.seed(199)
+  ordered_df <- data.frame(
+    time_id = seq_len(40),
+    x1 = rnorm(40),
+    response = factor(sample(c("yes", "no"), 40, replace = TRUE))
+  )
+
+  blocked_fit <- fastml(
+    data = ordered_df,
+    label = "response",
+    algorithms = c("logistic_reg"),
+    resampling_method = "blocked_cv",
+    block_col = "time_id",
+    block_size = 5,
+    folds = 4,
+    use_default_tuning = FALSE,
+    seed = 11
+  )
+
+  expect_s3_class(blocked_fit, "fastml")
+  expect_equal(fastml:::fastml_resample_method(blocked_fit$resampling_plan), "blocked_cv")
+})
+
+test_that("rolling_origin validates configuration", {
+  rolling_df <- data.frame(
+    time_id = seq_len(30),
+    x = rnorm(30),
+    y = rnorm(30)
+  )
+
+  expect_error(
+    fastml(
+      data = rolling_df,
+      label = "y",
+      algorithms = c("linear_reg"),
+      resampling_method = "rolling_origin",
+      block_col = "time_id",
+      assess_window = 5,
+      use_default_tuning = FALSE
+    ),
+    "initial_window",
+    ignore.case = TRUE
+  )
+})
+
+test_that("rolling_origin produces leakage-safe windows", {
+  rolling_df <- data.frame(
+    time_id = seq_len(30),
+    x = rnorm(30),
+    y = rnorm(30)
+  )
+
+  rolling_fit <- fastml(
+    data = rolling_df,
+    label = "y",
+    algorithms = c("linear_reg"),
+    resampling_method = "rolling_origin",
+    block_col = "time_id",
+    initial_window = 15,
+    assess_window = 5,
+    skip = 2,
+    use_default_tuning = FALSE,
+    seed = 101
+  )
+
+  expect_s3_class(rolling_fit, "fastml")
+  expect_equal(fastml:::fastml_resample_method(rolling_fit$resampling_plan), "rolling_origin")
+})
+
+test_that("nested_cv returns tuning diagnostics", {
+  nested_df <- iris[iris$Species != "virginica", ]
+  nested_df$Species <- droplevels(nested_df$Species)
+  nested_df <- nested_df[seq_len(60), ]
+
+  nested_fit <- fastml(
+    data = nested_df,
+    label = "Species",
+    algorithms = c("decision_tree"),
+    resampling_method = "nested_cv",
+    folds = 2,
+    outer_folds = 2,
+    use_default_tuning = TRUE,
+    tuning_strategy = "grid",
+    seed = 202,
+    test_size = 0.25
+  )
+
+  expect_s3_class(nested_fit, "fastml")
+  expect_false(is.null(nested_fit$nested_cv))
+  expect_true("decision_tree" %in% names(nested_fit$nested_cv))
+  tree_entry <- nested_fit$nested_cv$decision_tree
+  expect_true(any(vapply(tree_entry, function(x) !is.null(x$outer_performance), logical(1))))
+})
+
 test_that("custom imputer must provide fit/transform interface", {
   iris_missing <- iris
   iris_missing$Sepal.Length[c(1, 5, 10)] <- NA

@@ -69,11 +69,35 @@ You may also explicitly set to "classification", "regression", or "survival".}
 \item{test_size}{A numeric value between 0 and 1 indicating the proportion of the data to use for testing. Default is \code{0.2}.}
 
 \item{resampling_method}{A string specifying the resampling method for model evaluation. Default is \code{"cv"} (cross-validation).
-Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.}
+Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, \code{"grouped_cv"},
+\code{"blocked_cv"}, \code{"rolling_origin"}, and \code{"nested_cv"}.}
 
 \item{folds}{An integer specifying the number of folds for cross-validation. Default is \code{10} for methods containing "cv" and \code{25} otherwise.}
 
 \item{repeats}{Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").}
+
+\item{group_cols}{Character vector naming one or more grouping columns used when
+\code{resampling_method = "grouped_cv"} or when grouped nested cross-validation is desired.
+All rows that share the same combination of values remain together in every fold. Columns must exist
+in the training data and cannot contain missing values.}
+
+\item{block_col}{Single column name that defines the ordering variable for
+\code{resampling_method = "blocked_cv"} or \code{"rolling_origin"}. Data must already be sorted in
+ascending order by this column to avoid leakage from future observations.}
+
+\item{block_size}{Positive integer specifying the block size for \code{"blocked_cv"}.}
+
+\item{initial_window}{Positive integer giving the number of observations in the initial training
+window for \code{"rolling_origin"} resampling.}
+
+\item{assess_window}{Positive integer giving the number of observations in each assessment window for
+\code{"rolling_origin"} resampling.}
+
+\item{skip}{Non-negative integer specifying how many potential rolling windows to skip between
+successive resamples when \code{resampling_method = "rolling_origin"}.}
+
+\item{outer_folds}{Positive integer giving the number of outer folds to use when
+\code{resampling_method = "nested_cv"} and no custom \code{resamples} object is supplied.}
 
 \item{event_class}{A single string. Either "first" or "second" to specify which level of truth to consider as the "event". Default is "first".}
 

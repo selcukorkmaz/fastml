@@ -24,9 +24,26 @@ utils::globalVariables(c("Fraction", "Performance"))
 #'   You may also explicitly set to "classification", "regression", or "survival".
 #' @param test_size A numeric value between 0 and 1 indicating the proportion of the data to use for testing. Default is \code{0.2}.
 #' @param resampling_method A string specifying the resampling method for model evaluation. Default is \code{"cv"} (cross-validation).
-#'                          Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.
+#'                          Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, \code{"grouped_cv"},
+#'                          \code{"blocked_cv"}, \code{"rolling_origin"}, and \code{"nested_cv"}.
 #' @param folds An integer specifying the number of folds for cross-validation. Default is \code{10} for methods containing "cv" and \code{25} otherwise.
 #' @param repeats Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").
+#' @param group_cols Character vector naming one or more grouping columns used when
+#'   \code{resampling_method = "grouped_cv"} or when grouped nested cross-validation is desired.
+#'   All rows that share the same combination of values remain together in every fold. Columns must exist
+#'   in the training data and cannot contain missing values.
+#' @param block_col Single column name that defines the ordering variable for
+#'   \code{resampling_method = "blocked_cv"} or \code{"rolling_origin"}. Data must already be sorted in
+#'   ascending order by this column to avoid leakage from future observations.
+#' @param block_size Positive integer specifying the block size for \code{"blocked_cv"}.
+#' @param initial_window Positive integer giving the number of observations in the initial training
+#'   window for \code{"rolling_origin"} resampling.
+#' @param assess_window Positive integer giving the number of observations in each assessment window for
+#'   \code{"rolling_origin"} resampling.
+#' @param skip Non-negative integer specifying how many potential rolling windows to skip between
+#'   successive resamples when \code{resampling_method = "rolling_origin"}.
+#' @param outer_folds Positive integer giving the number of outer folds to use when
+#'   \code{resampling_method = "nested_cv"} and no custom \code{resamples} object is supplied.
 #' @param event_class A single string. Either "first" or "second" to specify which level of truth to consider as the "event". Default is "first".
 #' @param exclude A character vector specifying the names of the columns to be excluded from the training process.
 #' @param recipe A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.
@@ -162,7 +179,14 @@ fastml <- function(data = NULL,
                    test_size = 0.2,
                    resampling_method = "cv",
                    folds = ifelse(grepl("cv", resampling_method), 10, 25),
-                   repeats = ifelse(resampling_method == "repeatedcv", 1, NA),
+                   repeats = NULL,
+                   group_cols = NULL,
+                   block_col = NULL,
+                   block_size = NULL,
+                   initial_window = NULL,
+                   assess_window = NULL,
+                   skip = 0,
+                   outer_folds = NULL,
                    event_class = "first",
                    exclude = NULL,
                    recipe = NULL,
@@ -206,6 +230,110 @@ fastml <- function(data = NULL,
     resampling_method <- tolower(resampling_method)
   }
   resampling_active <- !is.null(resamples) || resampling_method != "none"
+  custom_resamples <- !is.null(resamples)
+
+  coerce_count <- function(value, name, allow_zero = FALSE) {
+    if (is.null(value)) {
+      return(NULL)
+    }
+    if (!is.numeric(value) || length(value) != 1 || is.na(value)) {
+      stop(
+        sprintf(
+          "'%s' must be a %s integer.",
+          name,
+          if (allow_zero) "non-negative" else "positive"
+        ),
+        call. = FALSE
+      )
+    }
+    if (!isTRUE(all.equal(value, round(value)))) {
+      stop(
+        sprintf(
+          "'%s' must be supplied as a whole number.",
+          name
+        ),
+        call. = FALSE
+      )
+    }
+    if (!allow_zero && value <= 0) {
+      stop(sprintf("'%s' must be a positive integer.", name), call. = FALSE)
+    }
+    if (allow_zero && value < 0) {
+      stop(sprintf("'%s' must be a non-negative integer.", name), call. = FALSE)
+    }
+    as.integer(round(value))
+  }
+
+  ensure_columns_present <- function(df, cols, arg_label) {
+    if (is.null(cols) || length(cols) == 0) {
+      return(invisible(NULL))
+    }
+    missing_cols <- setdiff(cols, colnames(df))
+    if (length(missing_cols) > 0) {
+      stop(
+        sprintf(
+          "Column(s) %s required by %s were not found in the training data.",
+          paste(missing_cols, collapse = ", "),
+          arg_label
+        ),
+        call. = FALSE
+      )
+    }
+    invisible(NULL)
+  }
+
+  if (!is.null(group_cols)) {
+    group_cols <- unique(as.character(group_cols))
+    group_cols <- group_cols[nzchar(group_cols)]
+    if (length(group_cols) == 0) {
+      group_cols <- NULL
+    }
+  }
+
+  if (!is.null(block_col)) {
+    block_col <- as.character(block_col)
+    block_col <- block_col[nzchar(block_col)]
+    if (length(block_col) == 0) {
+      block_col <- NULL
+    } else if (length(block_col) > 1) {
+      stop("'block_col' must be a single column name.", call. = FALSE)
+    } else {
+      block_col <- block_col[1]
+    }
+  }
+
+  if (!is.null(repeats) && length(repeats) == 1 && is.na(repeats)) {
+    repeats <- NULL
+  }
+  repeats <- coerce_count(repeats, "repeats")
+  block_size <- coerce_count(block_size, "block_size")
+  initial_window <- coerce_count(initial_window, "initial_window")
+  assess_window <- coerce_count(assess_window, "assess_window")
+  outer_folds <- coerce_count(outer_folds, "outer_folds")
+  skip <- coerce_count(skip, "skip", allow_zero = TRUE)
+  if (is.null(skip)) {
+    skip <- 0L
+  }
+
+  if (!custom_resamples && identical(resampling_method, "grouped_cv") && is.null(group_cols)) {
+    stop("`group_cols` must be provided when `resampling_method = \"grouped_cv\"`.", call. = FALSE)
+  }
+  if (!custom_resamples && resampling_method %in% c("blocked_cv", "rolling_origin") && is.null(block_col)) {
+    stop("`block_col` must be provided for blocked or rolling resampling.", call. = FALSE)
+  }
+  if (!custom_resamples && identical(resampling_method, "blocked_cv") && is.null(block_size)) {
+    stop("`block_size` must be provided when `resampling_method = \"blocked_cv\"`.", call. = FALSE)
+  }
+  if (!custom_resamples && identical(resampling_method, "rolling_origin") &&
+      (is.null(initial_window) || is.null(assess_window))) {
+    stop("`initial_window` and `assess_window` must be provided when `resampling_method = \"rolling_origin\"`.", call. = FALSE)
+  }
+  if (!custom_resamples && identical(resampling_method, "nested_cv") && is.null(outer_folds)) {
+    stop("`outer_folds` must be provided when `resampling_method = \"nested_cv\"` unless custom resamples are supplied.", call. = FALSE)
+  }
+  if (is.null(repeats) && identical(resampling_method, "repeatedcv") && !custom_resamples) {
+    repeats <- 1L
+  }
 
   # If explicit train/test provided, ensure both are given
   if (!is.null(train_data) || !is.null(test_data)) {
@@ -583,6 +711,9 @@ fastml <- function(data = NULL,
   if (advanced_imputation && resampling_active && is.null(recipe)) {
     resample_base_data <- raw_train_data
   }
+  reference_resample_data <- if (!is.null(resample_base_data)) resample_base_data else train_data
+  ensure_columns_present(reference_resample_data, group_cols, "`group_cols`")
+  ensure_columns_present(reference_resample_data, block_col, "`block_col`")
   ###############################################################################
 
   # Set up parallel processing using future
@@ -688,6 +819,13 @@ fastml <- function(data = NULL,
     resampling_method = resampling_method,
     folds = folds,
     repeats = repeats,
+    group_cols = group_cols,
+    block_col = block_col,
+    block_size = block_size,
+    initial_window = initial_window,
+    assess_window = assess_window,
+    skip = skip,
+    outer_folds = outer_folds,
     resamples = resamples,
     resample_base_data = resample_base_data,
     impute_method = if (advanced_imputation && is.null(recipe)) impute_method else NULL,
@@ -1005,6 +1143,13 @@ fastml <- function(data = NULL,
         resampling_method = resampling_method,
         folds = folds,
         repeats = repeats,
+        group_cols = group_cols,
+        block_col = block_col,
+        block_size = block_size,
+        initial_window = initial_window,
+        assess_window = assess_window,
+        skip = skip,
+        outer_folds = outer_folds,
         resamples = resamples,
         resample_base_data = resample_base_data,
         impute_method = if (advanced_imputation && is.null(recipe)) impute_method else NULL,
