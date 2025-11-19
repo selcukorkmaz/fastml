@@ -207,10 +207,10 @@ make_rolling_origin_cv <- function(data,
 }
 
 make_nested_cv <- function(data,
-                           outer_folds = 5,
-                           inner_folds = 5,
-                           group_cols = NULL,
-                           strata = NULL) {
+                            outer_folds = 5,
+                            inner_folds = 5,
+                            group_cols = NULL,
+                            strata = NULL) {
   if (!is.numeric(outer_folds) || length(outer_folds) != 1 || outer_folds < 2 ||
       outer_folds != as.integer(outer_folds)) {
     stop("'outer_folds' must be an integer greater than or equal to 2.")
@@ -270,11 +270,59 @@ make_nested_cv <- function(data,
   nested_tbl
 }
 
+fastml_nested_strip_meta <- function(param_tbl) {
+  meta_cols <- c(".metric", ".estimator", ".config", ".notes", ".iter", ".order",
+                 "mean", "n", "std_err")
+  keep <- setdiff(names(param_tbl), meta_cols)
+  if (length(keep) == 0) {
+    return(NULL)
+  }
+  tibble::as_tibble(param_tbl[, keep, drop = FALSE])
+}
+
+fastml_nested_signature <- function(param_tbl) {
+  if (is.null(param_tbl) || nrow(param_tbl) == 0) {
+    return(NA_character_)
+  }
+  vals <- vapply(
+    param_tbl,
+    function(col) {
+      if (is.list(col)) {
+        paste(vapply(col, function(x) paste(as.character(x), collapse = ","), character(1)), collapse = ";")
+      } else {
+        paste(as.character(col), collapse = ",")
+      }
+    },
+    character(1)
+  )
+  paste(names(vals), vals, sep = "=", collapse = "||")
+}
+
+fastml_nested_select_params <- function(best_params_list) {
+  if (length(best_params_list) == 0) {
+    return(NULL)
+  }
+  params <- best_params_list[!vapply(best_params_list, is.null, logical(1))]
+  if (length(params) == 0) {
+    return(NULL)
+  }
+  stripped <- lapply(params, fastml_nested_strip_meta)
+  stripped <- stripped[!vapply(stripped, is.null, logical(1))]
+  if (length(stripped) == 0) {
+    return(NULL)
+  }
+  signatures <- vapply(stripped, fastml_nested_signature, character(1))
+  counts <- table(signatures)
+  top_signature <- names(counts)[which.max(counts)]
+  idx <- match(top_signature, signatures)
+  stripped[[idx]]
+}
+
 fastml_run_nested_cv <- function(workflow_spec,
-                                 nested_resamples,
-                                 train_data,
-                                 label,
-                                 task,
+                                  nested_resamples,
+                                  train_data,
+                                  label,
+                                  task,
                                  metric,
                                  metrics,
                                  engine,
@@ -455,35 +503,14 @@ fastml_run_nested_cv <- function(workflow_spec,
     NULL
   }
 
-  metric_values <- if (length(outer_metrics) > 0) {
-    vapply(outer_metrics, function(tbl) {
-      metric_row <- tbl[tbl$.metric == metric, ".estimate", drop = TRUE]
-      if (length(metric_row) == 0) NA_real_ else as.numeric(metric_row[1])
-    }, numeric(1))
-  } else {
-    numeric(0)
-  }
-
   final_params <- NULL
   selected_outer_id <- NULL
-  if (do_tuning && length(metric_values) > 0 && any(is.finite(metric_values))) {
-    if (lower_is_better) {
-      idx <- which.min(metric_values)
-    } else {
-      idx <- which.max(metric_values)
-    }
-    if (length(idx) > 0 && is.finite(metric_values[idx])) {
-      final_params <- best_params_list[[idx]]
-      if (!is.null(final_params) && !is.null(outer_ids)) {
-        selected_outer_id <- outer_ids[[idx]]
-        final_params <- final_params %>%
-          dplyr::mutate(outer_id = selected_outer_id, .before = 1)
-      }
-    }
+  if (do_tuning) {
+    final_params <- fastml_nested_select_params(best_params_list)
   }
 
   final_workflow <- if (!is.null(final_params)) {
-    finalize_workflow(workflow_spec, final_params %>% dplyr::select(-outer_id))
+    finalize_workflow(workflow_spec, final_params)
   } else {
     workflow_spec
   }
