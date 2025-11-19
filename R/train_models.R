@@ -1852,148 +1852,19 @@ train_models <- function(train_data,
         }
       }
 
-       # For other algorithms, use a switch that uses the current engine
-        model_info <- switch(algo,
-                             "rand_forest" = {
-                               define_rand_forest_spec(task,
-                                                       train_data,
-                                                       label,
-                                                       tuning = perform_tuning,
-                                                       engine = engine)
-                             },
-
-                             "logistic_reg" = {
-                               if(n_class == 2){
-                                 define_logistic_reg_spec(
-                                   task,
-                                   tuning = perform_tuning,
-                                   engine = engine)
-                               }
-                             },
-
-                             "multinom_reg" = {
-                               if(n_class > 2){
-                                 define_multinomial_reg_spec(
-                                   task,
-                                   tuning = perform_tuning,
-                                   engine = engine)
-                               }
-                             },
-
-                             "C5_rules" = {
-                               define_C5_rules_spec(task,
-                                                    tuning = perform_tuning,
-                                                    engine = engine)
-                             },
-
-                             "xgboost" = {
-                               define_xgboost_spec(task,
-                                                   train_data,
-                                                   label,
-                                                   tuning = perform_tuning,
-                                                   engine = engine,
-                                                   early_stopping = early_stopping)
-                             },
-
-                             "lightgbm" = {
-                               define_lightgbm_spec(task,
-                                                    train_data,
-                                                    label,
-                                                    tuning = perform_tuning,
-                                                    engine = engine,
-                                                    early_stopping = early_stopping)
-                             },
-
-                             "decision_tree" = {
-                               define_decision_tree_spec(task,
-                                                         tuning = perform_tuning,
-                                                         engine = engine)
-                             },
-
-                             "svm_linear" = {
-                               define_svm_linear_spec(task,
-                                                      tuning = perform_tuning,
-                                                      engine = engine)
-                             },
-
-                             "svm_rbf" = {
-                               define_svm_rbf_spec(task,
-                                                   tuning = perform_tuning,
-                                                   engine = engine)
-                             },
-
-                             "nearest_neighbor" = {
-                               define_nearest_neighbor_spec(task,
-                                                            tuning = perform_tuning,
-                                                            engine = engine)
-                             },
-
-                             "naive_Bayes" = {
-                               define_naive_Bayes_spec(task,
-                                                       tuning = perform_tuning,
-                                                       engine = engine)
-                             },
-
-                             "mlp" = {
-                               define_mlp_spec(task,
-                                               tuning = perform_tuning,
-                                               engine = engine)
-                             },
-
-                             "discrim_linear" = {
-                               define_discrim_linear_spec(task,
-                                                          engine = engine)
-                             },
-
-                             "discrim_quad" = {
-                               define_discrim_quad_spec(task,
-                                                        engine = engine)
-                             },
-
-                             "bag_tree" = {
-                               define_bag_tree_spec(task,
-                                                    tuning = perform_tuning,
-                                                    engine = engine)
-                             },
-
-                             "elastic_net" = {
-                               define_elastic_net_spec(task,
-                                                       tuning = perform_tuning,
-                                                       engine = engine)
-                             },
-
-                             "bayes_glm" = {
-                               define_bayes_glm_spec(task,
-                                                     engine = engine)
-                             },
-
-                             "pls" = {
-                               define_pls_spec(task,
-                                               tuning = perform_tuning,
-                                               engine = engine)
-                             },
-
-                             "linear_reg" = {
-                               define_linear_reg_spec(task,
-                                                      engine = engine)
-                             },
-
-                             "ridge_reg" = {
-                               define_ridge_reg_spec(task,
-                                                            tuning = perform_tuning,
-                                                            engine = engine)
-                             },
-
-                             "lasso_reg" = {
-                               define_lasso_reg_spec(task,
-                                                            tuning = perform_tuning,
-                                                            engine = engine)
-                             },
-                             {
-                               warning(paste("Algorithm", algo, "is not supported or failed to train."))
-                               next
-                             }
+        spec_context <- list(
+          task = task,
+          train_data = train_data,
+          label = label,
+          tuning = perform_tuning,
+          engine = engine,
+          early_stopping = early_stopping,
+          n_class = n_class
         )
+        model_info <- fastml_get_model_spec(algo, spec_context)
+        if (is.null(model_info)) {
+          next
+        }
 
         # Assume the model specification is stored in model_info$model_spec
         model_spec <- model_info$model_spec
