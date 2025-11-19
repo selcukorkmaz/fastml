@@ -53,7 +53,7 @@ utils::globalVariables(c("truth", "residual", "sensitivity", "specificity", "Fal
 #' @importFrom yardstick conf_mat
 #' @importFrom pROC roc auc multiclass.roc
 #' @importFrom probably cal_plot_breaks
-#' @importFrom methods slot slotNames
+#' @importFrom broom tidy glance
 #' @importFrom rlang get_expr get_env sym
 #' @importFrom viridisLite viridis
 #' @importFrom tidyr pivot_wider
@@ -850,381 +850,97 @@ summary.fastml <- function(object,
       NULL
     }
 
+    fastml_survival_tidy_df <- function(fit_obj) {
+      tidy_df <- tryCatch(broom::tidy(fit_obj), error = function(e) NULL)
+      if (!is.null(tidy_df)) {
+        return(as.data.frame(tidy_df, stringsAsFactors = FALSE))
+      }
+      summary_fit <- tryCatch(suppressWarnings(summary(fit_obj)), error = function(e) NULL)
+      if (is.null(summary_fit)) {
+        return(NULL)
+      }
+      candidate_names <- c("coefficients", "coef", "coef.table", "coef3")
+      for (nm in candidate_names) {
+        comp <- tryCatch(summary_fit[[nm]], error = function(e) NULL)
+        if (is.null(comp)) {
+          next
+        }
+        if (is.matrix(comp)) {
+          df <- as.data.frame(comp, stringsAsFactors = FALSE)
+        } else if (is.data.frame(comp)) {
+          df <- comp
+        } else {
+          next
+        }
+        if (nrow(df) == 0) {
+          next
+        }
+        if (!"term" %in% names(df)) {
+          df <- rownames(df)
+        }
+        if (!"term" %in% names(df)) {
+          df <- seq_len(nrow(df))
+        }
+        df <- df[, c("term", setdiff(names(df), "term")), drop = FALSE]
+        return(df)
+      }
+      NULL
+    }
+
+    fastml_survival_glance_df <- function(fit_obj) {
+      glance_df <- tryCatch(broom::glance(fit_obj), error = function(e) NULL)
+      if (!is.null(glance_df)) {
+        return(as.data.frame(glance_df, stringsAsFactors = FALSE))
+      }
+      safe_stat <- function(expr) {
+        val <- tryCatch(expr, error = function(e) NA_real_)
+        if (length(val) == 0) {
+          return(NA_real_)
+        }
+        as.numeric(val[1])
+      }
+      data.frame(
+        logLik = safe_stat(stats::logLik(fit_obj)),
+        AIC = safe_stat(stats::AIC(fit_obj)),
+        BIC = safe_stat(stats::BIC(fit_obj)),
+        nobs = safe_stat(stats::nobs(fit_obj)),
+        stringsAsFactors = FALSE
+      )
+    }
+
+    fastml_print_survival_summary <- function(fit_obj, heading = NULL) {
+      if (!is.null(heading)) {
+        cat("  ", heading, "\n", sep = "")
+      }
+      model_formula <- tryCatch(stats::formula(fit_obj), error = function(e) NULL)
+      if (!is.null(model_formula)) {
+        cat("  Formula: ", paste(deparse(model_formula), collapse = " "), "\n", sep = "")
+      }
+      glance_df <- fastml_survival_glance_df(fit_obj)
+      if (!is.null(glance_df)) {
+        cat("  Fit statistics:\n")
+        print(glance_df, row.names = FALSE)
+      }
+      tidy_df <- fastml_survival_tidy_df(fit_obj)
+      if (!is.null(tidy_df)) {
+        cat("  Coefficients:\n")
+        print(tidy_df, row.names = FALSE)
+      }
+      TRUE
+    }
+
     print_stpm2_details <- function(fit_obj, model_info = NULL) {
       if (is.function(fit_obj) && !is.null(model_info)) {
-        alt_fit <- tryCatch(model_info$fit, error = function(e) NULL)
+        alt_fit <- tryCatch(model_info, error = function(e) NULL)
         if (inherits(alt_fit, c("stpm2", "pstpm2"))) {
           fit_obj <- alt_fit
         }
       }
-
       if (!inherits(fit_obj, c("stpm2", "pstpm2"))) {
         return(FALSE)
       }
-
-      if (!requireNamespace("rstpm2", quietly = TRUE)) {
-        cat("  Package 'rstpm2' is required to summarize Royston-Parmar models.\n")
-        return(FALSE)
-      }
-
-      extract_call_slot <- function(obj, slot_name) {
-        if (!methods::is(obj, "S4")) {
-          return(NULL)
-        }
-        if (!slot_name %in% methods::slotNames(obj)) {
-          return(NULL)
-        }
-        tryCatch(methods::slot(obj, slot_name), error = function(e) NULL)
-      }
-
-      gather_call_expression <- function(obj) {
-        call_candidates <- c("call", "call.orig", "Call", "call.formula")
-        for (slot_nm in call_candidates) {
-          expr <- extract_call_slot(obj, slot_nm)
-          if (!is.null(expr) && !is.function(expr)) {
-            return(expr)
-          }
-        }
-        NULL
-      }
-
-      format_clean_stpm2_call <- function(obj) {
-        args_list <- tryCatch(obj@args, error = function(e) NULL)
-        call_expr <- gather_call_expression(obj)
-        call_args <- list()
-        call_arg_names <- character()
-        if (!is.null(call_expr)) {
-          call_args <- as.list(call_expr)
-          if (length(call_args) > 0) {
-            call_args <- call_args[-1]
-            call_arg_names <- names(call_args)
-            if (is.null(call_arg_names)) {
-              call_arg_names <- rep("", length(call_args))
-            }
-          }
-        }
-
-        extract_formula <- function() {
-          candidates <- list(
-            tryCatch(args_list$formula, error = function(e) NULL),
-            if (length(call_args) > 0) {
-              idx <- which(call_arg_names %in% c("", "formula"))
-              if (length(idx) > 0) {
-                call_args[[idx[1]]]
-              } else {
-                NULL
-              }
-            } else {
-              NULL
-            }
-          )
-          for (cand in candidates) {
-            if (!is.null(cand) && !is.function(cand)) {
-              return(cand)
-            }
-          }
-          NULL
-        }
-
-        formula_expr <- extract_formula()
-        formula_txt <- NULL
-        if (!is.null(formula_expr)) {
-          formula_txt <- tryCatch(paste(deparse(formula_expr), collapse = " "), error = function(e) NULL)
-        }
-
-        allowed_args <- c("df", "link", "link.type", "scale", "penalized", "penalised", "cure")
-
-        simple_value <- function(val) {
-          if (is.null(val)) {
-            return(FALSE)
-          }
-          if (is.environment(val) || is.function(val) || is.language(val)) {
-            return(FALSE)
-          }
-          if (methods::is(val, "formula")) {
-            return(FALSE)
-          }
-          if (is.list(val) && !all(vapply(val, is.atomic, logical(1)))) {
-            return(FALSE)
-          }
-          is.atomic(val) && length(val) <= 5
-        }
-
-        get_arg_value <- function(nm) {
-          if (!is.null(args_list) && nm %in% names(args_list)) {
-            return(args_list[[nm]])
-          }
-          if (!is.null(call_args) && nm %in% names(call_args)) {
-            return(call_args[[nm]])
-          }
-          NULL
-        }
-
-        arg_components <- character()
-        for (nm in allowed_args) {
-          val <- get_arg_value(nm)
-          if (!simple_value(val)) {
-            next
-          }
-          label <- if (nm == "link.type") "link" else nm
-          val_txt <- format_param_value(val)
-          if (nzchar(val_txt)) {
-            arg_components <- c(arg_components, paste0(label, " = ", val_txt))
-          }
-        }
-
-        call_parts <- c()
-        if (!is.null(formula_txt) && nzchar(formula_txt)) {
-          call_parts <- c(call_parts, formula_txt)
-        }
-        if (length(arg_components) > 0) {
-          call_parts <- c(call_parts, arg_components)
-        }
-
-        if (length(call_parts) == 0) {
-          return("")
-        }
-        paste0("stpm2(", paste(call_parts, collapse = ", "), ")")
-      }
-
-      printed_any <- FALSE
-
-      call_str <- format_clean_stpm2_call(fit_obj)
-      if (nzchar(call_str)) {
-        cat("  Model call: ", call_str, "\n", sep = "")
-        printed_any <- TRUE
-      }
-
-      link_type <- tryCatch(fit_obj@args$link.type, error = function(e) NULL)
-      if (is.null(link_type) || length(link_type) == 0) {
-        link_type <- tryCatch(fit_obj@args$link, error = function(e) NULL)
-      }
-      if (!is.null(link_type) && length(link_type) > 0) {
-        link_char <- as.character(link_type[1])
-        if (nzchar(link_char)) {
-          cat("  Link function: ", link_char, "\n", sep = "")
-          printed_any <- TRUE
-        }
-      }
-
-      spline_df <- tryCatch({
-        val <- fit_obj@args$df
-        if (length(val) == 0) {
-          val <- NULL
-        }
-        val
-      }, error = function(e) NULL)
-      if (is.null(spline_df) && !is.null(model_info)) {
-        spline_df <- tryCatch(model_info$spline_df, error = function(e) NULL)
-      }
-      if (!is.null(spline_df) && length(spline_df) > 0) {
-        spline_val <- suppressWarnings(as.numeric(spline_df[1]))
-        if (is.finite(spline_val)) {
-          cat("  Spline degrees of freedom: ", format_numeric_single(spline_val), "\n", sep = "")
-          printed_any <- TRUE
-        }
-      }
-
-      extract_column <- function(name) {
-        val <- tryCatch(model_info[[name]], error = function(e) NULL)
-        if (is.null(val) || length(val) == 0) {
-          return(NA_character_)
-        }
-        scalar_val <- val[[1]]
-        if (is.null(scalar_val) || (length(scalar_val) == 1 && is.na(scalar_val))) {
-          return(NA_character_)
-        }
-        chr_val <- tryCatch(as.character(scalar_val), error = function(e) NA_character_)
-        if (length(chr_val) == 0) {
-          return(NA_character_)
-        }
-        chr_val <- chr_val[1]
-        if (!nzchar(chr_val) || identical(chr_val, "NA")) {
-          return(NA_character_)
-        }
-        chr_val
-      }
-
-      extract_numeric_info <- function(name) {
-        if (is.null(model_info)) {
-          return(NA_real_)
-        }
-        val <- tryCatch(model_info[[name]], error = function(e) NULL)
-        if (is.null(val) || length(val) == 0) {
-          return(NA_real_)
-        }
-        num_val <- suppressWarnings(as.numeric(val[1]))
-        if (!is.finite(num_val)) {
-          return(NA_real_)
-        }
-        num_val
-      }
-
-      if (!is.null(model_info)) {
-        start_col <- extract_column("start_col")
-        time_col <- extract_column("time_col")
-        status_col <- extract_column("status_col")
-
-        if (!is.na(start_col) && nzchar(start_col)) {
-          cat("  Start time column: ", start_col, "\n", sep = "")
-          printed_any <- TRUE
-        }
-        if (nzchar(time_col)) {
-          cat("  Event time column: ", time_col, "\n", sep = "")
-          printed_any <- TRUE
-        }
-        if (nzchar(status_col)) {
-          cat("  Status column: ", status_col, "\n", sep = "")
-          printed_any <- TRUE
-        }
-      }
-
-      frailty_flag <- tryCatch(fit_obj@frailty, error = function(e) NULL)
-      if (!is.null(frailty_flag)) {
-        cat("  Frailty model: ", if (isTRUE(frailty_flag)) "Yes" else "No", "\n", sep = "")
-        printed_any <- TRUE
-      }
-
-      summary_fit <- tryCatch(suppressWarnings(summary(fit_obj)), error = function(e) NULL)
-      if (is.null(summary_fit)) {
-        cat("  Unable to compute summary statistics for the Royston-Parmar fit.\n")
-        return(printed_any)
-      }
-
-      extract_component <- function(obj, name) {
-        res <- NULL
-        if (methods::is(obj, "S4")) {
-          res <- tryCatch(methods::slot(obj, name), error = function(e) NULL)
-        }
-        if (is.null(res)) {
-          res <- tryCatch(obj[[name]], error = function(e) NULL)
-        }
-        res
-      }
-
-      coef_mat <- NULL
-      coef_candidates <- c("coef3", "coef.table", "coefficients", "coef")
-      for (nm in coef_candidates) {
-        comp <- extract_component(summary_fit, nm)
-        if (is.null(comp)) {
-          next
-        }
-        if (is.data.frame(comp)) {
-          comp <- as.matrix(comp)
-        }
-        if (is.matrix(comp) && nrow(comp) > 0) {
-          coef_mat <- comp
-          break
-        }
-      }
-
-      if (is.null(coef_mat)) {
-        coef_vec <- tryCatch(stats::coef(fit_obj), error = function(e) NULL)
-        if (!is.null(coef_vec)) {
-          coef_mat <- matrix(coef_vec, ncol = 1)
-          rownames(coef_mat) <- names(coef_vec)
-          colnames(coef_mat) <- "coef"
-        }
-      }
-
-      if (is.matrix(coef_mat) && nrow(coef_mat) > 0) {
-        rn <- rownames(coef_mat)
-        if (!is.null(rn)) {
-          spline_mask <- grepl("^nsx\\(", rn)
-          if (any(spline_mask)) {
-            spline_names <- paste0("Spline", seq_len(sum(spline_mask)))
-            rn[spline_mask] <- spline_names
-            rownames(coef_mat) <- rn
-          }
-        }
-        cat("  Coefficients:\n")
-        coef_lines <- utils::capture.output(stats::printCoefmat(coef_mat, digits = 4))
-        for (ln in coef_lines) {
-          cat("    ", ln, "\n", sep = "")
-        }
-        printed_any <- TRUE
-      } else {
-        cat("  Coefficients: <unavailable>\n")
-      }
-
-      theta_info <- extract_component(summary_fit, "theta")
-      if (is.list(theta_info) && length(theta_info) > 0) {
-        theta_vals <- tryCatch(unlist(theta_info, use.names = TRUE), error = function(e) NULL)
-        if (!is.null(theta_vals) && length(theta_vals) > 0) {
-          cat("  Theta estimates:\n")
-          theta_fmt <- vapply(theta_vals, function(x) format_numeric_single(as.numeric(x)), character(1))
-          for (nm in names(theta_fmt)) {
-            cat("    ", nm, ": ", theta_fmt[[nm]], "\n", sep = "")
-          }
-          printed_any <- TRUE
-        }
-      }
-
-      loglik_val <- extract_numeric_info("loglik")
-      if (!is.finite(loglik_val)) {
-        loglik_val <- tryCatch({
-          val <- stats::logLik(fit_obj)
-          if (length(val) > 0) as.numeric(val)[1] else NA_real_
-        }, error = function(e) NA_real_)
-      }
-      if (!is.finite(loglik_val)) {
-        loglik_val <- tryCatch({
-          val <- stats::logLik(fit_obj)
-          if (length(val) > 0) as.numeric(val)[1] else NA_real_
-        }, error = function(e) NA_real_)
-      }
-      if (!is.finite(loglik_val)) {
-        loglik_val <- tryCatch({
-          mle2_obj <- methods::slot(fit_obj, "mle2")
-          val <- stats::logLik(mle2_obj)
-          if (length(val) > 0) as.numeric(val)[1] else NA_real_
-        }, error = function(e) NA_real_)
-      }
-      if (is.finite(loglik_val)) {
-        cat("  Log-likelihood: ", format_numeric_single(loglik_val), "\n", sep = "")
-        printed_any <- TRUE
-      } else {
-        cat("  Log-likelihood: <unavailable>\n")
-      }
-
-      aic_val <- extract_numeric_info("aic")
-      if (!is.finite(aic_val)) {
-        aic_val <- tryCatch(stats::AIC(fit_obj), error = function(e) NA_real_)
-      }
-      if (!is.finite(aic_val) && requireNamespace("rstpm2", quietly = TRUE)) {
-        aic_val <- tryCatch(rstpm2::AIC(fit_obj), error = function(e) NA_real_)
-      }
-      if (is.finite(aic_val)) {
-        cat("  AIC: ", format_numeric_single(aic_val), "\n", sep = "")
-        printed_any <- TRUE
-      } else {
-        cat("  AIC: <unavailable>\n")
-      }
-
-      bic_val <- extract_numeric_info("bic")
-      if (!is.finite(bic_val)) {
-        bic_val <- tryCatch(stats::BIC(fit_obj), error = function(e) NA_real_)
-      }
-      if (!is.finite(bic_val) && requireNamespace("rstpm2", quietly = TRUE)) {
-        bic_val <- tryCatch(rstpm2::BIC(fit_obj), error = function(e) NA_real_)
-      }
-      if (is.finite(bic_val)) {
-        cat("  BIC: ", format_numeric_single(bic_val), "\n", sep = "")
-        printed_any <- TRUE
-      }
-
-      n_obs <- tryCatch(stats::nobs(fit_obj), error = function(e) NA_real_)
-      if (!is.finite(n_obs)) {
-        n_obs <- tryCatch(attr(stats::logLik(fit_obj), "nobs"), error = function(e) NA_real_)
-      }
-      if (is.finite(n_obs)) {
-        cat("  Number of observations: ", format_numeric_single(n_obs, digits = 0), "\n", sep = "")
-        printed_any <- TRUE
-      }
-
-      printed_any
+      fastml_print_survival_summary(fit_obj, heading = "Royston-Parmar (rstpm2)")
     }
-
     print_survreg_details <- function(fit_obj) {
       coef_vec <- tryCatch(stats::coef(fit_obj), error = function(e) NULL)
       if (!is.null(coef_vec) && length(coef_vec) > 0) {
@@ -1813,3 +1529,4 @@ summary.fastml <- function(object,
 
   invisible(object)
 }
+

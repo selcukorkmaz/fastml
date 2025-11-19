@@ -1398,41 +1398,16 @@ train_models <- function(train_data,
             if (length(val) > 0) as.numeric(val)[1] else NA_real_
           }, error = function(e) NA_real_)
         }
-        if (!is.finite(loglik_val)) {
-          loglik_val <- tryCatch({
-            mle2_obj <- methods::slot(fit, "mle2")
-            val <- stats::logLik(mle2_obj)
-            if (length(val) > 0) as.numeric(val)[1] else NA_real_
-          }, error = function(e) NA_real_)
+        safe_stat_val <- function(expr) {
+          val <- tryCatch(expr, error = function(e) NA_real_)
+          if (length(val) == 0) {
+            return(NA_real_)
+          }
+          as.numeric(val[1])
         }
-        aic_val <- tryCatch({
-          val <- stats::AIC(fit)
-          if (length(val) > 0) as.numeric(val)[1] else NA_real_
-        }, error = function(e) NA_real_)
-        if (!is.finite(aic_val)) {
-          aic_val <- tryCatch(stats::AIC(fit), error = function(e) NA_real_)
-        }
-        if (!is.finite(aic_val)) {
-          aic_val <- tryCatch({
-            mle2_obj <- methods::slot(fit, "mle2")
-            val <- stats::AIC(mle2_obj)
-            if (length(val) > 0) as.numeric(val)[1] else NA_real_
-          }, error = function(e) NA_real_)
-        }
-        bic_val <- tryCatch({
-          val <- stats::BIC(fit)
-          if (length(val) > 0) as.numeric(val)[1] else NA_real_
-        }, error = function(e) NA_real_)
-        if (!is.finite(bic_val)) {
-          bic_val <- tryCatch(stats::BIC(fit), error = function(e) NA_real_)
-        }
-        if (!is.finite(bic_val)) {
-          bic_val <- tryCatch({
-            mle2_obj <- methods::slot(fit, "mle2")
-            val <- stats::BIC(mle2_obj)
-            if (length(val) > 0) as.numeric(val)[1] else NA_real_
-          }, error = function(e) NA_real_)
-        }
+        loglik_val <- safe_stat_val(stats::logLik(fit))
+        aic_val <- safe_stat_val(stats::AIC(fit))
+        bic_val <- safe_stat_val(stats::BIC(fit))
         spec <- create_native_spec("royston_parmar", engine, fit, rec_prep,
                                    extras = list(
                                      spline_df = 3,
