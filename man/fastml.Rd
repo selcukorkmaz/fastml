@@ -14,7 +14,14 @@ fastml(
   test_size = 0.2,
   resampling_method = "cv",
   folds = ifelse(grepl("cv", resampling_method), 10, 25),
-  repeats = ifelse(resampling_method == "repeatedcv", 1, NA),
+  repeats = NULL,
+  group_cols = NULL,
+  block_col = NULL,
+  block_size = NULL,
+  initial_window = NULL,
+  assess_window = NULL,
+  skip = 0,
+  outer_folds = NULL,
   event_class = "first",
   exclude = NULL,
   recipe = NULL,
@@ -25,7 +32,6 @@ fastml(
   n_cores = 1,
   stratify = TRUE,
   impute_method = "error",
-  impute_custom_function = NULL,
   encode_categoricals = TRUE,
   scaling_methods = c("center", "scale"),
   balance_method = "none",
@@ -132,24 +138,11 @@ hyperparameters to explore during tuning. Default is an empty list.}
   \item{\code{"knnImpute"}}{Impute missing values using k-nearest neighbors (recipe-based).}
   \item{\code{"bagImpute"}}{Impute missing values using bagging (recipe-based).}
   \item{\code{"remove"}}{Remove rows with missing values from the data (recipe-based).}
-  \item{\code{"mice"}}{Impute missing values using MICE (Multiple Imputation by Chained Equations).}
-  \item{\code{"missForest"}}{Impute missing values using the missForest algorithm.}
-  \item{\code{"custom"}}{Use a user-provided imputation function (see `impute_custom_function`).}
   \item{\code{"error"}}{Do not perform imputation; if missing values are detected, stop execution with an error.}
   \item{\code{NULL}}{Equivalent to \code{"error"}. No imputation is performed, and the function will stop if missing values are present.}
 }
-When resampling is requested (e.g., cross-validation or bootstrapping),
-fastml() automatically fits the selected advanced imputation method inside
-each resample, applying the resulting imputer to that fold's assessment
-data before evaluation.
-Default is \code{"error"}.}
-
-\item{impute_custom_function}{A list or environment containing two functions,\cr
-\code{fit(data)} and \code{transform(data, state)}. The fit function must
-return a list with a \code{state} element (and may optionally include
-\code{transformed} training data). The transform function receives a data
-frame and the fitted state and must return a data frame. Used only when
-\code{impute_method = "custom"}.}
+All imputation occurs inside the recipe so the same trained preprocessing
+can be applied at prediction time. Default is \code{"error"}.}
 
 \item{encode_categoricals}{Logical indicating whether to encode categorical variables. Default is \code{TRUE}.}
 

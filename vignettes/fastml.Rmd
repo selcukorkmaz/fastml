@@ -448,33 +448,17 @@ This result highlights how addressing class imbalance—particularly through ups
 
 # Imputation
 
-`fastml` can handle missing data using several strategies via the `impute_method` argument.  
-While `"medianImpute"` is fast, you can use more powerful (but slower) methods:
+`fastml` handles missing data inside the preprocessing recipe so that the same
+statistics learned during training are applied at prediction time.  Set the
+`impute_method` argument to control which recipe step is added:
 
-- `"knnImpute"` — Uses **K-Nearest Neighbors** to impute missing values based on similarity.  
-- `"mice"` — Performs **Multivariate Imputation by Chained Equations**, a flexible and statistically grounded method.  
-- `"missForest"` — Employs **Random Forests** to iteratively impute missing data.
+- `"medianImpute"` — Imputes numeric predictors using the median.
+- `"knnImpute"` — Uses K-nearest neighbors to fill in missing values.
+- `"bagImpute"` — Applies bagging-based imputation for complex relationships.
+- `"remove"` — Drops rows containing missing predictor values.
 
-The choice depends on dataset size, computational resources, and the degree of missingness.
-
-Below, we demonstrate the use of **MICE** imputation with the `lung` dataset from the `survival` package.
-
-```{r}
-library(survival)
-data(lung, package = "survival")
-
-# This code assumes you have the 'mice' package installed
-# install.packages("mice")
-
-model_mice <- fastml(
-  data = lung,
-  label = c("time", "status"),
-  algorithms = "penalized_cox",
-  impute_method = "mice" # Use MICE for imputation
-)
-
-summary(model_mice, type = "metrics")
-```
+Because the imputation logic lives in the recipe, the trained model can safely
+score new datasets without recomputing statistics on the full training set.
 
 # Hyperparameter Tuning
 

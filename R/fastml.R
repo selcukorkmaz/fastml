@@ -68,23 +68,11 @@ utils::globalVariables(c("Fraction", "Performance"))
 #'     \item{\code{"knnImpute"}}{Impute missing values using k-nearest neighbors (recipe-based).}
 #'     \item{\code{"bagImpute"}}{Impute missing values using bagging (recipe-based).}
 #'     \item{\code{"remove"}}{Remove rows with missing values from the data (recipe-based).}
-#'     \item{\code{"mice"}}{Impute missing values using MICE (Multiple Imputation by Chained Equations).}
-#'     \item{\code{"missForest"}}{Impute missing values using the missForest algorithm.}
-#'     \item{\code{"custom"}}{Use a user-provided imputation function (see `impute_custom_function`).}
 #'     \item{\code{"error"}}{Do not perform imputation; if missing values are detected, stop execution with an error.}
 #'     \item{\code{NULL}}{Equivalent to \code{"error"}. No imputation is performed, and the function will stop if missing values are present.}
 #'   }
-#'   When resampling is requested (e.g., cross-validation or bootstrapping),
-#'   fastml() automatically fits the selected advanced imputation method inside
-#'   each resample, applying the resulting imputer to that fold's assessment
-#'   data before evaluation.
-#'   Default is \code{"error"}.
-#' @param impute_custom_function A list or environment containing two functions,\cr
-#'   \code{fit(data)} and \code{transform(data, state)}. The fit function must
-#'   return a list with a \code{state} element (and may optionally include
-#'   \code{transformed} training data). The transform function receives a data
-#'   frame and the fitted state and must return a data frame. Used only when
-#'   \code{impute_method = "custom"}.
+#'   All imputation occurs inside the recipe so the same trained preprocessing
+#'   can be applied at prediction time. Default is \code{"error"}.
 #' @param encode_categoricals Logical indicating whether to encode categorical variables. Default is \code{TRUE}.
 #' @param scaling_methods Vector of scaling methods to apply. Default is \code{c("center", "scale")}.
 #' @param balance_method Method to handle class imbalance. One of \code{"none"},
@@ -135,8 +123,6 @@ utils::globalVariables(c("Fraction", "Performance"))
 #' @importFrom future plan multisession sequential
 #' @importFrom janitor make_clean_names
 #' @importFrom stringr str_detect
-#' @importFrom mice mice complete
-#' @importFrom missForest missForest
 #' @importFrom purrr flatten
 #' @importFrom tidyselect all_of
 #' @return An object of class \code{fastml} containing the best model, performance metrics, and other information.
@@ -197,7 +183,6 @@ fastml <- function(data = NULL,
                    n_cores = 1,
                    stratify = TRUE,
                    impute_method = "error",
-                   impute_custom_function = NULL,
                    encode_categoricals = TRUE,
                    scaling_methods = c("center", "scale"),
                    balance_method = "none",
@@ -231,6 +216,20 @@ fastml <- function(data = NULL,
   }
   resampling_active <- !is.null(resamples) || resampling_method != "none"
   custom_resamples <- !is.null(resamples)
+
+  unsupported_imputers <- c("mice", "missforest", "custom")
+  if (!is.null(impute_method) &&
+      is.character(impute_method) &&
+      tolower(impute_method) %in% unsupported_imputers) {
+    stop(
+      paste0(
+        "Advanced imputation methods ('mice', 'missForest', 'custom') are no longer supported. ",
+        "For leak-free predictions, specify a recipe-based imputation step such as ",
+        "'medianImpute', 'knnImpute', 'bagImpute', or use `impute_method = \"remove\"`."
+      ),
+      call. = FALSE
+    )
+  }
 
   coerce_count <- function(value, name, allow_zero = FALSE) {
     if (is.null(value)) {
@@ -601,9 +600,6 @@ fastml <- function(data = NULL,
   }
 
 
-  raw_train_data <- train_data
-  advanced_imputation_outcome_cols <- NULL
-
   if(!is.null(impute_method) && impute_method == "remove") {
     if (anyNA(train_data)) {
       train_data <- train_data %>%
@@ -641,38 +637,13 @@ fastml <- function(data = NULL,
     positive_class <- NULL
   }
 
+  skip_recipe_imputation <- FALSE
   # If user has provided a custom recipe, skip internal imputation logic
   if (!is.null(recipe)) {
     fastml_validate_user_recipe(recipe, audit_env)
-  }
-
-  if (is.null(recipe)) {
-    outcome_cols <- unique(c(label, if (task == "survival") label_surv else character()))
-    outcome_cols <- outcome_cols[outcome_cols %in% names(train_data)]
-    advanced_methods <- c("mice", "missForest", "custom")
-    advanced_imputation <- !is.null(impute_method) && impute_method %in% advanced_methods
-
-    if (advanced_imputation) {
-      imputed <- fastml_apply_advanced_imputation(
-        train_data = train_data,
-        test_data = test_data,
-        outcome_cols = outcome_cols,
-        impute_method = impute_method,
-        impute_custom_function = impute_custom_function,
-        warn = TRUE,
-        audit_env = audit_env
-      )
-      train_data <- imputed$train_data
-      test_data <- imputed$test_data
-      advanced_imputation_outcome_cols <- outcome_cols
-      skip_recipe_imputation <- TRUE
-    } else {
-      skip_recipe_imputation <- FALSE
-    }
-  } else {
-    # If user provided a recipe, do not do advanced or custom imputation outside
     skip_recipe_imputation <- TRUE
-    advanced_imputation <- FALSE
+  } else {
+    skip_recipe_imputation <- FALSE
   }
 
   if (is.null(recipe) && task == "classification" && "discrim_quad" %in% algorithms) {
@@ -707,11 +678,7 @@ fastml <- function(data = NULL,
     }
   }
 
-  resample_base_data <- NULL
-  if (advanced_imputation && resampling_active && is.null(recipe)) {
-    resample_base_data <- raw_train_data
-  }
-  reference_resample_data <- if (!is.null(resample_base_data)) resample_base_data else train_data
+  reference_resample_data <- train_data
   ensure_columns_present(reference_resample_data, group_cols, "`group_cols`")
   ensure_columns_present(reference_resample_data, block_col, "`block_col`")
   ###############################################################################
@@ -827,10 +794,6 @@ fastml <- function(data = NULL,
     skip = skip,
     outer_folds = outer_folds,
     resamples = resamples,
-    resample_base_data = resample_base_data,
-    impute_method = if (advanced_imputation && is.null(recipe)) impute_method else NULL,
-    impute_custom_function = if (advanced_imputation && is.null(recipe)) impute_custom_function else NULL,
-    impute_outcome_cols = advanced_imputation_outcome_cols,
     tune_params = tune_params,
     engine_params = engine_params,
     metric = metric,
@@ -1151,10 +1114,6 @@ fastml <- function(data = NULL,
         skip = skip,
         outer_folds = outer_folds,
         resamples = resamples,
-        resample_base_data = resample_base_data,
-        impute_method = if (advanced_imputation && is.null(recipe)) impute_method else NULL,
-        impute_custom_function = if (advanced_imputation && is.null(recipe)) impute_custom_function else NULL,
-        impute_outcome_cols = advanced_imputation_outcome_cols,
         tune_params = tune_params,
         engine_params = engine_params,
         metric = metric,

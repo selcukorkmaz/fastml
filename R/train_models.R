@@ -550,9 +550,6 @@ fastml_run_nested_cv <- function(workflow_spec,
 #' @param repeats Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").
 #' @param resamples Optional rsample object. If provided, custom resampling splits
 #'   will be used instead of those created internally.
-#' @param resample_base_data Optional data frame used to generate resamples when
-#'   different from `train_data` (e.g., before advanced imputation has been
-#'   applied).
 #' @param group_cols Optional character vector of grouping columns used with
 #'   `resampling_method = "grouped_cv"`. For classification problems the outcome
 #'   column is used to request grouped stratification where supported; if class
@@ -570,12 +567,6 @@ fastml_run_nested_cv <- function(workflow_spec,
 #'   resamples.
 #' @param outer_folds Optional integer specifying the number of outer folds for
 #'   `resampling_method = "nested_cv"`.
-#' @param impute_method Advanced imputation method to apply within each resample.
-#'   Only methods `"mice"`, `"missForest"`, or `"custom"` are supported.
-#' @param impute_custom_function Custom imputation function to use when
-#'   `impute_method = "custom"`.
-#' @param impute_outcome_cols Character vector of outcome columns that should be
-#'   excluded from imputation.
 #' @param tune_params A named list of tuning ranges. For each algorithm, supply a
 #'   list of engine-specific parameter values, e.g.
 #'   \code{list(rand_forest = list(ranger = list(mtry = c(1, 3)))).}
@@ -646,10 +637,6 @@ train_models <- function(train_data,
                          skip = 0,
                          outer_folds = NULL,
                          resamples = NULL,
-                         resample_base_data = NULL,
-                         impute_method = NULL,
-                         impute_custom_function = NULL,
-                         impute_outcome_cols = NULL,
                          tune_params,
                          engine_params = list(),
                          metric,
@@ -678,7 +665,7 @@ train_models <- function(train_data,
 
   tuning_strategy <- match.arg(tuning_strategy, c("grid", "bayes", "none"))
 
-  resample_data <- if (!is.null(resample_base_data)) resample_base_data else train_data
+  resample_data <- train_data
 
   supported_resampling <- c(
     "cv",
@@ -694,11 +681,6 @@ train_models <- function(train_data,
   if (!resampling_method %in% supported_resampling) {
     stop("Unsupported resampling method.")
   }
-  advanced_resample_imputation <-
-    !is.null(impute_method) &&
-    impute_method %in% c("mice", "missForest", "custom") &&
-    !is.null(impute_outcome_cols)
-
   if (!is.null(repeats) && length(repeats) == 1 && is.na(repeats)) {
     repeats <- NULL
   }
@@ -1729,17 +1711,6 @@ train_models <- function(train_data,
 
   if (use_default_tuning && is.null(resamples)) {
     warning("'tune_params' are ignored when 'tuning_strategy' is 'none'")
-  }
-
-  if (!is.null(resample_plan) && advanced_resample_imputation) {
-    resample_plan <- fastml_impute_resamples(
-      resamples = resample_plan,
-      impute_method = impute_method,
-      impute_custom_function = impute_custom_function,
-      outcome_cols = impute_outcome_cols,
-      audit_env = audit_env
-    )
-    resamples <- fastml_resample_splits(resample_plan)
   }
 
   models <- list()

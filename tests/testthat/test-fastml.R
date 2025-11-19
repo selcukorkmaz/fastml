@@ -50,61 +50,45 @@ test_that("fastml handles novel categorical predictor levels", {
   )
 })
 
-test_that("survival task works with mice imputation", {
-  skip_if_not_installed("aorsf")
-  skip_if_not_installed("censored")
-  skip_if_not_installed("mice")
-  res <- suppressWarnings(
+test_that("advanced imputation options are rejected", {
+  expect_error(
     fastml(
-      data = cancer,
-      label = c("time", "status"),
-      algorithms = c("rand_forest"),
-      task = "survival",
-      test_size = 0.3,
+      data = iris,
+      label = "Species",
+      algorithms = "decision_tree",
       impute_method = "mice",
-      resampling_method = "none"
-    )
-  )
-  expect_s3_class(res, "fastml")
-})
-
-test_that("advanced imputation with resampling runs automatically", {
-  iris_missing <- iris
-  iris_missing$Sepal.Length[c(1, 5, 10)] <- NA
-
-  custom_imputer <- list(
-    fit = function(df) {
-      numeric_cols <- vapply(df, is.numeric, logical(1))
-      means <- if (any(numeric_cols)) {
-        vapply(df[numeric_cols], function(col) mean(col, na.rm = TRUE), numeric(1))
-      } else {
-        numeric(0)
-      }
-      list(state = list(means = means))
-    },
-    transform = function(df, state) {
-      numeric_cols <- names(state$means)
-      for (col in numeric_cols) {
-        if (col %in% names(df)) {
-          df[[col]][is.na(df[[col]])] <- state$means[[col]]
-        }
-      }
-      df
-    }
+      resampling_method = "none",
+      use_default_tuning = FALSE
+    ),
+    "no longer supported",
+    ignore.case = TRUE
   )
 
-  result <- fastml(
-    data = iris_missing,
-    label = "Species",
-    algorithms = c("decision_tree"),
-    impute_method = "custom",
-    impute_custom_function = custom_imputer,
-    resampling_method = "cv",
-    folds = 3,
-    use_default_tuning = FALSE
+  expect_error(
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = "decision_tree",
+      impute_method = "missForest",
+      resampling_method = "none",
+      use_default_tuning = FALSE
+    ),
+    "no longer supported",
+    ignore.case = TRUE
   )
 
-  expect_s3_class(result, "fastml")
+  expect_error(
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = "decision_tree",
+      impute_method = "custom",
+      resampling_method = "none",
+      use_default_tuning = FALSE
+    ),
+    "no longer supported",
+    ignore.case = TRUE
+  )
 })
 
 test_that("grouped_cv requires grouping columns", {
@@ -277,25 +261,6 @@ test_that("nested_cv returns tuning diagnostics", {
   expect_true(any(vapply(tree_entry, function(x) !is.null(x$outer_performance), logical(1))))
 })
 
-test_that("custom imputer must provide fit/transform interface", {
-  iris_missing <- iris
-  iris_missing$Sepal.Length[c(1, 5, 10)] <- NA
-
-  expect_error(
-    fastml(
-      data = iris_missing,
-      label = "Species",
-      algorithms = c("decision_tree"),
-      impute_method = "custom",
-      impute_custom_function = function(df) df,
-      resampling_method = "none",
-      use_default_tuning = FALSE
-    ),
-    "Custom imputer must supply both 'fit' and 'transform' functions.",
-    fixed = TRUE
-  )
-})
-
 test_that("pretrained recipes are rejected", {
   rec <- recipes::recipe(Species ~ ., data = iris) %>%
     recipes::step_center(recipes::all_predictors())
@@ -315,69 +280,7 @@ test_that("pretrained recipes are rejected", {
   )
 })
 
-test_that("sandbox prevents global environment reads", {
-  iris_missing <- iris
-  iris_missing$Sepal.Length[c(1, 5, 10)] <- NA
 
-  leaky_imputer <- list(
-    fit = function(df) list(state = list()),
-    transform = function(df, state) {
-      df$leak <- .GlobalEnv$leaky_value
-      df
-    }
-  )
-
-  leaky_value <- 99
-  assign("leaky_value", leaky_value, envir = .GlobalEnv)
-  on.exit(rm("leaky_value", envir = .GlobalEnv), add = TRUE)
-
-  expect_error(
-    fastml(
-      data = iris_missing,
-      label = "Species",
-      algorithms = c("decision_tree"),
-      impute_method = "custom",
-      impute_custom_function = leaky_imputer,
-      resampling_method = "none",
-      use_default_tuning = FALSE
-    ),
-    "Custom preprocessing step failed while executing custom imputer transform \(train\): Sandboxed custom imputer transform \(train\) cannot access \\.GlobalEnv\.",
-    fixed = FALSE
-  )
-
-})
-
-test_that("audit mode flags external IO usage", {
-  iris_missing <- iris
-  iris_missing$Sepal.Length[c(1, 5, 10)] <- NA
-
-  audited_imputer <- list(
-    fit = function(df) list(state = list()),
-    transform = function(df, state) {
-      con <- textConnection("x\n1")
-      on.exit(close(con), add = TRUE)
-      tmp <- read.csv(con)
-      df$dummy <- tmp$x
-      df
-    }
-  )
-
-  result <- suppressWarnings(
-    fastml(
-      data = iris_missing,
-      label = "Species",
-      algorithms = c("decision_tree"),
-      impute_method = "custom",
-      impute_custom_function = audited_imputer,
-      resampling_method = "none",
-      use_default_tuning = FALSE,
-      audit_mode = TRUE
-    )
-  )
-
-  expect_true(result$audit$flagged)
-  expect_true(any(grepl("read.csv", vapply(result$audit$log, `[[`, character(1), "message"))))
-})
 
 test_that("'label' is not available in the data", {
   expect_error({
@@ -921,4 +824,5 @@ test_that("guarded resampling is reproducible with fixed seeds", {
 #     "tune_params"
 #   )
 # })
+
 

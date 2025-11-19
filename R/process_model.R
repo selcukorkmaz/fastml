@@ -124,9 +124,7 @@ process_model <- function(model_obj,
     if (nrow(test_data) != length(pred_class)) {
       stop(
         'The dataset has missing values. To handle this, set impute_method = "remove" to delete rows with missing values,
-             or use an imputation method such as "medianImpute" to fill missing values with the column median, "knnImpute" to
-             estimate missing values using k-Nearest Neighbors, "bagImpute" to apply bagging for imputation, "mice" to use
-             Multiple Imputation by Chained Equations, or "missForest" to use random forests for imputation.'
+             or use recipe-based imputation such as "medianImpute", "knnImpute", or "bagImpute" so the preprocessing can be applied during predict().'
       )
     }
 
