@@ -75,7 +75,8 @@ process_model <- function(model_obj,
                           bootstrap_ci = TRUE,
                           bootstrap_samples = 500,
                           bootstrap_seed = 1234,
-                          at_risk_threshold = 0.1) {
+                          at_risk_threshold = 0.1,
+                          precomputed_predictions = NULL) {
   # If the model object is a tuning result, finalize the workflow
   if (inherits(model_obj, "tune_results")) {
     best_params <- tryCatch({
@@ -1318,6 +1319,7 @@ process_model <- function(model_obj,
 
   return(list(performance = perf, predictions = data_metrics))
   }
+
 
 
 

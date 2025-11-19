@@ -347,8 +347,10 @@ fastml <- function(data = NULL,
   }
 
 
-  # Determine source for target variable
+  # Determine source for target variable and track whether task detection is pending
   source_data <- if (!is.null(data)) data else train_data
+  target_var <- NULL
+  pending_auto_detection <- FALSE
 
   # Auto-detect task if requested, including survival when label has two columns
   if (task == "auto") {
@@ -376,24 +378,10 @@ fastml <- function(data = NULL,
         stop("Unable to detect survival task automatically: ensure time/start/stop are numeric and status has two unique values.")
       }
     } else {
-      # classification/regression detection with single target label
       if (!(label %in% names(source_data))) {
         stop("Label variable must exist in the data source.")
       }
-      target_var <- source_data[[label]]
-      if (is.numeric(target_var) && length(unique(target_var)) <= 5) {
-        task <- "classification"
-        warning(sprintf(
-          "The target variable '%s' is numeric with %d unique values. Converted to factor; task set to 'classification'.",
-          label, length(unique(target_var))
-        ))
-      } else if (is.factor(target_var) || is.character(target_var) || is.logical(target_var)) {
-        task <- "classification"
-      } else if (is.numeric(target_var)) {
-        task <- "regression"
-      } else {
-        stop("Unable to detect task type. The target variable must be numeric, factor, character, or logical.")
-      }
+      pending_auto_detection <- TRUE
     }
   } else {
     # Non-auto: validate label(s) exist and set target_var when applicable
@@ -406,7 +394,6 @@ fastml <- function(data = NULL,
       if (!(label %in% names(source_data))) {
         stop("Label variable must exist in the data source.")
       }
-      target_var <- source_data[[label]]
     }
   }
 
@@ -415,6 +402,7 @@ fastml <- function(data = NULL,
   # ---------------- END TASK DETECTION ----------------
 
 
+  provisional_split_used <- FALSE
   # If initial data provided, perform exclusion and checks, then split
   if (!is.null(data)) {
     if (task == "survival") {
@@ -452,7 +440,10 @@ fastml <- function(data = NULL,
 
     if (verbose) message("Splitting data into training and test sets...")
     # Split into train/test
-    if (stratify && task == "classification") {
+    if (pending_auto_detection && task == "auto") {
+      split <- rsample::initial_split(data, prop = 1 - test_size)
+      provisional_split_used <- TRUE
+    } else if (stratify && task == "classification") {
       split <- rsample::initial_split(
         data,
         prop = 1 - test_size,
@@ -580,9 +571,11 @@ fastml <- function(data = NULL,
 
 
   if (task != "survival") {
-    # Task detection and numeric-to-factor conversion for small numeric targets
+    target_var <- train_data[[label]]
+  }
+
+  if (pending_auto_detection && task != "survival") {
     if (is.numeric(target_var) && length(unique(target_var)) <= 5) {
-      # Convert both train and test labels to factor
       train_data[[label]] <- factor(train_data[[label]])
       test_data[[label]]  <- factor(test_data[[label]], levels = levels(train_data[[label]]))
       task <- "classification"
@@ -597,6 +590,19 @@ fastml <- function(data = NULL,
     } else {
       stop("Unable to detect task type. The target variable must be numeric, factor, character, or logical.")
     }
+    pending_auto_detection <- FALSE
+  }
+
+  if (provisional_split_used && stratify && task == "classification") {
+    set.seed(seed)
+    split <- rsample::initial_split(
+      data,
+      prop = 1 - test_size,
+      strata = tidyselect::all_of(label)
+    )
+    train_data <- rsample::training(split)
+    test_data  <- rsample::testing(split)
+    target_var <- train_data[[label]]
   }
 
 
@@ -833,21 +839,21 @@ fastml <- function(data = NULL,
   }
 
   if (verbose) message("Evaluating models...")
-  eval_output <- evaluate_models(models,
-                                train_data,
-                                test_data,
-                                label_surv,
-                                start_col,
-                                time_col,
-                                status_col,
-                                task,
-                                metric,
-                                event_class,
-                                eval_times = eval_times,
-                                bootstrap_ci = bootstrap_ci,
-                                bootstrap_samples = bootstrap_samples,
-                                bootstrap_seed = bootstrap_seed,
-                                at_risk_threshold = at_risk_threshold)
+  eval_output <- fastml_compute_holdout_results(models,
+                                               train_data,
+                                               test_data,
+                                               label_surv,
+                                               start_col,
+                                               time_col,
+                                               status_col,
+                                               task,
+                                               metric,
+                                               event_class,
+                                               eval_times = eval_times,
+                                               bootstrap_ci = bootstrap_ci,
+                                               bootstrap_samples = bootstrap_samples,
+                                               bootstrap_seed = bootstrap_seed,
+                                               at_risk_threshold = at_risk_threshold)
   performance <- eval_output$performance
   predictions <- eval_output$predictions
 

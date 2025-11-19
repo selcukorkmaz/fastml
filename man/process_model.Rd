@@ -21,7 +21,8 @@ process_model(
   bootstrap_ci = TRUE,
   bootstrap_samples = 500,
   bootstrap_seed = 1234,
-  at_risk_threshold = 0.1
+  at_risk_threshold = 0.1,
+  precomputed_predictions = NULL
 )
 }
 \arguments{
