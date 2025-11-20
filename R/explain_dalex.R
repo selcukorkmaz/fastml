@@ -37,10 +37,10 @@ explain_dalex <- function(object,
   }
 
   train_data <- as.data.frame(object$processed_train_data)
-  rownames(train_data) <- seq_len(nrow(train_data))
+  rownames(train_data) <- NULL
   x <- train_data %>% select(-!!label)
   x <- as.data.frame(x)
-  rownames(x) <- seq_len(nrow(x))
+  rownames(x) <- NULL
   y <- train_data[[label]]
 
   positive_class <- NULL
@@ -149,7 +149,7 @@ explain_dalex <- function(object,
       names(vi) <- names(best_model)
     }
 
-    vi_plot <- plot(vi, show_boxplots = TRUE)
+    vi_plot <- suppressWarnings(plot(vi, show_boxplots = TRUE))
     print(vi_plot)
 
     mp <- NULL
@@ -194,12 +194,12 @@ explain_dalex <- function(object,
     }
 
     if(length(object$best_model) == 1){
-      print(plot(shap) + labs(title = paste("SHAP Values")))
+      suppressWarnings(print(plot(shap) + labs(title = paste("SHAP Values"))))
     } else {
       plot_list <- list()
       for(model_name in names(shap)) {
         shap_df <- shap[[model_name]]
-        plot_list[[model_name]] <- plot(shap_df) + labs(title = paste("SHAP Values:", model_name))
+        plot_list[[model_name]] <- suppressWarnings(plot(shap_df) + labs(title = paste("SHAP Values:", model_name)))
       }
       combined_plot <- patchwork::wrap_plots(plot_list, nrow = 1)
       print(combined_plot)
