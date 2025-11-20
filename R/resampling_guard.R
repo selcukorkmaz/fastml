@@ -99,8 +99,8 @@ fastml_guarded_resample_fit <- function(workflow_spec,
   fold_metrics_df <- dplyr::bind_rows(fold_metrics, .id = "fold")
 
   aggregated <- fold_metrics_df %>%
-    dplyr::group_by(.metric, .estimator) %>%
-    dplyr::summarise(.estimate = mean(.estimate, na.rm = TRUE), .groups = "drop")
+    dplyr::group_by(.data$.metric, .data$.estimator) %>%
+    dplyr::summarise(.estimate = mean(.data$.estimate, na.rm = TRUE), .groups = "drop")
 
   result <- list(
     aggregated = aggregated,

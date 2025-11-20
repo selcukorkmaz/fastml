@@ -1,5 +1,3 @@
-utils::globalVariables(c("truth", "residual", "sensitivity", "specificity", "FalsePositiveRate", "TruePositiveRate", "Engine", "ModelEngine", "metric_display"))
-
 #' Summary Function for fastml (Using yardstick for ROC Curves)
 #'
 #' @description
@@ -526,18 +524,18 @@ summary.fastml <- function(object,
     performance_sub <- performance_sub %>%
       dplyr::mutate(
         metric_display = dplyr::case_when(
-          is.na(.estimate) ~ NA_character_,
-          !is.na(.lower) & !is.na(.upper) ~
-            sprintf("%.3f (%.3f, %.3f)", .estimate, .lower, .upper),
-          TRUE ~ sprintf("%.3f", .estimate)
+          is.na(.data$.estimate) ~ NA_character_,
+          !is.na(.data$.lower) & !is.na(.data$.upper) ~
+            sprintf("%.3f (%.3f, %.3f)", .data$.estimate, .data$.lower, .data$.upper),
+          TRUE ~ sprintf("%.3f", .data$.estimate)
         )
       )
   } else {
     performance_sub <- performance_sub %>%
       dplyr::mutate(
         metric_display = dplyr::case_when(
-          is.na(.estimate) ~ NA_character_,
-          TRUE ~ sprintf("%.3f", .estimate)
+          is.na(.data$.estimate) ~ NA_character_,
+          TRUE ~ sprintf("%.3f", .data$.estimate)
         )
       )
   }
@@ -552,21 +550,21 @@ summary.fastml <- function(object,
   }
   keep_metrics <- unique(keep_metrics)
   performance_numeric <- performance_sub %>%
-    dplyr::select(Model, Engine, .metric, .estimate) %>%
+    dplyr::select(.data$Model, .data$Engine, .data$.metric, .data$.estimate) %>%
     dplyr::distinct()
 
   performance_wide <- tidyr::pivot_wider(
     performance_numeric,
-    names_from = .metric,
-    values_from = .estimate
+    names_from = .data$.metric,
+    values_from = .data$.estimate
   )
 
   performance_display <- performance_sub %>%
-    dplyr::select(Model, Engine, .metric, metric_display) %>%
+    dplyr::select(.data$Model, .data$Engine, .data$.metric, .data$metric_display) %>%
     dplyr::distinct() %>%
     tidyr::pivot_wider(
-      names_from = .metric,
-      values_from = metric_display
+      names_from = .data$.metric,
+      values_from = .data$metric_display
     )
   select_cols_numeric <- c("Model", "Engine", keep_metrics)
   select_cols_numeric <- intersect(select_cols_numeric, colnames(performance_wide))

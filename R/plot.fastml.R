@@ -1,5 +1,3 @@
-utils::globalVariables(c("Model", "Value", "Measure"))
-
 #' Plot Methods for \code{fastml} Objects
 #'
 #' \code{plot.fastml} produces visual diagnostics for a trained \code{fastml} object.
@@ -144,8 +142,8 @@ plot.fastml <- function(x,
   if (length(engine_names) == 1 && "LiblineaR" %in% engine_names) {
     performance_wide <- tidyr::pivot_wider(
       performance_sub,
-      names_from  = .metric,
-      values_from = .estimate
+      names_from  = .data$.metric,
+      values_from = .data$.estimate
     ) %>%
       dplyr::select(Model, Engine, accuracy, kap, sens, spec, precision, f_meas)
   } else {
@@ -155,8 +153,8 @@ plot.fastml <- function(x,
     }
     performance_wide <- tidyr::pivot_wider(
       performance_sub,
-      names_from  = .metric,
-      values_from = .estimate
+      names_from  = .data$.metric,
+      values_from = .data$.estimate
     )
     select_cols <- c("Model", "Engine", keep_metrics)
     select_cols <- intersect(select_cols, colnames(performance_wide))
@@ -254,7 +252,7 @@ plot.fastml <- function(x,
 
     p_bar <- ggplot2::ggplot(
       performance_melt,
-      ggplot2::aes(x = Model, y = Value, fill = Engine)
+      ggplot2::aes(x = .data$Model, y = .data$Value, fill = .data$Engine)
     ) +
       ggplot2::geom_bar(stat = "identity", position = ggplot2::position_dodge()) +
       ggplot2::facet_wrap(~ Metric, scales = "free_y") +
@@ -400,10 +398,14 @@ plot.fastml <- function(x,
 
 
           # Create the ROC curve plot, using the compound ModelEngine label for color
-          roc_curve_plot <- ggplot(data = roc_data,
-                                   aes(x = 1 - FalsePositiveRate,
-                                       y = TruePositiveRate,
-                                       color = ModelEngine)) +
+          roc_curve_plot <- ggplot(
+            data = roc_data,
+            aes(
+              x = 1 - .data$FalsePositiveRate,
+              y = .data$TruePositiveRate,
+              color = .data$ModelEngine
+            )
+          ) +
             geom_line(linewidth = 1) +
             geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "grey") +
             theme_minimal() +
@@ -510,11 +512,14 @@ plot.fastml <- function(x,
       names_df_best <- unique(unlist(lapply(df_best, names)))
       if (!is.null(df_best) && "truth" %in% names_df_best && "estimate" %in% names_df_best) {
         df_best_all <- dplyr::bind_rows(df_best, .id = "ModelEngine") %>%
-          dplyr::mutate(residual = truth - estimate)
+          dplyr::mutate(residual = .data$truth - .data$estimate)
 
         cat("\nResidual Diagnostics for Best Model:\n")
 
-        p_truth_pred <- ggplot2::ggplot(df_best_all, ggplot2::aes(x = estimate, y = truth)) +
+        p_truth_pred <- ggplot2::ggplot(
+          df_best_all,
+          ggplot2::aes(x = .data$estimate, y = .data$truth)
+        ) +
           ggplot2::geom_point(alpha = 0.6) +
           ggplot2::geom_abline(linetype = "dashed", color = "red") +
           ggplot2::labs(
@@ -526,7 +531,10 @@ plot.fastml <- function(x,
           ggplot2::theme_bw()
         print(p_truth_pred)
 
-        p_resid_hist <- ggplot2::ggplot(df_best_all, ggplot2::aes(x = residual)) +
+        p_resid_hist <- ggplot2::ggplot(
+          df_best_all,
+          ggplot2::aes(x = .data$residual)
+        ) +
           ggplot2::geom_histogram(bins = 30, fill = "steelblue", color = "white", alpha = 0.7) +
           ggplot2::labs(
             title = "Residual Distribution",

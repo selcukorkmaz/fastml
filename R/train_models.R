@@ -2108,12 +2108,3 @@ train_models <- function(train_data,
   return(models)
 }
 
-# Declare global variables
-utils::globalVariables(c(
-  "id", "object", "estimate", ".metric", ".estimate", ".pred", ".pred_class",
-  "rmse", "rsq", "min_n", "num_comp"
-))
-
-
-
-

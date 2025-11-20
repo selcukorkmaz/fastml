@@ -1,5 +1,3 @@
-utils::globalVariables(c(".", "Corr", "P_Value", "Test", "Var1", "Var2", "value", "for"))
-
 #' Explore and Summarize a Dataset Quickly
 #'
 #' \code{fastexplore} provides a fast and comprehensive exploratory data analysis (EDA) workflow.
@@ -318,11 +316,10 @@ fastexplore <- function(
   # Enhanced Data Overview
 
   # 1. Basic Dimensions and Structure
-  data_dimensions <- data %>%
-    summarise(
-      Rows = n(),
-      Columns = ncol(.)
-    )
+  data_dimensions <- tibble::tibble(
+    Rows = nrow(data),
+    Columns = ncol(data)
+  )
 
   data_column_names <- names(data)
 
@@ -616,7 +613,10 @@ fastexplore <- function(
         stop("Package 'reshape2' must be installed to create static heatmap.")
       }
       corr_melt <- melt(correlation_matrix)
-      heatmap_plot <- ggplot(corr_melt, aes(x = Var1, y = Var2, fill = value)) +
+      heatmap_plot <- ggplot(
+        corr_melt,
+        aes(x = .data$Var1, y = .data$Var2, fill = .data$value)
+      ) +
         geom_tile(color = "white") +
         scale_fill_gradient2(
           low = "blue",
@@ -1342,12 +1342,12 @@ perform_normality_tests <- function(data, numeric_cols, normality_tests) {
 
   # Multiple Testing Correction (e.g., Benjamini-Hochberg)
   results_df <- results_df %>%
-    group_by(Test) %>%
-    mutate(Adjusted_P_Value = p.adjust(P_Value, method = "BH")) %>%
-    ungroup() %>%
-    mutate(Normal = case_when(
-      Adjusted_P_Value < 0.05 ~ "No",
-      Adjusted_P_Value >= 0.05 ~ "Yes",
+    dplyr::group_by(.data$Test) %>%
+    dplyr::mutate(Adjusted_P_Value = stats::p.adjust(.data$P_Value, method = "BH")) %>%
+    dplyr::ungroup() %>%
+    dplyr::mutate(Normal = dplyr::case_when(
+      .data$Adjusted_P_Value < 0.05 ~ "No",
+      .data$Adjusted_P_Value >= 0.05 ~ "Yes",
       TRUE ~ NA_character_
     ))
 

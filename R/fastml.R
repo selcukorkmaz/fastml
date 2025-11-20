@@ -1,5 +1,3 @@
-utils::globalVariables(c("Fraction", "Performance"))
-
 #' Fast Machine Learning Function
 #'
 #' Trains and evaluates multiple classification or regression models automatically detecting the task based on the target variable type.
@@ -117,14 +115,13 @@ utils::globalVariables(c("Fraction", "Performance"))
 #' @importFrom rsample initial_split training testing
 #' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake all_numeric_predictors all_predictors all_nominal_predictors all_outcomes step_zv step_rm step_novel step_unknown
 #' @importFrom dplyr filter pull rename_with mutate across where select all_of group_by sample_n ungroup
-#' @importFrom rlang sym
+#' @importFrom rlang sym .data
 #' @importFrom stats as.formula complete.cases
 #' @importFrom doFuture registerDoFuture
 #' @importFrom future plan multisession sequential
 #' @importFrom janitor make_clean_names
 #' @importFrom stringr str_detect
 #' @importFrom purrr flatten
-#' @importFrom tidyselect all_of
 #' @return An object of class \code{fastml} containing the best model, performance metrics, and other information.
 #' @examples
 #' \donttest{
@@ -447,7 +444,7 @@ fastml <- function(data = NULL,
       split <- rsample::initial_split(
         data,
         prop = 1 - test_size,
-        strata = tidyselect::all_of(label)
+        strata = dplyr::all_of(label)
       )
     } else {
       split <- rsample::initial_split(data, prop = 1 - test_size)
@@ -598,7 +595,7 @@ fastml <- function(data = NULL,
     split <- rsample::initial_split(
       data,
       prop = 1 - test_size,
-      strata = tidyselect::all_of(label)
+      strata = dplyr::all_of(label)
     )
     train_data <- rsample::training(split)
     test_data  <- rsample::testing(split)
@@ -1181,7 +1178,7 @@ fastml <- function(data = NULL,
 
     # Plot the learning curve
 
-      lc_plot <- ggplot(df_lc, aes(x = Fraction, y = Performance)) +
+      lc_plot <- ggplot(df_lc, aes(x = .data$Fraction, y = .data$Performance)) +
         geom_line(color = "blue") +
         geom_point(color = "blue") +
         labs(
