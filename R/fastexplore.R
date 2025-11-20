@@ -790,16 +790,20 @@ fastexplore <- function(
       }
     }
 
-    # (NEW) 11e. Pairwise Scatterplot Matrix using GGally or base pairs
-    if (pairwise_matrix && length(numeric_cols) > 1) {
-      # Limit how many columns to show
-      numeric_subset <- numeric_cols[1:min(length(numeric_cols), max_scatter_cols)]
+  # (NEW) 11e. Pairwise Scatterplot Matrix using GGally or base pairs
+  if (pairwise_matrix && length(numeric_cols) > 1) {
+      if (!requireNamespace("GGally", quietly = TRUE)) {
+        message("Package 'GGally' is required for pairwise scatterplot matrices.")
+      } else {
+        # Limit how many columns to show
+        numeric_subset <- numeric_cols[1:min(length(numeric_cols), max_scatter_cols)]
         spm <- GGally::ggpairs(data_vis[, numeric_subset, drop = FALSE])
         if(save_results){
         save_plot(spm, results_folder, "ScatterPlot", "pairwise_scatterplot_matrix.png")
         }
+      }
 
-    }
+  }
 
     # (NEW) 11f. Categorical vs. Numeric Plots (grouped histograms, violin, density) if grouped_plots=TRUE
     if (grouped_plots &&
