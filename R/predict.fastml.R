@@ -94,6 +94,35 @@ predict.fastml <- function(object, newdata,
                          type
   )
 
+  # Helper: standardized risk/linear predictor extraction -----------------
+  fastml_predict_risk <- function(model, new_data, ...) {
+    if (inherits(model, "fastml_native_survival")) {
+      return(predict_risk(model, newdata = new_data, ...))
+    }
+
+    lp <- tryCatch(
+      predict(model, new_data = new_data, type = "linear_pred", ...),
+      error = function(e) NULL
+    )
+
+    if (is.null(lp)) {
+      stop("This model does not support risk/linear predictor scores.", call. = FALSE)
+    }
+
+    if (is.data.frame(lp) || tibble::is_tibble(lp)) {
+      if (".pred" %in% names(lp)) {
+        return(as.numeric(lp$.pred))
+      }
+      if (".pred_lp" %in% names(lp)) {
+        return(as.numeric(lp$.pred_lp))
+      }
+      # Fallback to first column
+      return(as.numeric(lp[[1]]))
+    }
+
+    as.numeric(lp)
+  }
+
   # Helper: normalize nested model lists into a flat, named list ----------
   normalize_models <- function(mods, engine_names = NULL) {
     if (!is.list(mods)) {
@@ -212,22 +241,7 @@ predict.fastml <- function(object, newdata,
 
       if (identical(predict_type, "risk")) {
         risk_pred <- tryCatch({
-          if (inherits(wf, "fastml_native_survival")) {
-            predict_risk(wf, newdata = new_data_for_predict, ...)
-          } else {
-            pred_obj <- predict(wf, new_data = new_data_for_predict, type = "linear_pred", ...)
-            if (is.data.frame(pred_obj) || tibble::is_tibble(pred_obj)) {
-              if (".pred" %in% names(pred_obj)) {
-                pred_obj$.pred
-              } else if (".pred_lp" %in% names(pred_obj)) {
-                pred_obj$.pred_lp
-              } else {
-                as.numeric(pred_obj[[1]])
-              }
-            } else {
-              as.numeric(pred_obj)
-            }
-          }
+          fastml_predict_risk(wf, new_data_for_predict, ...)
         }, error = function(e) {
           stop(sprintf("Failed to obtain risk predictions for model '%s': %s", nm, e$message), call. = FALSE)
         })
