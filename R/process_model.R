@@ -896,7 +896,10 @@ process_model <- function(model_obj,
             aligned_predictors <- current_predictors[, expected_features]
 
             # 3. Convert the now perfectly aligned data frame to a numeric matrix.
-            predictor_matrix <- as.matrix(aligned_predictors)
+            if (!all(vapply(aligned_predictors, is.numeric, logical(1)))) {
+              stop("Aligned predictors for xgboost AFT must be numeric; check preprocessing/dummy encoding.")
+            }
+            predictor_matrix <- data.matrix(aligned_predictors)
             # --- END OF FIX ---
 
             # 4. Get the linear predictor (log-time). This call will now succeed.
