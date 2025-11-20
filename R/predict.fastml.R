@@ -94,21 +94,75 @@ predict.fastml <- function(object, newdata,
                          type
   )
 
-  # 4. choose which workflows to use ---------------------------------------
-  if (!is.null(model_name)) {
-    # user wants a specific model → look in object$models
-    all_mods <- object$models
-    if (!is.list(all_mods) ||
-        !all(sapply(all_mods, inherits, "workflow"))) {
-      stop("No valid `models` slot in fastml object.")
+  # Helper: normalize nested model lists into a flat, named list ----------
+  normalize_models <- function(mods, engine_names = NULL) {
+    if (!is.list(mods)) {
+      return(list())
     }
-    bad <- setdiff(model_name, names(all_mods))
+
+    if (all(vapply(mods, inherits, logical(1), what = "workflow"))) {
+      return(mods)
+    }
+
+    out <- list()
+    for (algo in names(mods)) {
+      entry <- mods[[algo]]
+
+      if (inherits(entry, "workflow")) {
+        eng <- tryCatch(engine_names[[algo]], error = function(e) NULL)
+        eng <- if (is.null(eng) || length(eng) == 0 || is.na(eng[1])) NULL else eng[1]
+        nm  <- if (!is.null(eng)) paste0(algo, " (", eng, ")") else algo
+        out[[nm]] <- entry
+        next
+      }
+
+      if (is.list(entry)) {
+        inner_names <- names(entry)
+        for (j in seq_along(entry)) {
+          wf <- entry[[j]]
+          if (!inherits(wf, "workflow")) next
+          eng <- if (!is.null(inner_names) && !is.na(inner_names[j]) && nzchar(inner_names[j])) {
+            inner_names[j]
+          } else {
+            NULL
+          }
+          nm <- if (!is.null(eng)) paste0(algo, " (", eng, ")") else algo
+          out[[nm]] <- wf
+        }
+      }
+    }
+    out
+  }
+
+  resolve_model_names <- function(requested, available) {
+    if (length(requested) == 0) return(character())
+    avail_set <- unique(available)
+    base_map <- stats::setNames(avail_set, sub(" \\(.*\)$", "", avail_set))
+    vapply(requested, function(nm) {
+      if (nm %in% avail_set) {
+        nm
+      } else if (!is.null(base_map[[nm]])) {
+        base_map[[nm]]
+      } else {
+        NA_character_
+      }
+    }, character(1))
+  }
+
+  # 4. choose which workflows to use ---------------------------------------
+  all_mods <- normalize_models(object$models, object$engine_names)
+  if (!length(all_mods) || !all(vapply(all_mods, inherits, logical(1), what = "workflow"))) {
+    stop("No valid `models` slot in fastml object.")
+  }
+
+  if (!is.null(model_name)) {
+    resolved <- resolve_model_names(model_name, names(all_mods))
+    bad <- setdiff(model_name, model_name[!is.na(resolved)])
     if (length(bad)) {
       stop("Requested model_name not found: ", paste(bad, collapse = ", "))
     }
-    to_predict <- all_mods[model_name]
+    to_predict <- all_mods[na.omit(resolved)]
   } else {
-    # default → best_model slot
     bm <- object$best_model
     if (inherits(bm, "workflow")) {
       to_predict <- list(bm)
@@ -116,7 +170,7 @@ predict.fastml <- function(object, newdata,
     } else if (is.list(bm) && all(sapply(bm, inherits, "workflow"))) {
       to_predict <- bm
     } else {
-      stop("No valid `best_model` found in fastml object.")
+      to_predict <- all_mods
     }
   }
 
@@ -209,5 +263,6 @@ predict.fastml <- function(object, newdata,
   class(preds) <- "fastml_prediction"
   preds
 }
+
 
 
