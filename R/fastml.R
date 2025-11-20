@@ -550,23 +550,6 @@ fastml <- function(data = NULL,
     }
   }
 
-  supported_algorithms <- availableMethods(type = task)
-
-  if ("all" %in% algorithms) {
-    algorithms <- supported_algorithms
-  } else {
-    if (length(intersect(algorithms, supported_algorithms)) == 0) {
-      stop("No valid algorithms specified.")
-    }
-    invalid_algos <- setdiff(algorithms, supported_algorithms)
-    if (length(invalid_algos) > 0) {
-      warning("Invalid algorithm(s) specified: ", paste(invalid_algos, collapse = ", "))
-      algorithms <- intersect(algorithms, supported_algorithms)
-    }
-  }
-
-
-
   if (task != "survival") {
     target_var <- train_data[[label]]
   }
@@ -600,6 +583,21 @@ fastml <- function(data = NULL,
     train_data <- rsample::training(split)
     test_data  <- rsample::testing(split)
     target_var <- train_data[[label]]
+  }
+
+  supported_algorithms <- availableMethods(type = task)
+
+  if ("all" %in% algorithms) {
+    algorithms <- supported_algorithms
+  } else {
+    if (length(intersect(algorithms, supported_algorithms)) == 0) {
+      stop("No valid algorithms specified.")
+    }
+    invalid_algos <- setdiff(algorithms, supported_algorithms)
+    if (length(invalid_algos) > 0) {
+      warning("Invalid algorithm(s) specified: ", paste(invalid_algos, collapse = ", "))
+      algorithms <- intersect(algorithms, supported_algorithms)
+    }
   }
 
 
