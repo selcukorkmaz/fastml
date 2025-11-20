@@ -536,39 +536,6 @@ fastml <- function(data = NULL,
   }
 
 
-  if (is.null(metric)) {
-    metric <- if (task == "classification") {
-      "accuracy"
-    } else if (task == "regression") {
-      "rmse"
-    } else {
-      "ibs"
-    }
-  }
-
-  # Define allowed metrics
-  allowed_metrics_classification <- c("accuracy", "kap", "sens", "spec", "precision", "f_meas", "roc_auc")
-  allowed_metrics_regression <- c("rmse", "rsq", "mae")
-  allowed_metrics_survival <- c("c_index", "uno_c", "ibs", "rmst_diff")
-
-  # Validate the metric based on the task
-  if (task == "classification") {
-    if (!(metric %in% allowed_metrics_classification) && is.null(summaryFunction)) {
-      stop(paste0("Invalid metric for classification task. Choose one of: ",
-                  paste(allowed_metrics_classification, collapse = ", "), "."))
-    }
-  } else if (task == "regression") {
-    if (!(metric %in% allowed_metrics_regression) && is.null(summaryFunction)) {
-      stop(paste0("Invalid metric for regression task. Choose one of: ",
-                  paste(allowed_metrics_regression, collapse = ", "), "."))
-    }
-  } else {
-    if (!(metric %in% allowed_metrics_survival || grepl("^brier_t", metric))) {
-      stop(paste0("Invalid metric for survival task. Choose one of: ",
-                  paste(c(allowed_metrics_survival, "brier_t*"), collapse = ", "), "."))
-    }
-  }
-
   if (task != "survival") {
     target_var <- train_data[[label]]
   }
@@ -602,6 +569,38 @@ fastml <- function(data = NULL,
     train_data <- rsample::training(split)
     test_data  <- rsample::testing(split)
     target_var <- train_data[[label]]
+  }
+
+  # Set default metric now that task has been resolved and validate it
+  if (is.null(metric)) {
+    metric <- if (task == "classification") {
+      "accuracy"
+    } else if (task == "regression") {
+      "rmse"
+    } else {
+      "ibs"
+    }
+  }
+
+  allowed_metrics_classification <- c("accuracy", "kap", "sens", "spec", "precision", "f_meas", "roc_auc")
+  allowed_metrics_regression <- c("rmse", "rsq", "mae")
+  allowed_metrics_survival <- c("c_index", "uno_c", "ibs", "rmst_diff")
+
+  if (task == "classification") {
+    if (!(metric %in% allowed_metrics_classification) && is.null(summaryFunction)) {
+      stop(paste0("Invalid metric for classification task. Choose one of: ",
+                  paste(allowed_metrics_classification, collapse = ", "), "."))
+    }
+  } else if (task == "regression") {
+    if (!(metric %in% allowed_metrics_regression) && is.null(summaryFunction)) {
+      stop(paste0("Invalid metric for regression task. Choose one of: ",
+                  paste(allowed_metrics_regression, collapse = ", "), "."))
+    }
+  } else {
+    if (!(metric %in% allowed_metrics_survival || grepl("^brier_t", metric))) {
+      stop(paste0("Invalid metric for survival task. Choose one of: ",
+                  paste(c(allowed_metrics_survival, "brier_t*"), collapse = ", "), "."))
+    }
   }
 
   supported_algorithms <- availableMethods(type = task)

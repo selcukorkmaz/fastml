@@ -1488,6 +1488,29 @@ train_models <- function(train_data,
     metrics <- metric_set(rmse, rsq, mae)
   }
 
+  # Ensure the requested metric is available in the current metric set
+  metric_ids <- if (task == "classification") {
+    base_ids <- c("accuracy", "kap", "sens", "spec", "precision", "f_meas", "roc_auc")
+    if (!is.null(summaryFunction)) {
+      base_ids <- c(base_ids, metric)
+    }
+    base_ids
+  } else if (task == "survival") {
+    c("c_index", "uno_c", "ibs", "rmst_diff")
+  } else {
+    c("rmse", "rsq", "mae")
+  }
+  if (!(metric %in% metric_ids)) {
+    warning(
+      sprintf(
+        "Metric '%s' not available for task '%s'; defaulting to '%s'.",
+        metric, task, metric_ids[1]
+      ),
+      call. = FALSE
+    )
+    metric <- metric_ids[1]
+  }
+
   resample_plan <- NULL
 
   if (!is.null(resamples)) {
