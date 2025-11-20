@@ -7,7 +7,7 @@
 \method{plot}{fastml}(
   x,
   algorithm = "best",
-  type = c("all", "bar", "roc", "calibration", "residual"),
+  type = c("all", "bar", "roc", "calibration", "residual", "learning_curve"),
   ...
 )
 }
@@ -23,6 +23,7 @@ generating certain plots (e.g., ROC curves). Defaults to \code{"best"}.}
   \item{\code{"roc"}}{ROC curve(s) for binary classification models.}
   \item{\code{"calibration"}}{Calibration plot for the best model(s).}
   \item{\code{"residual"}}{Residual diagnostics for the best model.}
+  \item{\code{"learning_curve"}}{Learning-curve plot if recorded during training.}
   \item{\code{"all"}}{Produce all available plots.}
 }}
 
