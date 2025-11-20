@@ -27,24 +27,13 @@ explain_lime <- function(object, n_features = 5, n_labels = 1, ...) {
     stop("The 'lime' package is required for LIME explanations.")
   }
 
-  if (is.null(object$processed_train_data)) {
-    stop("Processed training data not found in the fastml object.")
-  }
-
-  x <- object$processed_train_data[, setdiff(names(object$processed_train_data),
-                                             object$label), drop = FALSE]
-  y <- object$processed_train_data[[object$label]]
-
-  parsnip_fit <- tryCatch(tune::extract_fit_parsnip(object$best_model[[1]]),
-                          error = function(e) NULL)
-  if (is.null(parsnip_fit) && inherits(object$best_model, "model_fit")) {
-    parsnip_fit <- object$best_model
-  }
-  if (is.null(parsnip_fit)) {
+  prep <- fastml_prepare_explainer_inputs(object)
+  x <- prep$x
+  if (length(prep$fits) == 0) {
     stop("Unable to extract parsnip model for LIME.")
   }
 
-  explainer <- lime::lime(x, parsnip_fit)
+  explainer <- lime::lime(x, prep$fits[[1]])
   explanation <- lime::explain(x, explainer,
                                n_features = n_features,
                                n_labels = n_labels, ...)

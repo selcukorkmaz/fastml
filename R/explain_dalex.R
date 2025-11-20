@@ -23,31 +23,17 @@ explain_dalex <- function(object,
     stop("The input must be a 'fastml' object.")
   }
 
-  best_model <- object$best_model
-  task <- object$task
-  label <- object$label
+  prep <- fastml_prepare_explainer_inputs(object)
+  task <- prep$task
+  label <- prep$label
+  x <- prep$x
+  y <- prep$y
+  train_data <- prep$train_data
+  model_names <- prep$model_names
+  fits <- prep$fits
 
   if(!is.null(features)){
     features <- sanitize(features)
-  }
-
-  if (is.null(object$processed_train_data) || !(label %in% names(object$processed_train_data))) {
-    cat("\nCannot create DALEX explainer without processed training data and a target variable.\n")
-    return(invisible(NULL))
-  }
-
-  train_data <- as.data.frame(object$processed_train_data)
-  rownames(train_data) <- NULL
-  x <- train_data %>% select(-!!label)
-  x <- as.data.frame(x)
-  rownames(x) <- NULL
-  y <- train_data[[label]]
-
-  positive_class <- NULL
-  if (task == "classification") {
-    if (is.factor(y) && length(levels(y)) == 2) {
-      positive_class <- object$positive_class
-    }
   }
 
   pred_fun_for_pdp <- function(m, newdata) {
@@ -62,27 +48,6 @@ explain_dalex <- function(object,
   }
 
   model_info <- if (task == "classification") list(type = "classification") else list(type = "regression")
-
-  if(length(object$best_model) == 1){
-    parsnip_fit <- tryCatch(
-      extract_fit_parsnip(object$best_model[[1]]),
-      error = function(e) NULL
-    )
-  } else {
-    parsnip_fit <- tryCatch(
-      lapply(object$best_model, extract_fit_parsnip),
-      error = function(e) NULL
-    )
-  }
-
-  if (is.null(parsnip_fit) && inherits(best_model, "model_fit")) {
-    parsnip_fit <- best_model
-  }
-
-  if (is.null(parsnip_fit)) {
-    cat("Could not extract a parsnip model from the workflow.\nDALEX explainer may fail.\n")
-    return(invisible(NULL))
-  }
 
   if (!requireNamespace("DALEX", quietly = TRUE)) {
     stop("The 'DALEX' package is required.")
@@ -104,18 +69,19 @@ explain_dalex <- function(object,
   }
 
   exp_try <- try({
-    if(length(object$best_model) == 1){
+    if(length(fits) == 1){
       explainer <- explain(
-        model = parsnip_fit,
+        model = fits[[1]],
         data = x,
         y = if (is.numeric(y)) y else as.numeric(y),
-        label = object$best_model_name,
+        label = if (length(model_names) == 1) model_names[[1]] else object$best_model_name,
         predict_function = predict_function,
         model_info = model_info
       )
     } else {
-      explainer_list <- lapply(names(parsnip_fit), function(model_name) {
-        model <- parsnip_fit[[model_name]]
+      explainer_list <- lapply(seq_along(fits), function(i) {
+        model <- fits[[i]]
+        model_name <- if (length(model_names) >= i) model_names[[i]] else paste0("model_", i)
         explain(
           model = model,
           data = x,
@@ -130,7 +96,7 @@ explain_dalex <- function(object,
     cat("\n=== DALEX Variable Importance (with Boxplots) ===\n")
     set.seed(seed)
 
-    if(length(object$best_model) == 1){
+    if(length(fits) == 1){
       vi <- model_parts(
         explainer,
         B = vi_iterations,
@@ -138,15 +104,15 @@ explain_dalex <- function(object,
         loss_function = loss_function
       )
     } else {
-      vi <- lapply(explainer_list, function(explainer) {
+      vi <- lapply(explainer_list, function(expl) {
         model_parts(
-          explainer = explainer,
+          explainer = expl,
           B = vi_iterations,
           type = "raw",
           loss_function = loss_function
         )
       })
-      names(vi) <- names(best_model)
+      names(vi) <- model_names
     }
 
     vi_plot <- suppressWarnings(plot(vi, show_boxplots = TRUE))
@@ -155,13 +121,13 @@ explain_dalex <- function(object,
     mp <- NULL
     if (!is.null(features)) {
       cat("\n=== DALEX Model Profiles (Partial Dependence) ===\n")
-      if(length(object$best_model) == 1){
+      if(length(fits) == 1){
         mp <- model_profile(explainer, variables = features, N = grid_size)
       } else {
-        mp <- lapply(explainer_list, function(explainer) {
-          model_profile(explainer, variables = features, N = grid_size)
+        mp <- lapply(explainer_list, function(expl) {
+          model_profile(expl, variables = features, N = grid_size)
         })
-        names(mp) <- names(best_model)
+        names(mp) <- model_names
       }
     }
 
@@ -169,16 +135,16 @@ explain_dalex <- function(object,
 
     cat("\n=== DALEX Shapley Values (SHAP) ===\n")
     set.seed(seed)
-    if(length(object$best_model) == 1){
+    if(length(fits) == 1){
       shap <- predict_parts(explainer, new_observation = shap_data, type = "shap")
     } else {
-      shap <- lapply(explainer_list, function(explainer) {
-        predict_parts(explainer, new_observation = shap_data, type = "shap")
+      shap <- lapply(explainer_list, function(expl) {
+        predict_parts(expl, new_observation = shap_data, type = "shap")
       })
-      names(shap) <- names(best_model)
+      names(shap) <- model_names
     }
 
-    if(length(object$best_model) == 1){
+    if(length(fits) == 1){
       shap$abs_contribution <- abs(shap$contribution)
     } else {
       shap <- lapply(shap, function(model_shap) {
