@@ -97,7 +97,30 @@ predict.fastml <- function(object, newdata,
   # Helper: standardized risk/linear predictor extraction -----------------
   fastml_predict_risk <- function(model, new_data, ...) {
     if (inherits(model, "fastml_native_survival")) {
-      return(predict_risk(model, newdata = new_data, ...))
+      # Prefer the S3 generic if available
+      native_lp <- tryCatch(
+        predict_risk(model, newdata = new_data, ...),
+        error = function(e) NULL
+      )
+      if (!is.null(native_lp)) {
+        return(as.numeric(native_lp))
+      }
+
+      # Fallback: handle common native fits directly
+      fit_obj <- model$fit
+      baked <- tryCatch(
+        recipes::bake(model$recipe, new_data = new_data),
+        error = function(e) new_data
+      )
+
+      if (inherits(fit_obj, "coxph") || inherits(fit_obj, "survreg")) {
+        lp <- tryCatch(stats::predict(fit_obj, newdata = baked, type = "lp"), error = function(e) NULL)
+        if (!is.null(lp)) {
+          return(as.numeric(lp))
+        }
+      }
+
+      stop("Risk prediction for this native survival model is not available.", call. = FALSE)
     }
 
     lp <- tryCatch(
