@@ -171,9 +171,6 @@ fastexplore <- function(
                     label, length(unique(target_var))))
   }
 
-  data = sanitize(data)
-
-
   # Identify numeric and categorical columns
   numeric_cols <- names(data)[vapply(data, is.numeric, logical(1))]
   factor_cols  <- names(data)[vapply(data, function(x)
