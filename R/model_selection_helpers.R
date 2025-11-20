@@ -129,7 +129,9 @@ get_best_model_idx <- function(df, metric, group_cols = c("Model", "Engine")) {
   group_values <- interaction(df[, group_cols], drop = TRUE)
 
   # Compute the maximum metric for each group
-  lower_is_better <- metric %in% c("rmse", "mae", "ibs") || grepl("^brier_t", metric)
+  lower_is_better <- metric %in% c("rmse", "mae", "ibs", "logloss", "mse", "brier_score") ||
+    grepl("^brier_t", metric) ||
+    grepl("loss", metric)
   if(lower_is_better){
 
     group_val <- ave(metric_values, group_values, FUN = min)
