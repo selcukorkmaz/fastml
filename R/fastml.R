@@ -696,6 +696,7 @@ fastml <- function(data = NULL,
     }
     registerDoFuture()
     plan(multisession, workers = n_cores)
+    on.exit(plan(sequential), add = TRUE)
   } else {
     if (!requireNamespace("future", quietly = TRUE)) {
       stop("The 'future' package is required but is not installed.")
