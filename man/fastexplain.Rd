@@ -23,7 +23,7 @@ fastexplain(
 \item{method}{Character string specifying the explanation method.
 Supported values are \code{"dalex"}, \code{"lime"}, \code{"ice"},
 \code{"ale"}, \code{"surrogate"}, \code{"interaction"}, and
-\code{"counterfactual"}. Defaults to \code{"dalex"}.}
+\code{"counterfactual"}, \code{"studio"}. Defaults to \code{"dalex"}.}
 
 \item{features}{Character vector of feature names for partial dependence (model profiles). Default NULL.}
 

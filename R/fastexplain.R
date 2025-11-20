@@ -32,7 +32,7 @@
 #' @param method Character string specifying the explanation method.
 #'   Supported values are \code{"dalex"}, \code{"lime"}, \code{"ice"},
 #'   \code{"ale"}, \code{"surrogate"}, \code{"interaction"}, and
-#'   \code{"counterfactual"}. Defaults to \code{"dalex"}.
+#'   \code{"counterfactual"}, \code{"studio"}. Defaults to \code{"dalex"}.
 #' @param features Character vector of feature names for partial dependence (model profiles). Default NULL.
 #' @param observation A single observation for counterfactual explanations. Default NULL.
 #' @param grid_size Number of grid points for partial dependence. Default 20.
@@ -89,6 +89,31 @@ fastexplain <- function(object,
       stop("'observation' must be provided for counterfactual explanations.")
     }
     return(counterfactual_explain(object, observation, ...))
+  } else if (method == "studio") {
+    if (!requireNamespace("modelStudio", quietly = TRUE)) {
+      stop("The 'modelStudio' package is required for method = 'studio'.")
+    }
+    expl_prep <- fastml_prepare_explainer_inputs(object)
+    explainer <- tryCatch({
+      DALEX::explain(
+        model = expl_prep$fits[[1]],
+        data = expl_prep$x,
+        y = if (is.numeric(expl_prep$y)) expl_prep$y else as.numeric(expl_prep$y),
+        label = if (length(expl_prep$model_names) >= 1) expl_prep$model_names[[1]] else "model",
+        predict_function = function(m, newdata) {
+          if (expl_prep$task == "classification") {
+            p <- predict(m, new_data = newdata, type = "prob")
+            colnames(p) <- sub("^\\.pred_", "", colnames(p))
+            return(as.data.frame(p))
+          } else {
+            p <- predict(m, new_data = newdata, type = "numeric")
+            return(as.numeric(p$.pred))
+          }
+        },
+        model_info = if (expl_prep$task == "classification") list(type = "classification") else list(type = "regression")
+      )
+    }, error = function(e) stop("Failed to build explainer for modelStudio: ", e$message))
+    return(modelStudio::modelStudio(explainer, ...))
   } else if (method != "dalex") {
     stop("Unknown explanation method.")
   }
