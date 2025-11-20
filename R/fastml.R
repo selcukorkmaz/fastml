@@ -403,7 +403,9 @@ fastml <- function(data = NULL,
     if (missing_targets > 0) {
       stop(
         sprintf(
-          "Error: The label variable '%s' contains %d missing values (NA). Rows with missing targets cannot be used for training. Please filter these rows out before running fastml.",
+          "Error: The label variable '%s' contains %d missing values (NA).
+          Rows with missing targets cannot be used for training.
+          Please filter these rows out before running fastml.",
           label,
           missing_targets
         )
