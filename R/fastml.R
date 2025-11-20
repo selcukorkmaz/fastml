@@ -394,6 +394,23 @@ fastml <- function(data = NULL,
     }
   }
 
+  # Early check: label column must not contain missing values for non-survival tasks
+  if (!is.null(label) &&
+      length(label) == 1 &&
+      task != "survival" &&
+      label %in% names(source_data)) {
+    missing_targets <- sum(is.na(source_data[[label]]))
+    if (missing_targets > 0) {
+      stop(
+        sprintf(
+          "Error: The label variable '%s' contains %d missing values (NA). Rows with missing targets cannot be used for training. Please filter these rows out before running fastml.",
+          label,
+          missing_targets
+        )
+      )
+    }
+  }
+
   # determine positive_class after data split when factor levels are available
   positive_class <- NULL
   # ---------------- END TASK DETECTION ----------------
