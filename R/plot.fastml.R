@@ -11,6 +11,7 @@
 #'     \item{\code{"roc"}}{ROC curve(s) for binary classification models.}
 #'     \item{\code{"calibration"}}{Calibration plot for the best model(s).}
 #'     \item{\code{"residual"}}{Residual diagnostics for the best model.}
+#'     \item{\code{"learning_curve"}}{Learning-curve plot if recorded during training.}
 #'     \item{\code{"all"}}{Produce all available plots.}
 #'   }
 #' @param ... Additional arguments (currently unused).
@@ -56,7 +57,7 @@
 #' @export
 plot.fastml <- function(x,
                         algorithm = "best",
-                        type = c("all", "bar", "roc", "calibration", "residual"),
+                        type = c("all", "bar", "roc", "calibration", "residual", "learning_curve"),
                         ...) {
 
   if (!inherits(x, "fastml")) {
@@ -66,7 +67,7 @@ plot.fastml <- function(x,
   # Validate 'type' argument
   type <- match.arg(type, several.ok = TRUE)
   if ("all" %in% type) {
-    type <- c("bar", "roc", "calibration", "residual")
+    type <- c("bar", "roc", "calibration", "residual", "learning_curve")
   }
 
   performance      <- x$performance
@@ -549,6 +550,31 @@ plot.fastml <- function(x,
       }
     } else {
       cat("\nResidual diagnostics are only available for regression tasks.\n\n")
+    }
+  }
+
+  # 5. Learning curve (optional)
+  if ("learning_curve" %in% type) {
+    lc <- x$learning_curve
+    if (!is.null(lc) && !is.null(lc$plot)) {
+      print(lc$plot)
+    } else if (!is.null(lc) && !is.null(lc$data)) {
+      lc_plot <- ggplot2::ggplot(
+        lc$data,
+        ggplot2::aes(x = .data$Fraction, y = .data$Performance)
+      ) +
+        ggplot2::geom_line(color = "blue") +
+        ggplot2::geom_point(color = "blue") +
+        ggplot2::labs(
+          title = "Learning Curve",
+          x = "Training Set Size (fraction)",
+          y = paste("Mean", optimized_metric, "across models"),
+          caption = resampling_caption
+        ) +
+        ggplot2::theme_minimal()
+      print(lc_plot)
+    } else {
+      cat("\nNo learning curve data available. Set `learning_curve = TRUE` when fitting to record it.\n\n")
     }
   }
 

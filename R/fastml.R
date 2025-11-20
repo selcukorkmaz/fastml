@@ -1176,19 +1176,19 @@ fastml <- function(data = NULL,
     # Apply the helper function to each fraction and combine the results
     df_lc <- do.call(rbind, lapply(fractions, run_curve))
 
-    # Plot the learning curve
-
-      lc_plot <- ggplot(df_lc, aes(x = .data$Fraction, y = .data$Performance)) +
-        geom_line(color = "blue") +
-        geom_point(color = "blue") +
-        labs(
-          title = "Learning Curve",
-          x = "Training Set Size (fraction)",
-          y = paste("Mean", metric, "across models")
-        ) +
-        theme_minimal()
-      print(lc_plot)
-
+    # Prepare the learning-curve plot without printing (avoid side effects)
+    lc_plot <- ggplot(df_lc, aes(x = .data$Fraction, y = .data$Performance)) +
+      geom_line(color = "blue") +
+      geom_point(color = "blue") +
+      labs(
+        title = "Learning Curve",
+        x = "Training Set Size (fraction)",
+        y = paste("Mean", metric, "across models")
+      ) +
+      theme_minimal()
+  } else {
+    df_lc <- NULL
+    lc_plot <- NULL
   }
 
 
@@ -1206,6 +1206,10 @@ fastml <- function(data = NULL,
     positive_class = positive_class,
     event_class = event_class,
     engine_names = engine_names,
+    learning_curve = list(
+      data = df_lc,
+      plot = lc_plot
+    ),
     survival_brier_times = survival_brier_times,
     survival_t_max = survival_t_max,
     metric_bootstrap = list(enabled = bootstrap_ci, samples = bootstrap_samples, seed = bootstrap_seed),

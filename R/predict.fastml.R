@@ -137,7 +137,7 @@ predict.fastml <- function(object, newdata,
   resolve_model_names <- function(requested, available) {
     if (length(requested) == 0) return(character())
     avail_set <- unique(available)
-    base_map <- stats::setNames(avail_set, sub(" \\(.*\)$", "", avail_set))
+    base_map <- stats::setNames(avail_set, sub(" \\(.*\\)$", "", avail_set))
     vapply(requested, function(nm) {
       if (nm %in% avail_set) {
         nm
