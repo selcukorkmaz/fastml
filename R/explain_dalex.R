@@ -42,7 +42,13 @@ fastml_build_dalex_explainers <- function(prep) {
     if (prep$task == "classification") {
       p <- predict(m, new_data = newdata, type = "prob")
       colnames(p) <- sub("^\\.pred_", "", colnames(p))
-      return(as.data.frame(p))
+      p <- as.data.frame(p)
+      # For binary classification, return only the positive class probability to avoid redundant outputs
+      if (ncol(p) == 2) {
+        # Choose the second column by convention (assumes .pred_[pos])
+        p <- p[[2]]
+      }
+      return(p)
     } else {
       p <- predict(m, new_data = newdata, type = "numeric")
       return(as.numeric(p$.pred))
