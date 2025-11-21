@@ -44,8 +44,6 @@ Supported values are \code{"dalex"}, \code{"lime"}, \code{"ice"},
   \item If \code{NULL} and task = 'regression', defaults to \code{DALEX::loss_root_mean_square}.
 }}
 
-\item{protected}{A vector indicating protected groups (required for \code{method = "fairness"}).}
-
 \item{...}{Additional arguments passed to the underlying helper functions.}
 }
 \value{
