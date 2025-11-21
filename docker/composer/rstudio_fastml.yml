@@ -1,0 +1,22 @@
+name: rstudio-fastml
+
+services:
+  rstudio-server:
+    container_name: fastml-dev
+    image: dncr/rstudio-server:${R_VERSION:-4.5.2}-${UBUNTU_VERSION:-noble}
+    env_file:
+      - .env
+    environment:
+      - PASSWORD=${RSTUDIO_PASSWORD}
+    restart: unless-stopped
+    user: root # Restored as per user request
+    ports:
+      - "8003:8787"
+    volumes:
+      - ../../:/home/rstudio/fastml_project:rw
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8787"]
+      interval: 30s
+      timeout: 10s
+      retries: 2
+      start_period: 20s
