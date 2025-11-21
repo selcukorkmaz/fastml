@@ -72,6 +72,19 @@ fastexplain <- function(object,
 
   method <- tolower(method)
 
+  # Helper to ensure new observations are preprocessed before scoring
+  preprocess_observation <- function(obs) {
+    if (is.null(obs)) return(NULL)
+    if (!is.null(object$preprocessor)) {
+      tryCatch(
+        recipes::bake(object$preprocessor, new_data = obs),
+        error = function(e) obs
+      )
+    } else {
+      obs
+    }
+  }
+
   # Legacy/specific methods
   if (method == "lime") return(explain_lime(object, ...))
   if (method == "ice") return(plot_ice(object, features = features, ...))
@@ -87,7 +100,7 @@ fastexplain <- function(object,
     if (is.null(observation)) {
       stop("'observation' must be provided for counterfactual explanations.")
     }
-    return(counterfactual_explain(object, observation, ...))
+    return(counterfactual_explain(object, preprocess_observation(observation), ...))
   }
 
   # DALEX ecosystem methods reuse centralized explainer builder
