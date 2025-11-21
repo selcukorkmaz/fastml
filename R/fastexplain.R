@@ -72,114 +72,66 @@ fastexplain <- function(object,
 
   method <- tolower(method)
 
-  if (method == "lime") {
-    return(explain_lime(object, ...))
-  } else if (method == "ice") {
-    return(plot_ice(object, features = features, ...))
-  } else if (method == "ale") {
+  # Legacy/specific methods
+  if (method == "lime") return(explain_lime(object, ...))
+  if (method == "ice") return(plot_ice(object, features = features, ...))
+  if (method == "ale") {
     if (is.null(features) || length(features) == 0) {
       stop("'features' must contain a feature name for ALE explanations.")
     }
     return(explain_ale(object, feature = features[1], ...))
-  } else if (method == "surrogate") {
-    return(surrogate_tree(object, ...))
-  } else if (method == "interaction") {
-    return(interaction_strength(object, ...))
-  } else if (method == "counterfactual") {
+  }
+  if (method == "surrogate") return(surrogate_tree(object, ...))
+  if (method == "interaction") return(interaction_strength(object, ...))
+  if (method == "counterfactual") {
     if (is.null(observation)) {
       stop("'observation' must be provided for counterfactual explanations.")
     }
     return(counterfactual_explain(object, observation, ...))
+  }
+
+  # DALEX ecosystem methods reuse centralized explainer builder
+  prep <- fastml_prepare_explainer_inputs(object)
+  dalex_res <- fastml_build_dalex_explainers(prep)
+  explainer <- dalex_res$explainers[[1]]
+
+  if (method == "dalex") {
+    return(explain_dalex_internal(
+      explainers = dalex_res$explainers,
+      prep = prep,
+      features = features,
+      grid_size = grid_size,
+      shap_sample = shap_sample,
+      vi_iterations = vi_iterations,
+      seed = seed,
+      loss_function = loss_function
+    ))
   } else if (method == "studio") {
     if (!requireNamespace("modelStudio", quietly = TRUE)) {
-      stop("The 'modelStudio' package is required for method = 'studio'.")
+      stop("Package 'modelStudio' required for method = 'studio'.")
     }
-    expl_prep <- fastml_prepare_explainer_inputs(object)
-    explainer <- tryCatch({
-      DALEX::explain(
-        model = expl_prep$fits[[1]],
-        data = expl_prep$x,
-        y = if (is.numeric(expl_prep$y)) expl_prep$y else as.numeric(expl_prep$y),
-        label = if (length(expl_prep$model_names) >= 1) expl_prep$model_names[[1]] else "model",
-        predict_function = function(m, newdata) {
-          if (expl_prep$task == "classification") {
-            p <- predict(m, new_data = newdata, type = "prob")
-            colnames(p) <- sub("^\\.pred_", "", colnames(p))
-            return(as.data.frame(p))
-          } else {
-            p <- predict(m, new_data = newdata, type = "numeric")
-            return(as.numeric(p$.pred))
-          }
-        },
-        model_info = if (expl_prep$task == "classification") list(type = "classification") else list(type = "regression")
-      )
-    }, error = function(e) stop("Failed to build explainer for modelStudio: ", e$message))
     return(modelStudio::modelStudio(explainer, ...))
   } else if (method == "fairness") {
     if (is.null(protected)) {
-      stop("For method = 'fairness', please supply a 'protected' vector indicating the protected groups.")
+      stop("Argument 'protected' is required for method = 'fairness'.")
     }
     if (!requireNamespace("fairmodels", quietly = TRUE)) {
-      stop("The 'fairmodels' package is required for method = 'fairness'.")
+      stop("Package 'fairmodels' required for method = 'fairness'.")
     }
-    expl_prep <- fastml_prepare_explainer_inputs(object)
-    explainer <- tryCatch({
-      DALEX::explain(
-        model = expl_prep$fits[[1]],
-        data = expl_prep$x,
-        y = if (is.numeric(expl_prep$y)) expl_prep$y else as.numeric(expl_prep$y),
-        label = if (length(expl_prep$model_names) >= 1) expl_prep$model_names[[1]] else "model",
-        predict_function = function(m, newdata) {
-          if (expl_prep$task == "classification") {
-            p <- predict(m, new_data = newdata, type = "prob")
-            colnames(p) <- sub("^\\.pred_", "", colnames(p))
-            return(as.data.frame(p))
-          } else {
-            p <- predict(m, new_data = newdata, type = "numeric")
-            return(as.numeric(p$.pred))
-          }
-        },
-        model_info = if (expl_prep$task == "classification") list(type = "classification") else list(type = "regression")
-      )
-    }, error = function(e) stop("Failed to build explainer for fairness checking: ", e$message))
     fairness_obj <- fairmodels::fairness_check(explainer, protected = protected, ...)
     print(plot(fairness_obj))
     return(invisible(fairness_obj))
   } else if (method == "breakdown") {
     if (is.null(observation)) {
-      stop("For method = 'breakdown', please supply a single observation (data frame with one row).")
+      stop("'observation' must be provided for method = 'breakdown'.")
     }
     if (!requireNamespace("iBreakDown", quietly = TRUE)) {
-      stop("The 'iBreakDown' package is required for method = 'breakdown'.")
+      stop("Package 'iBreakDown' required for method = 'breakdown'.")
     }
-    expl_prep <- fastml_prepare_explainer_inputs(object)
-    explainer <- tryCatch({
-      DALEX::explain(
-        model = expl_prep$fits[[1]],
-        data = expl_prep$x,
-        y = if (is.numeric(expl_prep$y)) expl_prep$y else as.numeric(expl_prep$y),
-        label = if (length(expl_prep$model_names) >= 1) expl_prep$model_names[[1]] else "model",
-        predict_function = function(m, newdata) {
-          if (expl_prep$task == "classification") {
-            p <- predict(m, new_data = newdata, type = "prob")
-            colnames(p) <- sub("^\\.pred_", "", colnames(p))
-            return(as.data.frame(p))
-          } else {
-            p <- predict(m, new_data = newdata, type = "numeric")
-            return(as.numeric(p$.pred))
-          }
-        },
-        model_info = if (expl_prep$task == "classification") list(type = "classification") else list(type = "regression")
-      )
-    }, error = function(e) stop("Failed to build explainer for breakdown: ", e$message))
     bd <- iBreakDown::break_down(explainer, new_observation = observation, ...)
     print(plot(bd))
     return(invisible(bd))
-  } else if (method != "dalex") {
+  } else {
     stop("Unknown explanation method.")
   }
-  return(explain_dalex(object, features = features, grid_size = grid_size,
-                       shap_sample = shap_sample, vi_iterations = vi_iterations,
-                       seed = seed, loss_function = loss_function))
-
 }
