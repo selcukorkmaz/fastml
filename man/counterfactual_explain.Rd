@@ -4,7 +4,14 @@
 \alias{counterfactual_explain}
 \title{Generate counterfactual explanations for a fastml model}
 \usage{
-counterfactual_explain(object, observation, ...)
+counterfactual_explain(
+  object,
+  observation,
+  positive_class = NULL,
+  event_class = NULL,
+  label_levels = NULL,
+  ...
+)
 }
 \arguments{
 \item{object}{A `fastml` object.}

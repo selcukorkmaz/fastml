@@ -20,9 +20,14 @@ fastml_prepare_explainer_inputs <- function(object) {
   rownames(x) <- NULL
   y <- train_data[[label]]
 
+  # Use processed predictors for actually scoring models
+  x_processed <- as.data.frame(object$processed_train_data[, setdiff(names(object$processed_train_data), label), drop = FALSE])
+  rownames(x_processed) <- NULL
+
   best_model <- object$best_model
   fits <- list()
   model_names <- character()
+  label_levels <- if (is.factor(y)) levels(y) else NULL
 
   add_fit <- function(name, mod) {
     pf <- tryCatch(tune::extract_fit_parsnip(mod), error = function(e) NULL)
@@ -52,11 +57,16 @@ fastml_prepare_explainer_inputs <- function(object) {
 
   list(
     train_data = train_data,
-    x = x,
+    x = x_processed,
+    x_raw = x,
+    x_processed = x_processed,
     y = y,
     label = label,
     task = object$task,
     positive_class = object$positive_class,
+    event_class = if (!is.null(object$event_class)) object$event_class else NULL,
+    label_levels = label_levels,
+    preprocessor = object$preprocessor,
     fits = fits,
     model_names = model_names
   )

@@ -21,39 +21,88 @@
 #' counterfactual_explain(model, iris[1, ])
 #' }
 
-counterfactual_explain <- function(object, observation, ...) {
-  if (!inherits(object, "fastml")) {
-    stop("The input must be a 'fastml' object.")
-  }
-  if (!requireNamespace("ceterisParibus", quietly = TRUE)) {
-    stop("The 'ceterisParibus' package is required for counterfactuals.")
-  }
+counterfactual_explain <- function(object,
+                                   observation,
+                                   positive_class = NULL,
+                                   event_class = NULL,
+                                   label_levels = NULL,
+                                   ...) {
   if (missing(observation)) {
     stop("'observation' must be provided for counterfactual explanations.")
   }
   if (nrow(observation) != 1) {
     stop("'observation' must contain exactly one row.")
   }
-
-  train_data <- object$processed_train_data
-  if (is.null(train_data) || !(object$label %in% names(train_data))) {
-    stop("Processed training data not available for counterfactual explanations.")
-  }
-  x <- train_data[, setdiff(names(train_data), object$label), drop = FALSE]
-
-  parsnip_fit <- tryCatch(tune::extract_fit_parsnip(object$best_model[[1]]),
-                          error = function(e) NULL)
-  if (is.null(parsnip_fit) && inherits(object$best_model, "model_fit")) {
-    parsnip_fit <- object$best_model
-  }
-  if (is.null(parsnip_fit)) {
-    stop("Unable to extract parsnip model for counterfactuals.")
+  if (!requireNamespace("ceterisParibus", quietly = TRUE)) {
+    stop("The 'ceterisParibus' package is required for counterfactuals.")
   }
 
-  explainer <- DALEX::explain(parsnip_fit, data = x,
-                             y = train_data[[object$label]])
-  cf <- ceterisParibus::calculate_oscillations(explainer,
-                                                  observation = observation, ...)
-  plot(cf)
-  invisible(cf)
+  obs_processed <- observation
+  explainer <- NULL
+
+  if (inherits(object, "fastml")) {
+    prep <- fastml_prepare_explainer_inputs(object)
+    expl_list <- fastml_build_dalex_explainers(prep)$explainers
+    explainer <- expl_list[[1]]
+    if (!is.null(object$preprocessor)) {
+      obs_processed <- tryCatch(
+        recipes::bake(object$preprocessor, new_data = observation),
+        error = function(e) observation
+      )
+    }
+  } else if (inherits(object, "explainer")) {
+    explainer <- object
+  } else {
+    stop("`object` must be either a fastml object or a DALEX explainer.")
+  }
+
+  # Wrap predict_function to ensure numeric vector output (use positive/event class when available)
+  choose_target_col <- function(cols) {
+    if (length(cols) == 0) return(NULL)
+    if (!is.null(event_class) &&
+        event_class %in% c("first", "second") &&
+        !is.null(label_levels) &&
+        length(label_levels) >= 2) {
+      idx <- if (event_class == "first") 1 else 2
+      lvl <- label_levels[idx]
+      if (lvl %in% cols) return(lvl)
+    }
+    if (!is.null(positive_class) && positive_class %in% cols) {
+      return(positive_class)
+    }
+    if (!is.null(label_levels)) {
+      for (lvl in label_levels) {
+        if (lvl %in% cols) return(lvl)
+      }
+    }
+    tail(cols, 1)
+  }
+
+  original_predict <- explainer$predict_function
+  adjusted_predict <- function(m, newdata) {
+    res <- original_predict(m, newdata)
+    if (is.data.frame(res) || is.matrix(res)) {
+      cols <- colnames(res)
+      if (ncol(res) >= 1) {
+        if (ncol(res) >= 2) {
+          target_col <- choose_target_col(cols)
+          return(as.numeric(res[[target_col]]))
+        } else {
+          return(as.numeric(res[[1]]))
+        }
+      }
+    }
+    as.numeric(res)
+  }
+
+  explainer$predict_function <- adjusted_predict
+
+  cf <- ceterisParibus::ceteris_paribus(
+    explainer = explainer,
+    observations = obs_processed,
+    ...
+  )
+  plot_obj <- suppressWarnings(plot(cf))
+  print(plot_obj)
+  invisible(list(profile = cf, plot = plot_obj))
 }

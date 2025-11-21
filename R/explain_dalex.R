@@ -40,17 +40,41 @@ fastml_build_dalex_explainers <- function(prep) {
 
   predict_function <- function(m, newdata) {
     if (prep$task == "classification") {
-      p <- predict(m, new_data = newdata, type = "prob")
+      # If a preprocessor is available, bake raw data first to match model expectations
+      newdata_processed <- tryCatch(
+        {
+          if (!is.null(prep$preprocessor)) {
+            baked <- recipes::bake(prep$preprocessor, new_data = newdata)
+            if (!is.null(prep$label) && prep$label %in% names(baked)) {
+              baked[[prep$label]] <- NULL
+            }
+            baked
+          } else {
+            newdata
+          }
+        },
+        error = function(e) newdata
+      )
+
+      p <- predict(m, new_data = newdata_processed, type = "prob")
       colnames(p) <- sub("^\\.pred_", "", colnames(p))
-      p <- as.data.frame(p)
-      # For binary classification, return only the positive class probability to avoid redundant outputs
-      if (ncol(p) == 2) {
-        # Choose the second column by convention (assumes .pred_[pos])
-        p <- p[[2]]
-      }
-      return(p)
+      return(as.data.frame(p))
     } else {
-      p <- predict(m, new_data = newdata, type = "numeric")
+      newdata_processed <- tryCatch(
+        {
+          if (!is.null(prep$preprocessor)) {
+            baked <- recipes::bake(prep$preprocessor, new_data = newdata)
+            if (!is.null(prep$label) && prep$label %in% names(baked)) {
+              baked[[prep$label]] <- NULL
+            }
+            baked
+          } else {
+            newdata
+          }
+        },
+        error = function(e) newdata
+      )
+      p <- predict(m, new_data = newdata_processed, type = "numeric")
       return(as.numeric(p$.pred))
     }
   }

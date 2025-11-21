@@ -96,30 +96,10 @@ fastexplain <- function(object,
   }
   if (method == "surrogate") return(surrogate_tree(object, ...))
   if (method == "interaction") return(interaction_strength(object, ...))
-  if (method == "counterfactual") {
-    if (is.null(observation)) {
-      stop("'observation' must be provided for counterfactual explanations.")
-    }
-    return(counterfactual_explain(object, preprocess_observation(observation), ...))
-  }
-
   # DALEX ecosystem methods reuse centralized explainer builder
   prep <- fastml_prepare_explainer_inputs(object)
   dalex_res <- fastml_build_dalex_explainers(prep)
   explainer <- dalex_res$explainers[[1]]
-
-  # Helper to ensure new observations are preprocessed before scoring
-  preprocess_observation <- function(obs) {
-    if (is.null(obs)) return(NULL)
-    if (!is.null(object$preprocessor)) {
-      tryCatch(
-        recipes::bake(object$preprocessor, new_data = obs),
-        error = function(e) obs
-      )
-    } else {
-      obs
-    }
-  }
 
   if (method == "dalex") {
     return(explain_dalex_internal(
@@ -158,6 +138,18 @@ fastexplain <- function(object,
     bd <- iBreakDown::break_down(explainer, new_observation = obs_processed, ...)
     print(plot(bd))
     return(invisible(bd))
+  } else if (method == "counterfactual") {
+    if (is.null(observation)) {
+      stop("'observation' must be provided for counterfactual explanations.")
+    }
+    return(counterfactual_explain(
+      explainer,
+      preprocess_observation(observation),
+      positive_class = prep$positive_class,
+      event_class = prep$event_class,
+      label_levels = prep$label_levels,
+      ...
+    ))
   } else {
     stop("Unknown explanation method.")
   }
