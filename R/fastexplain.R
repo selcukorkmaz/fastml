@@ -95,6 +95,19 @@ fastexplain <- function(object,
   dalex_res <- fastml_build_dalex_explainers(prep)
   explainer <- dalex_res$explainers[[1]]
 
+  # Helper to ensure new observations are preprocessed before scoring
+  preprocess_observation <- function(obs) {
+    if (is.null(obs)) return(NULL)
+    if (!is.null(object$preprocessor)) {
+      tryCatch(
+        recipes::bake(object$preprocessor, new_data = obs),
+        error = function(e) obs
+      )
+    } else {
+      obs
+    }
+  }
+
   if (method == "dalex") {
     return(explain_dalex_internal(
       explainers = dalex_res$explainers,
@@ -128,7 +141,8 @@ fastexplain <- function(object,
     if (!requireNamespace("iBreakDown", quietly = TRUE)) {
       stop("Package 'iBreakDown' required for method = 'breakdown'.")
     }
-    bd <- iBreakDown::break_down(explainer, new_observation = observation, ...)
+    obs_processed <- preprocess_observation(observation)
+    bd <- iBreakDown::break_down(explainer, new_observation = obs_processed, ...)
     print(plot(bd))
     return(invisible(bd))
   } else {
