@@ -63,6 +63,7 @@ fastexplain <- function(object,
                           vi_iterations = 10,
                           seed = 123,
                           loss_function = NULL,
+                          protected = NULL,
                           ...) {
 
   if (!inherits(object, "fastml")) {
@@ -114,6 +115,36 @@ fastexplain <- function(object,
       )
     }, error = function(e) stop("Failed to build explainer for modelStudio: ", e$message))
     return(modelStudio::modelStudio(explainer, ...))
+  } else if (method == "fairness") {
+    if (is.null(protected)) {
+      stop("For method = 'fairness', please supply a 'protected' vector indicating the protected groups.")
+    }
+    if (!requireNamespace("fairmodels", quietly = TRUE)) {
+      stop("The 'fairmodels' package is required for method = 'fairness'.")
+    }
+    expl_prep <- fastml_prepare_explainer_inputs(object)
+    explainer <- tryCatch({
+      DALEX::explain(
+        model = expl_prep$fits[[1]],
+        data = expl_prep$x,
+        y = if (is.numeric(expl_prep$y)) expl_prep$y else as.numeric(expl_prep$y),
+        label = if (length(expl_prep$model_names) >= 1) expl_prep$model_names[[1]] else "model",
+        predict_function = function(m, newdata) {
+          if (expl_prep$task == "classification") {
+            p <- predict(m, new_data = newdata, type = "prob")
+            colnames(p) <- sub("^\\.pred_", "", colnames(p))
+            return(as.data.frame(p))
+          } else {
+            p <- predict(m, new_data = newdata, type = "numeric")
+            return(as.numeric(p$.pred))
+          }
+        },
+        model_info = if (expl_prep$task == "classification") list(type = "classification") else list(type = "regression")
+      )
+    }, error = function(e) stop("Failed to build explainer for fairness checking: ", e$message))
+    fairness_obj <- fairmodels::fairness_check(explainer, protected = protected, ...)
+    print(plot(fairness_obj))
+    return(invisible(fairness_obj))
   } else if (method != "dalex") {
     stop("Unknown explanation method.")
   }

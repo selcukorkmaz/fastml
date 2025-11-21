@@ -14,6 +14,7 @@ fastexplain(
   vi_iterations = 10,
   seed = 123,
   loss_function = NULL,
+  protected = NULL,
   ...
 )
 }
@@ -42,6 +43,8 @@ Supported values are \code{"dalex"}, \code{"lime"}, \code{"ice"},
   \item If \code{NULL} and task = 'classification', defaults to \code{DALEX::loss_cross_entropy}.
   \item If \code{NULL} and task = 'regression', defaults to \code{DALEX::loss_root_mean_square}.
 }}
+
+\item{protected}{A vector indicating protected groups (required for \code{method = "fairness"}).}
 
 \item{...}{Additional arguments passed to the underlying helper functions.}
 }
