@@ -34,8 +34,7 @@ explain_dalex(
 }}
 }
 \value{
-Invisibly returns a list with variable importance, optional model
-  profiles and SHAP values.
+Invisibly returns a list with variable importance, optional model profiles and SHAP values.
 }
 \description{
 Creates a DALEX explainer and computes permutation based variable importance,
