@@ -38,42 +38,48 @@ fastml_build_dalex_explainers <- function(prep) {
 
   model_info <- if (prep$task == "classification") list(type = "classification") else list(type = "regression")
 
+  bake_newdata <- function(newdata) {
+    if (!is.null(prep$preprocessor)) {
+      processed_cols <- colnames(prep$x_processed)
+      # If already in processed space with matching columns, use it directly
+      if (!is.null(processed_cols) && length(processed_cols) && all(processed_cols %in% colnames(newdata))) {
+        return(newdata[, processed_cols, drop = FALSE])
+      }
+
+      baked <- tryCatch(
+        recipes::bake(prep$preprocessor, new_data = newdata),
+        error = function(e) {
+          stop("Preprocessing new data for prediction failed: ", e$message, call. = FALSE)
+        }
+      )
+      if (!is.null(prep$label) && prep$label %in% names(baked)) {
+        baked[[prep$label]] <- NULL
+      }
+      if (!is.null(processed_cols) && length(processed_cols)) {
+        missing_cols <- setdiff(processed_cols, colnames(baked))
+        if (length(missing_cols)) {
+          stop(
+            "Preprocessing produced data missing expected columns: ",
+            paste(missing_cols, collapse = ", "),
+            call. = FALSE
+          )
+        }
+        baked <- baked[, processed_cols, drop = FALSE]
+      }
+      baked
+    } else {
+      newdata
+    }
+  }
+
   predict_function <- function(m, newdata) {
     if (prep$task == "classification") {
-      # If a preprocessor is available, bake raw data first to match model expectations
-      newdata_processed <- tryCatch(
-        {
-          if (!is.null(prep$preprocessor)) {
-            baked <- recipes::bake(prep$preprocessor, new_data = newdata)
-            if (!is.null(prep$label) && prep$label %in% names(baked)) {
-              baked[[prep$label]] <- NULL
-            }
-            baked
-          } else {
-            newdata
-          }
-        },
-        error = function(e) newdata
-      )
-
+      newdata_processed <- bake_newdata(newdata)
       p <- predict(m, new_data = newdata_processed, type = "prob")
       colnames(p) <- sub("^\\.pred_", "", colnames(p))
       return(as.data.frame(p))
     } else {
-      newdata_processed <- tryCatch(
-        {
-          if (!is.null(prep$preprocessor)) {
-            baked <- recipes::bake(prep$preprocessor, new_data = newdata)
-            if (!is.null(prep$label) && prep$label %in% names(baked)) {
-              baked[[prep$label]] <- NULL
-            }
-            baked
-          } else {
-            newdata
-          }
-        },
-        error = function(e) newdata
-      )
+      newdata_processed <- bake_newdata(newdata)
       p <- predict(m, new_data = newdata_processed, type = "numeric")
       return(as.numeric(p$.pred))
     }
@@ -82,8 +88,8 @@ fastml_build_dalex_explainers <- function(prep) {
   build_one <- function(model, name) {
     DALEX::explain(
       model = model,
-      data = prep$x,
-      y = if (is.numeric(prep$y)) prep$y else as.numeric(prep$y),
+      data = prep$x_raw,
+      y = if (is.numeric(prep$y_raw)) prep$y_raw else as.numeric(prep$y_raw),
       label = name,
       predict_function = predict_function,
       model_info = model_info
@@ -121,13 +127,46 @@ explain_dalex_internal <- function(explainers,
     features <- sanitize(features)
   }
 
+  bake_newdata <- function(newdata) {
+    if (!is.null(prep$preprocessor)) {
+      processed_cols <- colnames(prep$x_processed)
+      if (!is.null(processed_cols) && length(processed_cols) && all(processed_cols %in% colnames(newdata))) {
+        return(newdata[, processed_cols, drop = FALSE])
+      }
+      baked <- tryCatch(
+        recipes::bake(prep$preprocessor, new_data = newdata),
+        error = function(e) {
+          stop("Preprocessing new data for prediction failed: ", e$message, call. = FALSE)
+        }
+      )
+      if (!is.null(prep$label) && prep$label %in% names(baked)) {
+        baked[[prep$label]] <- NULL
+      }
+      if (!is.null(processed_cols) && length(processed_cols)) {
+        missing_cols <- setdiff(processed_cols, colnames(baked))
+        if (length(missing_cols)) {
+          stop(
+            "Preprocessing produced data missing expected columns: ",
+            paste(missing_cols, collapse = ", "),
+            call. = FALSE
+          )
+        }
+        baked <- baked[, processed_cols, drop = FALSE]
+      }
+      baked
+    } else {
+      newdata
+    }
+  }
+
   pred_fun_for_pdp <- function(m, newdata) {
+    newdata_processed <- bake_newdata(newdata)
     if (task == "classification") {
-      p <- predict(m, new_data = newdata, type = "prob")
+      p <- predict(m, new_data = newdata_processed, type = "prob")
       colnames(p) <- sub("^\\.pred_", "", colnames(p))
       return(as.data.frame(p))
     } else {
-      p <- predict(m, new_data = newdata, type = "numeric")
+      p <- predict(m, new_data = newdata_processed, type = "numeric")
       return(as.numeric(p$.pred))
     }
   }
@@ -216,8 +255,13 @@ explain_dalex_internal <- function(explainers,
         shap_df <- shap[[model_name]]
         plot_list[[model_name]] <- suppressWarnings(plot(shap_df) + ggplot2::labs(title = paste("SHAP Values:", model_name)))
       }
-      combined_plot <- patchwork::wrap_plots(plot_list, nrow = 1)
-      print(combined_plot)
+      if (requireNamespace("patchwork", quietly = TRUE)) {
+        combined_plot <- patchwork::wrap_plots(plot_list, nrow = 1)
+        print(combined_plot)
+      } else {
+        warning("Package 'patchwork' not installed; printing SHAP plots separately.")
+        invisible(lapply(plot_list, print))
+      }
     }
 
   }, silent = TRUE)

@@ -76,8 +76,8 @@ parameter controls the number of iterations **only** when
 `method` argument to choose an approach:
 
 ```r
-# LIME explanations
-explain_lime(model)
+# LIME explanations for a new observation
+explain_lime(model, new_observation = iris[1, ])
 
 # ICE curves
 fastexplain(model, method = "ice", features = "Sepal.Length")
@@ -94,5 +94,4 @@ fastexplain(model, method = "interaction")
 # Counterfactual explanation for a single observation
 fastexplain(model, method = "counterfactual", observation = iris[1, ])
 ```
-
 

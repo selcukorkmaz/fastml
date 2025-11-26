@@ -19,14 +19,14 @@ counterfactual_explain(
 \item{observation}{A single observation (data frame with one row) to compute
 counterfactuals for.}
 
-\item{...}{Additional arguments passed to `ceterisParibus::calculate_counterfactuals`.}
+\item{...}{Additional arguments passed to `DALEX::predict_profile`.}
 }
 \value{
 A counterfactual explanation object.
 }
 \description{
-Uses the `ceterisParibus` package to compute counterfactuals for a given
-observation.
+Uses DALEX ceteris-paribus profiles (`predict_profile`) to compute
+counterfactual-style what-if explanations for a given observation.
 }
 \examples{
 \dontrun{

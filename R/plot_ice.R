@@ -1,13 +1,16 @@
 #' Plot ICE curves for a fastml model
 #'
 #' Generates Individual Conditional Expectation (ICE) plots for selected features
-#' using the `pdp` package.
+#' using the `pdp` package (ggplot2 engine), and returns both the underlying data
+#' and the plot object.
 #'
 #' @param object A `fastml` object.
 #' @param features Character vector of feature names to plot.
 #' @param ... Additional arguments passed to `pdp::partial`.
 #'
-#' @return A `ggplot` object displaying ICE curves.
+#' @return A list with two elements: `data` (the ICE data frame) and `plot` (the ggplot object).
+#' @importFrom pdp partial
+#' @importFrom ggplot2 autoplot
 #' @export
 #' @examples
 #' \dontrun{
@@ -44,8 +47,30 @@ plot_ice <- function(object, features, ...) {
     stop("Unable to extract parsnip model for ICE plots.")
   }
 
-  pd <- pdp::partial(parsnip_fit, pred.var = features, ice = TRUE, train = x, ...)
-  p <- plot(pd)
+  # Compute ICE data without plotting, then build a ggplot via pdp's autoplot
+  pd <- pdp::partial(parsnip_fit, pred.var = features, ice = TRUE, train = x, plot = FALSE, ...)
+  p <- ggplot2::autoplot(pd)
+
+  # Convert deprecated `size` aesthetics on line geoms to `linewidth` to avoid ggplot2 warnings
+  p$layers <- lapply(p$layers, function(layer) {
+    if (inherits(layer$geom, c("GeomLine", "GeomPath", "GeomSegment", "GeomStep"))) {
+      mapping <- layer$mapping
+      if (!is.null(mapping$size)) {
+        mapping$linewidth <- mapping$size
+        mapping$size <- NULL
+        layer$mapping <- mapping
+      }
+      if (!is.null(layer$aes_params$size)) {
+        layer$aes_params$linewidth <- layer$aes_params$size
+        layer$aes_params$size <- NULL
+      }
+    }
+    layer
+  })
+  if (!is.null(p$labels$size)) {
+    p$labels$linewidth <- p$labels$size
+    p$labels$size <- NULL
+  }
   print(p)
-  invisible(p)
+  invisible(list(data = pd, plot = p))
 }

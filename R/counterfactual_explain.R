@@ -1,16 +1,15 @@
 #' Generate counterfactual explanations for a fastml model
 #'
-#' Uses the `ceterisParibus` package to compute counterfactuals for a given
-#' observation.
+#' Uses DALEX ceteris-paribus profiles (`predict_profile`) to compute
+#' counterfactual-style what-if explanations for a given observation.
 #'
 #' @param object A `fastml` object.
 #' @param observation A single observation (data frame with one row) to compute
 #'   counterfactuals for.
-#' @param ... Additional arguments passed to `ceterisParibus::calculate_counterfactuals`.
+#' @param ... Additional arguments passed to `DALEX::predict_profile`.
 #'
 #' @return A counterfactual explanation object.
-#' @importFrom DALEX explain
-#' @importFrom ceterisParibus calculate_oscillations
+#' @importFrom DALEX explain predict_profile
 #' @export
 #' @examples
 #' \dontrun{
@@ -33,76 +32,31 @@ counterfactual_explain <- function(object,
   if (nrow(observation) != 1) {
     stop("'observation' must contain exactly one row.")
   }
-  if (!requireNamespace("ceterisParibus", quietly = TRUE)) {
-    stop("The 'ceterisParibus' package is required for counterfactuals.")
+  if (!requireNamespace("DALEX", quietly = TRUE)) {
+    stop("The 'DALEX' package is required for counterfactual explanations.")
   }
 
-  obs_processed <- observation
+  obs_raw <- observation
   explainer <- NULL
 
   if (inherits(object, "fastml")) {
     prep <- fastml_prepare_explainer_inputs(object)
     expl_list <- fastml_build_dalex_explainers(prep)$explainers
     explainer <- expl_list[[1]]
-    if (!is.null(object$preprocessor)) {
-      obs_processed <- tryCatch(
-        recipes::bake(object$preprocessor, new_data = observation),
-        error = function(e) observation
-      )
-    }
   } else if (inherits(object, "explainer")) {
     explainer <- object
   } else {
     stop("`object` must be either a fastml object or a DALEX explainer.")
   }
 
-  # Wrap predict_function to ensure numeric vector output (use positive/event class when available)
-  choose_target_col <- function(cols) {
-    if (length(cols) == 0) return(NULL)
-    if (!is.null(event_class) &&
-        event_class %in% c("first", "second") &&
-        !is.null(label_levels) &&
-        length(label_levels) >= 2) {
-      idx <- if (event_class == "first") 1 else 2
-      lvl <- label_levels[idx]
-      if (lvl %in% cols) return(lvl)
-    }
-    if (!is.null(positive_class) && positive_class %in% cols) {
-      return(positive_class)
-    }
-    if (!is.null(label_levels)) {
-      for (lvl in label_levels) {
-        if (lvl %in% cols) return(lvl)
-      }
-    }
-    tail(cols, 1)
-  }
-
-  original_predict <- explainer$predict_function
-  adjusted_predict <- function(m, newdata) {
-    res <- original_predict(m, newdata)
-    if (is.data.frame(res) || is.matrix(res)) {
-      cols <- colnames(res)
-      if (ncol(res) >= 1) {
-        if (ncol(res) >= 2) {
-          target_col <- choose_target_col(cols)
-          return(as.numeric(res[[target_col]]))
-        } else {
-          return(as.numeric(res[[1]]))
-        }
-      }
-    }
-    as.numeric(res)
-  }
-
-  explainer$predict_function <- adjusted_predict
-
-  cf <- ceterisParibus::ceteris_paribus(
+  # Use DALEX ceteris-paribus profiles for what-if (counterfactual-style) analysis
+  profile <- DALEX::predict_profile(
     explainer = explainer,
-    observations = obs_processed,
+    new_observation = obs_raw,
     ...
   )
-  plot_obj <- suppressWarnings(plot(cf))
-  print(plot_obj)
-  invisible(list(profile = cf, plot = plot_obj))
+
+  plot_obj <- tryCatch(suppressWarnings(plot(profile)), error = function(e) NULL)
+  if (!is.null(plot_obj)) print(plot_obj)
+  invisible(list(counterfactuals = profile, profile = profile, plot = plot_obj))
 }

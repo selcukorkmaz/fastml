@@ -1095,6 +1095,7 @@ fastml <- function(data = NULL,
   # Now store processed training data for explainability:
   trained_recipe <- prep(recipe, training = train_data, retain = TRUE)
   processed_train_data <- bake(trained_recipe, new_data = NULL)
+  raw_train_data <- train_data
 
   if (learning_curve) {
     # Define the fractions to test
@@ -1215,6 +1216,7 @@ fastml <- function(data = NULL,
     performance = performance,
     predictions = predictions,
     preprocessor = trained_recipe,
+    raw_train_data = raw_train_data,
     processed_train_data = processed_train_data,
     label = label,
     task = task,

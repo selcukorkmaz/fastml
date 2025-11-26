@@ -11,23 +11,31 @@ fastml_prepare_explainer_inputs <- function(object) {
     stop("Processed training data with the target column is required to build an explainer.")
   }
 
-  train_data <- as.data.frame(object$processed_train_data)
+  raw_train_data <- if (!is.null(object$raw_train_data)) {
+    as.data.frame(object$raw_train_data)
+  } else {
+    as.data.frame(object$processed_train_data)
+  }
+  processed_train_data <- as.data.frame(object$processed_train_data)
+
+  train_data <- raw_train_data
   rownames(train_data) <- NULL
 
   label <- object$label
-  x <- train_data[, setdiff(names(train_data), label), drop = FALSE]
-  x <- as.data.frame(x)
-  rownames(x) <- NULL
-  y <- train_data[[label]]
+  x_raw <- train_data[, setdiff(names(train_data), label), drop = FALSE]
+  x_raw <- as.data.frame(x_raw)
+  rownames(x_raw) <- NULL
+  y_raw <- train_data[[label]]
 
   # Use processed predictors for actually scoring models
-  x_processed <- as.data.frame(object$processed_train_data[, setdiff(names(object$processed_train_data), label), drop = FALSE])
+  x_processed <- as.data.frame(processed_train_data[, setdiff(names(processed_train_data), label), drop = FALSE])
   rownames(x_processed) <- NULL
+  y_processed <- processed_train_data[[label]]
 
   best_model <- object$best_model
   fits <- list()
   model_names <- character()
-  label_levels <- if (is.factor(y)) levels(y) else NULL
+  label_levels <- if (is.factor(y_raw)) levels(y_raw) else NULL
 
   add_fit <- function(name, mod) {
     pf <- tryCatch(tune::extract_fit_parsnip(mod), error = function(e) NULL)
@@ -57,10 +65,14 @@ fastml_prepare_explainer_inputs <- function(object) {
 
   list(
     train_data = train_data,
+    raw_train_data = raw_train_data,
+    processed_train_data = processed_train_data,
     x = x_processed,
-    x_raw = x,
+    x_raw = x_raw,
     x_processed = x_processed,
-    y = y,
+    y = y_raw,
+    y_raw = y_raw,
+    y_processed = y_processed,
     label = label,
     task = object$task,
     positive_class = object$positive_class,

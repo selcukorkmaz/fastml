@@ -4,10 +4,12 @@
 \alias{explain_lime}
 \title{Generate LIME explanations for a fastml model}
 \usage{
-explain_lime(object, n_features = 5, n_labels = 1, ...)
+explain_lime(object, new_observation, n_features = 5, n_labels = 1, ...)
 }
 \arguments{
 \item{object}{A `fastml` object.}
+
+\item{new_observation}{A data frame containing the new observation(s) to explain.}
 
 \item{n_features}{Number of features to show in the explanation. Default 5.}
 
@@ -28,6 +30,6 @@ data(iris)
 iris <- iris[iris$Species != "setosa", ]
 iris$Species <- factor(iris$Species)
 model <- fastml(data = iris, label = "Species")
-explain_lime(model)
+explain_lime(model, new_observation = iris[1, ])
 }
 }
