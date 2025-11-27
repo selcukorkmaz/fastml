@@ -113,6 +113,11 @@ counterfactual_explain <- function(object,
     ...
   )
 
+  # If specific variables were requested, keep only those rows (defensive)
+  if (length(final_vars) > 0 && "_vname_" %in% names(profile)) {
+    profile <- profile[profile$`_vname_` %in% final_vars, , drop = FALSE]
+  }
+
   # --- FIX: ROBUST FILTERING OF LINES AND DOTS ---
   if (!is.null(positive_class)) {
     # A. Capture attributes BEFORE subsetting the main object
@@ -149,7 +154,7 @@ counterfactual_explain <- function(object,
   # 4. Plot (UPDATED: Added specific Y-axis label)
   plot_obj <- tryCatch(
     suppressWarnings(
-      plot(profile) +
+      plot(profile, variables = if (length(final_vars) > 0) final_vars else NULL) +
         ggplot2::labs(y = paste("Predicted Probability of", positive_class))
     ),
     error = function(e) NULL
