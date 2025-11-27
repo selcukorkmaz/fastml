@@ -7,6 +7,7 @@
 counterfactual_explain(
   object,
   observation,
+  variables = NULL,
   positive_class = NULL,
   event_class = NULL,
   label_levels = NULL,
@@ -27,13 +28,4 @@ A counterfactual explanation object.
 \description{
 Uses DALEX ceteris-paribus profiles (`predict_profile`) to compute
 counterfactual-style what-if explanations for a given observation.
-}
-\examples{
-\dontrun{
-data(iris)
-iris <- iris[iris$Species != "setosa", ]
-iris$Species <- factor(iris$Species)
-model <- fastml(data = iris, label = "Species")
-counterfactual_explain(model, iris[1, ])
-}
 }

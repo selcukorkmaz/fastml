@@ -8,6 +8,7 @@ fastexplain(
   object,
   method = "dalex",
   features = NULL,
+  variables = NULL,
   observation = NULL,
   grid_size = 20,
   shap_sample = 5,
@@ -27,6 +28,8 @@ Supported values are \code{"dalex"}, \code{"lime"}, \code{"ice"},
 \code{"counterfactual"}, \code{"studio"}. Defaults to \code{"dalex"}.}
 
 \item{features}{Character vector of feature names for partial dependence (model profiles). Default NULL.}
+
+\item{variables}{Character vector. Variable names to compute explanations for (used for counterfactuals).}
 
 \item{observation}{A single observation for counterfactual explanations. Default NULL.}
 

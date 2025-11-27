@@ -34,6 +34,7 @@
 #'   \code{"ale"}, \code{"surrogate"}, \code{"interaction"}, and
 #'   \code{"counterfactual"}, \code{"studio"}. Defaults to \code{"dalex"}.
 #' @param features Character vector of feature names for partial dependence (model profiles). Default NULL.
+#' @param variables Character vector. Variable names to compute explanations for (used for counterfactuals).
 #' @param observation A single observation for counterfactual explanations. Default NULL.
 #' @param grid_size Number of grid points for partial dependence. Default 20.
 #' @param shap_sample Integer number of observations from processed training data to compute SHAP values for. Default 5.
@@ -57,6 +58,7 @@
 fastexplain <- function(object,
                           method = "dalex",
                           features = NULL,
+                          variables = NULL,
                           observation = NULL,
                           grid_size = 20,
                           shap_sample = 5,
@@ -134,22 +136,48 @@ fastexplain <- function(object,
     if (!requireNamespace("iBreakDown", quietly = TRUE)) {
       stop("Package 'iBreakDown' required for method = 'breakdown'.")
     }
-    obs_processed <- preprocess_observation(observation)
-    bd <- iBreakDown::break_down(explainer, new_observation = obs_processed, ...)
-    print(plot(bd))
+    # Align observation to the explainer's expected columns (raw predictors).
+    obs_aligned <- as.data.frame(observation)
+    if (!is.null(explainer$data)) {
+      expl_cols <- colnames(explainer$data)
+      # Add any missing predictors so the recipe/predict_function can handle them.
+      missing_cols <- setdiff(expl_cols, colnames(obs_aligned))
+      if (length(missing_cols) > 0) {
+        for (nm in missing_cols) {
+          tmpl <- explainer$data[[nm]]
+          obs_aligned[[nm]] <- if (is.factor(tmpl)) factor(NA, levels = levels(tmpl)) else NA
+        }
+      }
+      obs_aligned <- obs_aligned[, expl_cols, drop = FALSE]
+    }
+    bd <- suppressWarnings(iBreakDown::break_down(explainer, new_observation = obs_aligned, ...))
+    bd_plot <- suppressWarnings(tryCatch(
+      plot(bd),
+      error = function(e) {
+        warning("Breakdown plot could not be rendered: ", e$message)
+        NULL
+      }
+    ))
+    if (!is.null(bd_plot)) {
+      print(bd_plot)
+    }
     return(invisible(bd))
   } else if (method == "counterfactual") {
     if (is.null(observation)) {
       stop("'observation' must be provided for counterfactual explanations.")
     }
-    return(counterfactual_explain(
-      explainer,
-      preprocess_observation(observation),
+
+    # --- FIX: Suppress Warnings for GLM Rank-Deficiency ---
+    return(suppressWarnings(counterfactual_explain(
+      object = explainer,
+      observation = observation,
+      variables = variables,
       positive_class = prep$positive_class,
       event_class = prep$event_class,
       label_levels = prep$label_levels,
       ...
-    ))
+    )))
+
   } else {
     stop("Unknown explanation method.")
   }
