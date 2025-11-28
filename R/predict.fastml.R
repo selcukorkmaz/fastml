@@ -29,23 +29,6 @@
 #' @importFrom stats predict
 #' @importFrom tibble is_tibble
 #' @export
-#'
-#' @examples
-#' \dontrun{
-#'   set.seed(123)
-#'   model <- fastml(iris, label = "Species")
-#'   test_data <- iris[sample(1:150, 20),-5]
-#'
-#'   ## Best model(s) predictions
-#'   preds <- predict(model, newdata = test_data)
-#'
-#'   ## Predicted class probabilities using best model(s)
-#'   probs <- predict(model, newdata = test_data, type = "prob")
-#'
-#'   ## Prediction from a specific model by name
-#'   single_model_preds <- predict(model, newdata = test_data, model_name = "rand_forest (ranger)")
-#'
-#' }
 predict.fastml <- function(object, newdata,
                            type = "auto",
                            model_name = NULL,
@@ -53,26 +36,28 @@ predict.fastml <- function(object, newdata,
                            postprocess_fn = NULL,
                            eval_time = NULL,
                            ...) {
-  # 1. input checks & drop label from newdata -----------------------------
+  # 1. input checks -------------------------------------------------------
   if (missing(newdata)) {
     stop("Please provide newdata for prediction.")
   }
-  lbl <- object$label
-  if (is.null(lbl)) {
-    stop("Label name is missing from the model object.")
-  }
-  label_cols <- unique(as.character(lbl))
-  label_cols <- label_cols[label_cols %in% names(newdata)]
-  if (length(label_cols)) {
-    keep_cols <- setdiff(names(newdata), label_cols)
-    newdata <- newdata[, keep_cols, drop = FALSE]
+
+  # --- FIX 1: Cast integers to numeric to prevent recipe imputation errors ---
+  # Recipes are strict about type. If training data was integer but imputation
+  # adds decimals (median/mean), applying it to integer test data crashes.
+  if (is.data.frame(newdata)) {
+    newdata[] <- lapply(newdata, function(x) {
+      if (is.integer(x)) as.numeric(x) else x
+    })
   }
 
   # 2. preprocessing via recipe -------------------------------------------
   if (is.null(object$preprocessor)) {
     stop("No preprocessing recipe found in fastml object.")
   }
-  new_proc <- bake(object$preprocessor, new_data = newdata)
+
+  # Pass full data to bake; the recipe handles label removal via step_rm
+  new_proc <- recipes::bake(object$preprocessor, new_data = newdata)
+
   if (!is.null(object$feature_names)) {
     miss <- setdiff(object$feature_names, names(new_proc))
     if (length(miss)) {
@@ -97,7 +82,6 @@ predict.fastml <- function(object, newdata,
   # Helper: standardized risk/linear predictor extraction -----------------
   fastml_predict_risk <- function(model, new_data, ...) {
     if (inherits(model, "fastml_native_survival")) {
-      # Prefer the S3 generic if available
       native_lp <- tryCatch(
         predict_risk(model, newdata = new_data, ...),
         error = function(e) NULL
@@ -105,21 +89,6 @@ predict.fastml <- function(object, newdata,
       if (!is.null(native_lp)) {
         return(as.numeric(native_lp))
       }
-
-      # Fallback: handle common native fits directly
-      fit_obj <- model$fit
-      baked <- tryCatch(
-        recipes::bake(model$recipe, new_data = new_data),
-        error = function(e) new_data
-      )
-
-      if (inherits(fit_obj, "coxph") || inherits(fit_obj, "survreg")) {
-        lp <- tryCatch(stats::predict(fit_obj, newdata = baked, type = "lp"), error = function(e) NULL)
-        if (!is.null(lp)) {
-          return(as.numeric(lp))
-        }
-      }
-
       stop("Risk prediction for this native survival model is not available.", call. = FALSE)
     }
 
@@ -133,13 +102,8 @@ predict.fastml <- function(object, newdata,
     }
 
     if (is.data.frame(lp) || tibble::is_tibble(lp)) {
-      if (".pred" %in% names(lp)) {
-        return(as.numeric(lp$.pred))
-      }
-      if (".pred_lp" %in% names(lp)) {
-        return(as.numeric(lp$.pred_lp))
-      }
-      # Fallback to first column
+      if (".pred" %in% names(lp)) return(as.numeric(lp$.pred))
+      if (".pred_lp" %in% names(lp)) return(as.numeric(lp$.pred_lp))
       return(as.numeric(lp[[1]]))
     }
 
@@ -148,18 +112,12 @@ predict.fastml <- function(object, newdata,
 
   # Helper: normalize nested model lists into a flat, named list ----------
   normalize_models <- function(mods, engine_names = NULL) {
-    if (!is.list(mods)) {
-      return(list())
-    }
-
-    if (all(vapply(mods, inherits, logical(1), what = "workflow"))) {
-      return(mods)
-    }
+    if (!is.list(mods)) return(list())
+    if (all(vapply(mods, inherits, logical(1), what = "workflow"))) return(mods)
 
     out <- list()
     for (algo in names(mods)) {
       entry <- mods[[algo]]
-
       if (inherits(entry, "workflow")) {
         eng <- tryCatch(engine_names[[algo]], error = function(e) NULL)
         eng <- if (is.null(eng) || length(eng) == 0 || is.na(eng[1])) NULL else eng[1]
@@ -167,17 +125,12 @@ predict.fastml <- function(object, newdata,
         out[[nm]] <- entry
         next
       }
-
       if (is.list(entry)) {
         inner_names <- names(entry)
         for (j in seq_along(entry)) {
           wf <- entry[[j]]
           if (!inherits(wf, "workflow")) next
-          eng <- if (!is.null(inner_names) && !is.na(inner_names[j]) && nzchar(inner_names[j])) {
-            inner_names[j]
-          } else {
-            NULL
-          }
+          eng <- if (!is.null(inner_names) && !is.na(inner_names[j]) && nzchar(inner_names[j])) inner_names[j] else NULL
           nm <- if (!is.null(eng)) paste0(algo, " (", eng, ")") else algo
           out[[nm]] <- wf
         }
@@ -191,13 +144,7 @@ predict.fastml <- function(object, newdata,
     avail_set <- unique(available)
     base_map <- stats::setNames(avail_set, sub(" \\(.*\\)$", "", avail_set))
     vapply(requested, function(nm) {
-      if (nm %in% avail_set) {
-        nm
-      } else if (!is.null(base_map[[nm]])) {
-        base_map[[nm]]
-      } else {
-        NA_character_
-      }
+      if (nm %in% avail_set) nm else if (!is.null(base_map[[nm]])) base_map[[nm]] else NA_character_
     }, character(1))
   }
 
@@ -231,6 +178,7 @@ predict.fastml <- function(object, newdata,
     wf <- to_predict[[nm]]
     if (verbose) message("Predicting with: ", nm)
 
+    # Workflows need raw data (they bake internally). Native objects need baked data.
     new_data_for_predict <- if (inherits(wf, "workflow")) newdata else new_proc
 
     if (object$task == "survival") {
@@ -244,15 +192,24 @@ predict.fastml <- function(object, newdata,
         if (length(times) == 0) {
           stop("No valid evaluation times supplied in 'eval_time'.")
         }
+
         surv_pred <- tryCatch({
+          # --- FIX 2: Handle Native vs Workflow Separately ---
           if (inherits(wf, "fastml_native_survival")) {
-            predict_survival(wf, newdata = newdata, times = times, ...)
+            # Native helper needs 'newdata'
+            predict_survival(wf, newdata = new_data_for_predict, times = times, ...)
           } else {
-            predict_survival(wf, newdata = newdata, times = times, ...)
+            # Workflows use standard predict with 'new_data'
+            # 1. Get nested tibble prediction
+            raw_pred <- predict(wf, new_data = new_data_for_predict, type = "survival", eval_time = times)
+            # 2. Convert nested list column to Matrix (Rows=Obs, Cols=Time)
+            probs_list <- lapply(raw_pred$.pred, function(x) x$.pred_survival)
+            do.call(rbind, probs_list)
           }
         }, error = function(e) {
           stop(sprintf("Failed to obtain survival predictions for model '%s': %s", nm, e$message), call. = FALSE)
         })
+
         if (is.matrix(surv_pred) && ncol(surv_pred) == length(times)) {
           colnames(surv_pred) <- format(times, trim = TRUE, scientific = FALSE)
         }
@@ -264,7 +221,8 @@ predict.fastml <- function(object, newdata,
 
       if (identical(predict_type, "risk")) {
         risk_pred <- tryCatch({
-          fastml_predict_risk(wf, new_data_for_predict, ...)
+          # --- FIX 3: Map user-facing newdata to internal new_data requirement ---
+          fastml_predict_risk(wf, new_data = new_data_for_predict, ...)
         }, error = function(e) {
           stop(sprintf("Failed to obtain risk predictions for model '%s': %s", nm, e$message), call. = FALSE)
         })
@@ -277,8 +235,8 @@ predict.fastml <- function(object, newdata,
       stop("Unsupported prediction type for survival task: ", predict_type)
     }
 
+    # Standard predictions (Classification / Regression)
     p <- predict(wf, new_data = new_data_for_predict, type = predict_type, ...)
-    # pull out the vector (or keep full prob‐tibble)
     if (is.data.frame(p) || tibble::is_tibble(p)) {
       p <- switch(predict_type,
                   class   = p$.pred_class,
@@ -300,6 +258,3 @@ predict.fastml <- function(object, newdata,
   class(preds) <- "fastml_prediction"
   preds
 }
-
-
-

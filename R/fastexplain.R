@@ -136,6 +136,10 @@ fastexplain <- function(object,
     if (!requireNamespace("iBreakDown", quietly = TRUE)) {
       stop("Package 'iBreakDown' required for method = 'breakdown'.")
     }
+    if (prep$task == "survival") {
+      message("Breakdown plots are skipped for survival tasks because reducing a survival curve to a single number (e.g., median time) can be undefined or misleading. Variable importance and SHAP remain available.")
+      return(invisible(NULL))
+    }
     # Align observation to the explainer's expected columns (raw predictors).
     obs_aligned <- as.data.frame(observation)
     if (!is.null(explainer$data)) {

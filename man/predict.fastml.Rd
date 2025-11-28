@@ -50,20 +50,3 @@ Generates predictions from a trained `fastml` object on new data.
 Supports both single-model and multi-model workflows, and handles classification
 and regression tasks with optional post-processing and verbosity.
 }
-\examples{
-\dontrun{
-  set.seed(123)
-  model <- fastml(iris, label = "Species")
-  test_data <- iris[sample(1:150, 20),-5]
-
-  ## Best model(s) predictions
-  preds <- predict(model, newdata = test_data)
-
-  ## Predicted class probabilities using best model(s)
-  probs <- predict(model, newdata = test_data, type = "prob")
-
-  ## Prediction from a specific model by name
-  single_model_preds <- predict(model, newdata = test_data, model_name = "rand_forest (ranger)")
-
-}
-}

@@ -28,6 +28,7 @@ explain_dalex <- function(object,
 }
 
 #' @keywords internal
+#' @keywords internal
 fastml_build_dalex_explainers <- function(prep) {
   if (!requireNamespace("DALEX", quietly = TRUE)) {
     stop("The 'DALEX' package is required.")
@@ -38,7 +39,6 @@ fastml_build_dalex_explainers <- function(prep) {
 
   model_info <- if (prep$task == "classification") list(type = "classification") else list(type = "regression")
 
-  # Determine the risk/positive class (align to event_class when available)
   pos_class <- prep$positive_class
   if (!is.null(prep$label_levels) && length(prep$label_levels) == 2) {
     if (!is.null(prep$event_class)) {
@@ -50,17 +50,11 @@ fastml_build_dalex_explainers <- function(prep) {
 
   # --- ROBUST BAKING HELPER ---
   bake_newdata <- function(newdata) {
-    # If no preprocessor, return as is
     if (is.null(prep$preprocessor)) return(newdata)
-
     processed_cols <- colnames(prep$x_processed)
-
-    # If already processed (numeric/matching columns), return as is
     if (!is.null(processed_cols) && length(processed_cols) && all(processed_cols %in% colnames(newdata))) {
       return(newdata[, processed_cols, drop = FALSE])
     }
-
-    # Apply Recipe
     baked <- tryCatch(
       recipes::bake(prep$preprocessor, new_data = newdata),
       error = function(e) {
@@ -68,22 +62,14 @@ fastml_build_dalex_explainers <- function(prep) {
         newdata
       }
     )
-
-    # Remove target if present
     if (!is.null(prep$label) && prep$label %in% names(baked)) {
       baked[[prep$label]] <- NULL
     }
-
-    # --- FIX: Handle Missing Columns (e.g., sparse dummy levels) ---
     if (!is.null(processed_cols)) {
       missing_cols <- setdiff(processed_cols, colnames(baked))
       if (length(missing_cols) > 0) {
-        # Fill missing columns with 0 (standard for missing dummy levels)
-        for (col in missing_cols) {
-          baked[[col]] <- 0
-        }
+        for (col in missing_cols) baked[[col]] <- 0
       }
-      # Ensure correct order
       baked <- baked[, processed_cols, drop = FALSE]
     }
     baked
@@ -91,28 +77,68 @@ fastml_build_dalex_explainers <- function(prep) {
 
   # --- PREDICT FUNCTION ---
   predict_function <- function(m, newdata) {
-    # 1. Translate Raw -> Processed
     newdata_processed <- bake_newdata(newdata)
 
-    # 2. Predict
+    to_numeric_vec <- function(x) {
+      if (is.null(x)) return(NULL)
+      drop_if_empty <- function(v) if (length(v) == 0) NULL else as.numeric(v)
+
+      if (is.numeric(x)) return(drop_if_empty(x))
+      if (is.matrix(x) && is.numeric(x)) {
+        return(drop_if_empty(x[, 1, drop = TRUE]))
+      }
+      if (is.data.frame(x)) {
+        numeric_cols <- names(x)[sapply(x, function(col) is.numeric(col) && !is.list(col))]
+        if (length(numeric_cols)) return(drop_if_empty(x[[numeric_cols[1]]]))
+        list_cols <- names(x)[sapply(x, is.list)]
+        if (length(list_cols)) {
+          lst <- x[[list_cols[1]]]
+          vec <- vapply(lst, function(el) if (is.null(el) || length(el) == 0) NA_real_ else as.numeric(el[[1]]), numeric(1))
+          return(drop_if_empty(vec))
+        }
+      }
+      if (is.list(x)) {
+        if (length(x) == 0) return(NULL)
+        if (all(vapply(x, function(el) is.numeric(el) && length(el) == 1, logical(1)))) {
+          return(drop_if_empty(unlist(x, use.names = FALSE)))
+        }
+        if (all(vapply(x, function(el) is.numeric(el) && length(el) > 0, logical(1)))) {
+          vec <- vapply(x, function(el) as.numeric(el[[1]]), numeric(1))
+          return(drop_if_empty(vec))
+        }
+        flat <- unlist(x, recursive = TRUE, use.names = FALSE)
+        if (is.numeric(flat)) return(drop_if_empty(flat))
+      }
+      NULL
+    }
+
     if (prep$task == "classification") {
       p <- predict(m, new_data = newdata_processed, type = "prob")
       colnames(p) <- sub("^\\.pred_", "", colnames(p))
       p <- as.data.frame(p)
 
-      # Order columns to keep the risk/positive class first when known
       if (!is.null(pos_class) && pos_class %in% colnames(p)) {
-        other_cols <- setdiff(colnames(p), pos_class)
-        p <- p[, c(pos_class, other_cols), drop = FALSE]
+        return(p[[pos_class]])
       }
-      # If label levels are known, align column order
-      if (!is.null(prep$label_levels) && length(prep$label_levels)) {
-        available <- intersect(prep$label_levels, colnames(p))
-        if (length(available)) {
-          p <- p[, available, drop = FALSE]
+      return(p[[1]]) # Fallback to first column if positive class not found
+
+    } else if (prep$task == "survival") {
+      try_type <- function(tp) {
+        tryCatch(predict(m, new_data = newdata_processed, type = tp), error = function(e) NULL)
+      }
+      pred_vec <- NULL
+      for (tp in c("time", "numeric", "risk", "linear_pred", "raw", "survival", "hazard")) {
+        candidate <- to_numeric_vec(try_type(tp))
+        if (!is.null(candidate)) {
+          pred_vec <- candidate
+          break
         }
       }
-      return(p)
+      if (is.null(pred_vec)) {
+        pred_vec <- to_numeric_vec(tryCatch(predict(m, new_data = newdata_processed), error = function(e) NULL))
+      }
+      if (is.null(pred_vec)) stop("Unable to compute survival predictions.")
+      return(pred_vec)
     } else {
       p <- predict(m, new_data = newdata_processed, type = "numeric")
       return(as.numeric(p$.pred))
@@ -120,10 +146,23 @@ fastml_build_dalex_explainers <- function(prep) {
   }
 
   build_one <- function(model, name) {
+    # --- FIX 2: Correctly Extract and Coerce Target for DALEX/modelStudio ---
+    y_target <- prep$y_raw
+    if (prep$task == "survival") {
+      if (inherits(y_target, "Surv")) y_target <- y_target[, 1]
+      y_target <- as.numeric(y_target)
+    } else if (prep$task == "classification") {
+      if (is.factor(y_target) || is.character(y_target)) {
+        y_target <- as.numeric(as.factor(y_target)) - 1
+      }
+    } else {
+      y_target <- as.numeric(y_target)
+    }
+
     DALEX::explain(
       model = model,
-      data = prep$x_raw,  # Use RAW data for interpretability
-      y = if (prep$task == "classification") prep$y_raw else as.numeric(prep$y_raw), # keep factor for class semantics
+      data = prep$x_raw,
+      y = y_target,
       label = name,
       predict_function = predict_function,
       model_info = model_info,
