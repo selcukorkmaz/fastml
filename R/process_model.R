@@ -180,15 +180,8 @@ process_model <- function(model_obj,
         roc_auc_value <- yardstick::roc_auc(
           data_metrics,
           truth = truth,!!rlang::sym(paste0(pred_name, positive_class)),
-          event_level = "second"
+          event_level = event_class
         )
-        if (roc_auc_value$.estimate < 0.50) {
-          roc_auc_value <- yardstick::roc_auc(
-            data_metrics,
-            truth = truth,!!rlang::sym(paste0(pred_name, positive_class)),
-            event_level = "first"
-          )
-        }
         perf <- dplyr::bind_rows(perf_class, roc_auc_value)
       } else{
         perf <- perf_class

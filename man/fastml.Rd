@@ -12,7 +12,7 @@ fastml(
   algorithms = "all",
   task = "auto",
   test_size = 0.2,
-  resampling_method = "cv",
+  resampling_method = if (identical(task, "survival")) "none" else "cv",
   folds = ifelse(grepl("cv", resampling_method), 10, 25),
   repeats = NULL,
   group_cols = NULL,
@@ -74,9 +74,11 @@ You may also explicitly set to "classification", "regression", or "survival".}
 
 \item{test_size}{A numeric value between 0 and 1 indicating the proportion of the data to use for testing. Default is \code{0.2}.}
 
-\item{resampling_method}{A string specifying the resampling method for model evaluation. Default is \code{"cv"} (cross-validation).
-Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, \code{"grouped_cv"},
-\code{"blocked_cv"}, \code{"rolling_origin"}, and \code{"nested_cv"}.}
+\item{resampling_method}{A string specifying the resampling method for model evaluation. Default is \code{"cv"}
+(cross-validation) for classification/regression. Other options include \code{"none"}, \code{"boot"},
+\code{"repeatedcv"}, \code{"grouped_cv"}, \code{"blocked_cv"}, \code{"rolling_origin"}, and \code{"nested_cv"}.
+For survival tasks, resampling is not supported; the method is forced to \code{"none"} and supplying custom
+resamples will error.}
 
 \item{folds}{An integer specifying the number of folds for cross-validation. Default is \code{10} for methods containing "cv" and \code{25} otherwise.}
 
@@ -158,7 +160,13 @@ ignored.}
 
 \item{summaryFunction}{A custom summary function for model evaluation. Default is \code{NULL}.}
 
-\item{use_default_tuning}{Logical; if \code{TRUE} and \code{tune_params} is \code{NULL}, tuning is performed using default grids. Tuning also occurs when custom \code{tune_params} are supplied. When \code{FALSE} and no custom parameters are given, models are fitted once with default settings. Default is \code{FALSE}.}
+\item{use_default_tuning}{Logical. Tuning only runs when resamples are supplied and
+\code{tuning_strategy} is not \code{"none"}. If \code{TRUE} and
+\code{tune_params} is \code{NULL}, default grids are used; if
+\code{tune_params} is provided, those values override/extend defaults. When
+\code{FALSE} and no custom parameters are given, models are fitted once with
+default settings. If no resamples are available or \code{tuning_strategy =
+"none"}, tuning requests are ignored with a warning. Default is \code{FALSE}.}
 
 \item{tuning_strategy}{A string specifying the tuning strategy. Must be one of
 \code{"grid"}, \code{"bayes"}, or \code{"none"}. Default is \code{"grid"}.

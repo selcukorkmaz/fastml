@@ -90,7 +90,7 @@ summary.fastml <- function(object,
   resampling_plan <- object$resampling_plan
   resampling_desc <- fastml_describe_resampling(resampling_plan)
 
-  cat(sprintf("Resampling strategy: %s\n", resampling_desc))
+  # cat(sprintf("Resampling strategy: %s\n", resampling_desc))
 
   resolve_engine_name <- function(model_name, default_engine = NA_character_) {
     if (!is.null(engine_names) && !is.null(engine_names[[model_name]])) {

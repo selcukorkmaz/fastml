@@ -21,9 +21,11 @@
 #'   character vector of length 2 that matches time and status columns in the data.
 #'   You may also explicitly set to "classification", "regression", or "survival".
 #' @param test_size A numeric value between 0 and 1 indicating the proportion of the data to use for testing. Default is \code{0.2}.
-#' @param resampling_method A string specifying the resampling method for model evaluation. Default is \code{"cv"} (cross-validation).
-#'                          Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, \code{"grouped_cv"},
-#'                          \code{"blocked_cv"}, \code{"rolling_origin"}, and \code{"nested_cv"}.
+#' @param resampling_method A string specifying the resampling method for model evaluation. Default is \code{"cv"}
+#'   (cross-validation) for classification/regression. Other options include \code{"none"}, \code{"boot"},
+#'   \code{"repeatedcv"}, \code{"grouped_cv"}, \code{"blocked_cv"}, \code{"rolling_origin"}, and \code{"nested_cv"}.
+#'   For survival tasks, resampling is not supported; the method is forced to \code{"none"} and supplying custom
+#'   resamples will error.
 #' @param folds An integer specifying the number of folds for cross-validation. Default is \code{10} for methods containing "cv" and \code{25} otherwise.
 #' @param repeats Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").
 #' @param group_cols Character vector naming one or more grouping columns used when
@@ -80,7 +82,13 @@
 #'   If supplied, \code{resampling_method}, \code{folds}, and \code{repeats} are
 #'   ignored.
 #' @param summaryFunction A custom summary function for model evaluation. Default is \code{NULL}.
-#' @param use_default_tuning Logical; if \code{TRUE} and \code{tune_params} is \code{NULL}, tuning is performed using default grids. Tuning also occurs when custom \code{tune_params} are supplied. When \code{FALSE} and no custom parameters are given, models are fitted once with default settings. Default is \code{FALSE}.
+#' @param use_default_tuning Logical. Tuning only runs when resamples are supplied and
+#'   \code{tuning_strategy} is not \code{"none"}. If \code{TRUE} and
+#'   \code{tune_params} is \code{NULL}, default grids are used; if
+#'   \code{tune_params} is provided, those values override/extend defaults. When
+#'   \code{FALSE} and no custom parameters are given, models are fitted once with
+#'   default settings. If no resamples are available or \code{tuning_strategy =
+#'   "none"}, tuning requests are ignored with a warning. Default is \code{FALSE}.
 #' @param tuning_strategy A string specifying the tuning strategy. Must be one of
 #'   \code{"grid"}, \code{"bayes"}, or \code{"none"}. Default is \code{"grid"}.
 #'   If custom \code{tune_params} are provided while \code{tuning_strategy = "none"},
@@ -160,7 +168,7 @@ fastml <- function(data = NULL,
                    algorithms = "all",
                    task = "auto",
                    test_size = 0.2,
-                   resampling_method = "cv",
+                   resampling_method = if (identical(task, "survival")) "none" else "cv",
                    folds = ifelse(grepl("cv", resampling_method), 10, 25),
                    repeats = NULL,
                    group_cols = NULL,
@@ -210,6 +218,15 @@ fastml <- function(data = NULL,
     resampling_method <- "none"
   } else {
     resampling_method <- tolower(resampling_method)
+  }
+  if (task == "survival") {
+    if (!is.null(resamples)) {
+      stop("Resampling for survival tasks is not supported. Please set resampling_method = \"none\" and do not supply custom resamples.")
+    }
+    if (!identical(resampling_method, "none")) {
+      warning("Resampling for survival tasks is not supported; proceeding with resampling_method = \"none\".")
+      resampling_method <- "none"
+    }
   }
   resampling_active <- !is.null(resamples) || resampling_method != "none"
   custom_resamples <- !is.null(resamples)
@@ -1210,6 +1227,20 @@ fastml <- function(data = NULL,
   }
 
 
+  processed_test_data <- test_data
+  if (!is.null(trained_recipe)) {
+    processed_test_data <- tryCatch(
+      {
+        baked <- recipes::bake(trained_recipe, new_data = test_data)
+        if (!is.null(label) && label %in% names(baked)) {
+          baked <- baked[, setdiff(names(baked), label), drop = FALSE]
+        }
+        baked
+      },
+      error = function(e) test_data
+    )
+  }
+
   result <- list(
     best_model = models[best_model_idx],
     best_model_name = best_model_name,
@@ -1218,6 +1249,8 @@ fastml <- function(data = NULL,
     preprocessor = trained_recipe,
     raw_train_data = raw_train_data,
     processed_train_data = processed_train_data,
+    raw_test_data = test_data,
+    processed_test_data = processed_test_data,
     label = label,
     task = task,
     models = models,

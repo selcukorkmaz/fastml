@@ -39,14 +39,32 @@ fastml_build_dalex_explainers <- function(prep) {
 
   model_info <- if (prep$task == "classification") list(type = "classification") else list(type = "regression")
 
-  pos_class <- prep$positive_class
-  if (!is.null(prep$label_levels) && length(prep$label_levels) == 2) {
-    if (!is.null(prep$event_class)) {
-      pos_class <- if (prep$event_class == "second") prep$label_levels[2] else prep$label_levels[1]
-    } else if (is.null(pos_class)) {
-      pos_class <- prep$label_levels[1]
-    }
+  normalize_class_name <- function(x) {
+    tolower(trimws(as.character(x)))
   }
+
+  resolve_positive_candidates <- function() {
+    candidates <- character()
+    if (!is.null(prep$positive_class)) {
+      candidates <- c(candidates, prep$positive_class)
+    }
+    if (!is.null(prep$label_levels) && length(prep$label_levels) >= 2) {
+      if (!is.null(prep$event_class) && prep$event_class %in% c("first", "second")) {
+        idx <- if (prep$event_class == "second") min(2L, length(prep$label_levels)) else 1L
+        candidates <- c(candidates, prep$label_levels[idx])
+      } else {
+        candidates <- c(candidates, prep$label_levels[min(2L, length(prep$label_levels))])
+      }
+    }
+    if (!is.null(prep$label_levels)) {
+      candidates <- c(candidates, prep$label_levels)
+    }
+    unique(candidates[!is.na(candidates) & nzchar(candidates)])
+  }
+
+  pos_candidates <- resolve_positive_candidates()
+  pos_class <- if (length(pos_candidates)) pos_candidates[[1]] else NULL
+  warned_missing_prob <- FALSE
 
   # --- ROBUST BAKING HELPER ---
   bake_newdata <- function(newdata) {
@@ -117,10 +135,43 @@ fastml_build_dalex_explainers <- function(prep) {
       colnames(p) <- sub("^\\.pred_", "", colnames(p))
       p <- as.data.frame(p)
 
-      if (!is.null(pos_class) && pos_class %in% colnames(p)) {
-        return(p[[pos_class]])
+      prob_cols <- colnames(p)
+      match_idx <- NA_integer_
+      chosen_class <- NULL
+
+      if (length(pos_candidates)) {
+        for (cand in pos_candidates) {
+          idx <- match(normalize_class_name(cand), normalize_class_name(prob_cols))
+          if (!is.na(idx)) {
+            match_idx <- idx
+            chosen_class <- prob_cols[idx]
+            break
+          }
+        }
       }
-      return(p[[1]]) # Fallback to first column if positive class not found
+
+      if (is.na(match_idx) && length(prob_cols) == 2) {
+        fallback_idx <- if (!is.null(prep$event_class) && prep$event_class == "second") 2L else 1L
+        match_idx <- min(fallback_idx, length(prob_cols))
+        chosen_class <- prob_cols[match_idx]
+      }
+
+      if (is.na(match_idx)) {
+        match_idx <- 1L
+        chosen_class <- prob_cols[match_idx]
+      }
+
+      if (!warned_missing_prob &&
+          length(pos_candidates) &&
+          all(is.na(match(normalize_class_name(pos_candidates), normalize_class_name(prob_cols))))) {
+        warning(
+          "Positive class '", pos_candidates[[1]], "' not found in predicted probabilities; using '",
+          chosen_class, "' instead."
+        )
+        warned_missing_prob <<- TRUE
+      }
+
+      return(p[[match_idx]])
 
     } else if (prep$task == "survival") {
       try_type <- function(tp) {
@@ -152,8 +203,24 @@ fastml_build_dalex_explainers <- function(prep) {
       if (inherits(y_target, "Surv")) y_target <- y_target[, 1]
       y_target <- as.numeric(y_target)
     } else if (prep$task == "classification") {
-      if (is.factor(y_target) || is.character(y_target)) {
-        y_target <- as.numeric(as.factor(y_target)) - 1
+      if (is.factor(y_target) || is.character(y_target) || is.logical(y_target)) {
+        y_chr <- as.character(y_target)
+        pos_for_y <- NULL
+        if (!is.null(pos_class) && any(normalize_class_name(y_chr) == normalize_class_name(pos_class))) {
+          pos_for_y <- pos_class
+        } else if (!is.null(prep$label_levels) && length(prep$label_levels) == 2) {
+          if (!is.null(prep$event_class) && prep$event_class == "first") {
+            pos_for_y <- prep$label_levels[1]
+          } else {
+            pos_for_y <- prep$label_levels[2]
+          }
+        }
+
+        if (!is.null(pos_for_y)) {
+          y_target <- as.numeric(normalize_class_name(y_chr) == normalize_class_name(pos_for_y))
+        } else {
+          y_target <- as.numeric(as.factor(y_chr)) - 1
+        }
       }
     } else {
       y_target <- as.numeric(y_target)

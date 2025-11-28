@@ -700,6 +700,9 @@ train_models <- function(train_data,
   if (tuning_strategy == "none" && !is.null(tune_params)) {
     warning("'tune_params' are ignored when 'tuning_strategy' is 'none'")
   }
+  if (tuning_strategy == "none" && isTRUE(use_default_tuning)) {
+    warning("'use_default_tuning = TRUE' is ignored because 'tuning_strategy' is 'none'")
+  }
 
   if (tuning_strategy == "bayes") {
     if (!is.numeric(tuning_iterations) || length(tuning_iterations) != 1 ||
@@ -713,6 +716,16 @@ train_models <- function(train_data,
   }
 
   if (task == "survival") {
+    if (!is.null(resamples)) {
+      stop(
+        "Resampling for survival tasks is not currently supported. ",
+        "Please set resampling_method = \"none\" and do not supply custom resamples."
+      )
+    }
+    if (!identical(resampling_method, "none")) {
+      warning("Resampling for survival tasks is not supported; proceeding with resampling_method = \"none\".")
+      resampling_method <- "none"
+    }
     models <- list()
 
     response_col <- label
@@ -1519,7 +1532,7 @@ train_models <- function(train_data,
     } else if (inherits(resamples, "rset")) {
       resample_plan <- fastml_new_resample_plan(
         splits = resamples,
-        method = resampling_method %||% "custom",
+        method = "custom",
         params = list(source = "user_provided")
       )
     } else {
@@ -1679,7 +1692,7 @@ train_models <- function(train_data,
         outer_folds != as.integer(outer_folds)) {
       stop("'outer_folds' must be an integer greater than or equal to 2.")
     }
-    inner_folds <- if (is.null(folds)) 5 else folds
+    inner_folds <- if (is.null(folds)) 10 else folds
     if (!is.numeric(inner_folds) || length(inner_folds) != 1 || inner_folds < 2 ||
         inner_folds != as.integer(inner_folds)) {
       stop("'folds' must be an integer greater than or equal to 2 for inner resampling.")
@@ -1707,8 +1720,8 @@ train_models <- function(train_data,
 
   resamples <- if (!is.null(resample_plan)) fastml_resample_splits(resample_plan) else NULL
 
-  if (use_default_tuning && is.null(resamples)) {
-    warning("'tune_params' are ignored when 'tuning_strategy' is 'none'")
+  if (is.null(resamples) && (use_default_tuning || !is.null(tune_params))) {
+    warning("Tuning is skipped because no resamples were supplied (set resampling_method or provide resamples).")
   }
 
   models <- list()
