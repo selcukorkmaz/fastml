@@ -716,17 +716,239 @@ train_models <- function(train_data,
   }
 
   if (task == "survival") {
-    if (!is.null(resamples)) {
-      stop(
-        "Resampling for survival tasks is not currently supported. ",
-        "Please set resampling_method = \"none\" and do not supply custom resamples."
-      )
-    }
-    if (!identical(resampling_method, "none")) {
-      warning("Resampling for survival tasks is not supported; proceeding with resampling_method = \"none\".")
-      resampling_method <- "none"
-    }
     models <- list()
+
+    update_params_surv <- function(params_model, new_params) {
+      for (param_name in names(new_params)) {
+        param_value <- new_params[[param_name]]
+        param_row <- params_model %>% dplyr::filter(id == param_name)
+        if (nrow(param_row) == 0) next
+
+        param_obj <- param_row$object[[1]]
+
+        try_update <- function(obj, value) {
+          if (length(value) == 2) {
+            if (inherits(obj, "integer_parameter")) {
+              return(obj %>% dials::range_set(c(as.integer(value[1]), as.integer(value[2]))))
+            } else {
+              return(obj %>% dials::range_set(value))
+            }
+          } else {
+            if (inherits(obj, "integer_parameter")) {
+              return(obj %>% dials::value_set(as.integer(value)))
+            } else {
+              return(obj %>% dials::value_set(value))
+            }
+          }
+        }
+
+        updated_obj <- tryCatch({
+          try_update(param_obj, param_value)
+        }, error = function(e) {
+          current_lb <- attr(param_obj, "range")$lower
+          current_ub <- attr(param_obj, "range")$upper
+
+          if (length(param_value) == 1) {
+            new_val <- if (inherits(param_obj, "integer_parameter")) as.integer(param_value) else param_value
+          } else {
+            new_val <- c(min(param_value), max(param_value))
+          }
+
+          if (length(new_val) == 1) {
+            new_lb <- min(current_lb, new_val)
+            new_ub <- max(current_ub, new_val)
+          } else {
+            new_lb <- min(current_lb, new_val[1])
+            new_ub <- max(current_ub, new_val[2])
+          }
+
+          param_obj %>% dials::range_set(c(new_lb, new_ub))
+        })
+
+        params_model$object[params_model$id == param_name] <- list(updated_obj)
+      }
+      params_model
+    }
+
+    status_strata <- if (!is.null(status_col) && status_col %in% names(resample_data)) {
+      status_col
+    } else {
+      NULL
+    }
+
+    resample_plan <- NULL
+    if (!is.null(resamples)) {
+      if (fastml_is_resample_plan(resamples)) {
+        resample_plan <- fastml_resample_validate(resamples)
+      } else if (inherits(resamples, "rset")) {
+        resample_plan <- fastml_new_resample_plan(
+          splits = resamples,
+          method = "custom",
+          params = list(source = "user_provided")
+        )
+      } else {
+        stop("'resamples' must be an 'rset' object or a fastml resampling plan for survival tasks.")
+      }
+    } else if (resampling_method == "cv") {
+      if (nrow(resample_data) < folds) {
+        stop(
+          sprintf(
+            "You requested %d-fold cross-validation, but your training set only has %d rows. \nThis prevents each fold from having at least one row. \nEither reduce 'folds', increase data, or use a different resampling method (e.g. 'boot').",
+            folds,
+            nrow(resample_data)
+          )
+        )
+      }
+      resamples_obj <- vfold_cv(
+        resample_data,
+        v = folds,
+        repeats = 1,
+        strata = if (!is.null(status_strata)) dplyr::all_of(status_strata) else NULL
+      )
+      resample_plan <- fastml_new_resample_plan(
+        splits = resamples_obj,
+        method = "cv",
+        params = list(
+          v = folds,
+          repeats = 1,
+          strata = status_strata
+        )
+      )
+    } else if (resampling_method == "boot") {
+      resamples_obj <- bootstraps(
+        resample_data,
+        times = folds,
+        strata = if (!is.null(status_strata)) dplyr::all_of(status_strata) else NULL
+      )
+      resample_plan <- fastml_new_resample_plan(
+        splits = resamples_obj,
+        method = "boot",
+        params = list(times = folds, strata = status_strata)
+      )
+    } else if (resampling_method == "repeatedcv") {
+      if (nrow(resample_data) < folds) {
+        stop(
+          sprintf(
+            "You requested %d-fold cross-validation, but your training set only has %d rows. \nThis prevents each fold from having at least one row. \nEither reduce 'folds', increase data, or use a different resampling method (e.g. 'boot').",
+            folds,
+            nrow(resample_data)
+          )
+        )
+      }
+      repeats_val <- if (is.null(repeats)) 1L else repeats
+      resamples_obj <- vfold_cv(
+        resample_data,
+        v = folds,
+        repeats = repeats_val,
+        strata = if (!is.null(status_strata)) dplyr::all_of(status_strata) else NULL
+      )
+      resample_plan <- fastml_new_resample_plan(
+        splits = resamples_obj,
+        method = "repeatedcv",
+        params = list(
+          v = folds,
+          repeats = repeats_val,
+          strata = status_strata
+        )
+      )
+    } else if (resampling_method == "grouped_cv") {
+      repeats_arg <- if (is.null(repeats)) 1L else repeats
+      resamples_obj <- make_grouped_cv(
+        data = resample_data,
+        group_cols = group_cols,
+        v = folds,
+        strata = status_strata,
+        repeats = repeats_arg
+      )
+      resample_plan <- fastml_new_resample_plan(
+        splits = resamples_obj,
+        method = "grouped_cv",
+        params = list(
+          group_cols = group_cols,
+          v = folds,
+          repeats = repeats_arg,
+          strata = status_strata
+        )
+      )
+    } else if (resampling_method %in% c("blocked_cv", "rolling_origin")) {
+      if (is.null(block_col) || length(block_col) != 1) {
+        stop("'block_col' must be provided when using blocked or rolling resampling.")
+      }
+
+      if (resampling_method == "blocked_cv") {
+        blocked_info <- make_blocked_cv(
+          data = resample_data,
+          block_col = block_col,
+          block_size = block_size
+        )
+
+        if (!is.numeric(folds) || length(folds) != 1 || folds < 2 || folds != as.integer(folds)) {
+          stop("'folds' must be an integer greater than or equal to 2 for 'blocked_cv'.")
+        }
+
+        if (folds > blocked_info$n_blocks) {
+          stop("'folds' cannot exceed the number of derived blocks.")
+        }
+
+        block_group_col <- ".fastml_block"
+        blocked_data <- blocked_info$data
+        blocked_data[[block_group_col]] <- blocked_info$block_ids
+
+        resamples_obj <- rsample::group_vfold_cv(
+          blocked_data,
+          group = !!rlang::sym(block_group_col),
+          v = folds
+        )
+
+        resamples_obj$splits <- lapply(
+          resamples_obj$splits,
+          function(split) {
+            split$data[[block_group_col]] <- NULL
+            split
+          }
+        )
+
+        resample_plan <- fastml_new_resample_plan(
+          splits = resamples_obj,
+          method = "blocked_cv",
+          params = list(
+            block_col = block_col,
+            block_size = block_size,
+            v = folds
+          )
+        )
+      } else {
+        resamples_obj <- make_rolling_origin_cv(
+          data = resample_data,
+          block_col = block_col,
+          initial_window = initial_window,
+          assess_window = assess_window,
+          skip = skip
+        )
+        resample_plan <- fastml_new_resample_plan(
+          splits = resamples_obj,
+          method = "rolling_origin",
+          params = list(
+            block_col = block_col,
+            initial_window = initial_window,
+            assess_window = assess_window,
+            skip = skip
+          )
+        )
+      }
+    } else if (resampling_method == "nested_cv") {
+      stop("Nested resampling for survival tasks is not yet supported. Please use a different resampling_method or provide custom resamples.")
+    } else if (resampling_method == "none") {
+      resample_plan <- NULL
+    }
+
+    resamples <- if (!is.null(resample_plan)) fastml_resample_splits(resample_plan) else NULL
+
+    if (is.null(resamples) && (use_default_tuning || !is.null(tune_params))) {
+      warning("Tuning is skipped because no resamples were supplied (set resampling_method or provide resamples).")
+    }
+
+    resampling_summaries <- list()
 
     response_col <- label
     label_cols <- attr(train_data[[label]], "fastml_label_cols")
@@ -781,8 +1003,11 @@ train_models <- function(train_data,
       engine <- get_engine(algo, get_default_engine(algo, task))
       engine_args <- resolve_engine_params(engine_params, algo, engine)
       fit_engine_args <- NULL
+      prefer_parsnip <- !is.null(resamples) || !identical(resampling_method, "none") ||
+        use_default_tuning || (!is.null(tune_params) && length(tune_params) > 0)
+      spec_is_parsnip <- FALSE
 
-      if (algo == "rand_forest") {
+      if (algo %in% c("rand_forest", "rand_forest_survival")) {
         if (identical(engine, "aorsf") && !requireNamespace("aorsf", quietly = TRUE)) {
           if (requireNamespace("ranger", quietly = TRUE)) {
             warning("Engine 'aorsf' not installed. Falling back to 'ranger' for survival random forest.")
@@ -798,6 +1023,7 @@ train_models <- function(train_data,
         }
         spec <- define_rand_forest_spec("survival", train_data, label,
                                        tuning = FALSE, engine = engine)$model_spec
+        spec_is_parsnip <- TRUE
       } else if (algo == "elastic_net") {
         warning("Survival 'elastic_net' requires censored survival model specs not available in your setup. Skipping.")
         next
@@ -805,19 +1031,29 @@ train_models <- function(train_data,
         if (!requireNamespace("survival", quietly = TRUE)) {
           stop("The 'survival' package is required for Cox PH. Please install it.")
         }
-        prep_dat <- get_prepped_data()
-        baked_train <- prep_dat$data
-        rec_prep <- prep_dat$recipe
-        fit <- call_with_engine_params(
-          survival::coxph,
-          list(
-            formula = as.formula(paste(response_col, "~ .")),
-            data = baked_train,
-            ties = "efron"
-          ),
-          engine_args
-        )
-        spec <- create_native_spec("cox_ph", engine, fit, rec_prep)
+        if (prefer_parsnip) {
+          base_spec <- parsnip::proportional_hazards(
+            penalty = NULL,
+            mixture = NULL
+          ) %>%
+            parsnip::set_mode("censored regression")
+          spec <- do.call(parsnip::set_engine, c(list(base_spec, engine = engine), engine_args))
+          spec_is_parsnip <- TRUE
+        } else {
+          prep_dat <- get_prepped_data()
+          baked_train <- prep_dat$data
+          rec_prep <- prep_dat$recipe
+          fit <- call_with_engine_params(
+            survival::coxph,
+            list(
+              formula = as.formula(paste(response_col, "~ .")),
+              data = baked_train,
+              ties = "efron"
+            ),
+            engine_args
+          )
+          spec <- create_native_spec("cox_ph", engine, fit, rec_prep)
+        }
       } else if (algo == "penalized_cox") {
         if (!requireNamespace("censored", quietly = TRUE)) {
           warning("Package 'censored' not installed; skipping penalized_cox.")
@@ -845,13 +1081,14 @@ train_models <- function(train_data,
         spec_info <- define_penalized_cox_spec(
           task = task,
           penalty = penalty_val,
-          mixture = mixture_val,
-          engine = engine,
-          engine_params = engine_args
-        )
+            mixture = mixture_val,
+            engine = engine,
+            engine_params = engine_args
+          )
         spec <- spec_info$model_spec
         fit_engine_args <- spec_info$fit_args
-      } else if (algo == "xgboost") {
+        spec_is_parsnip <- TRUE
+      } else if (algo %in% c("xgboost", "xgboost_aft")) {
         if (!requireNamespace("xgboost", quietly = TRUE)) {
           warning("Package 'xgboost' not installed; skipping xgboost survival model.")
           next
@@ -876,181 +1113,219 @@ train_models <- function(train_data,
           next
         }
 
-        prep_dat <- get_prepped_data()
-        baked_train <- prep_dat$data
-        rec_prep <- prep_dat$recipe
-
-        predictor_cols <- setdiff(names(baked_train), response_col)
-        if (length(predictor_cols) == 0) {
-          warning("No predictors available after preprocessing; skipping xgboost survival model.")
-          next
-        }
-        predictors <- baked_train[, predictor_cols, drop = FALSE]
-        feature_names <- predictor_cols
-        design_mat <- fastml_prepare_xgb_matrix(predictors, feature_names)
-
-        if (ncol(design_mat) == 0) {
-          warning("Unable to construct a feature matrix for xgboost; skipping.")
-          next
-        }
-
-        time_vec <- as.numeric(train_data[[time_col]])
-        status_vec <- as.numeric(train_data[[status_col]])
-        valid_idx <- is.finite(time_vec) & time_vec > 0 & is.finite(status_vec)
-        if (!any(valid_idx)) {
-          warning("No valid survival outcomes available for xgboost; skipping.")
-          next
-        }
-        if (!all(valid_idx)) {
-          design_mat <- design_mat[valid_idx, , drop = FALSE]
-          time_vec <- time_vec[valid_idx]
-          status_vec <- status_vec[valid_idx]
-        }
-        if (!any(status_vec > 0, na.rm = TRUE)) {
-          warning("XGBoost AFT requires at least one observed event; skipping.")
-          next
-        }
-
-        time_vec[time_vec <= 0 | !is.finite(time_vec)] <- min(time_vec[time_vec > 0 & is.finite(time_vec)])
-        log_time <- log(time_vec)
-        lower_bounds <- log_time
-        upper_bounds <- log_time
-        upper_bounds[status_vec <= 0 | !is.finite(status_vec)] <- Inf
-
-        dtrain <- xgboost::xgb.DMatrix(data = design_mat, label = log_time)
-        xgboost::setinfo(dtrain, "label_lower_bound", lower_bounds)
-        xgboost::setinfo(dtrain, "label_upper_bound", upper_bounds)
-
         defaults <- get_default_params(
           "xgboost",
           task,
-          num_predictors = ncol(design_mat),
+          num_predictors = ncol(train_data %>% dplyr::select(-dplyr::all_of(label))),
           engine = "xgboost"
         )
 
-        max_depth <- defaults$tree_depth
-        if (is.null(max_depth) || !is.finite(max_depth)) max_depth <- 6
-        max_depth <- as.integer(max(1, round(max_depth)))
+        if (prefer_parsnip) {
+          warning(
+            paste(
+              "Parsnip does not currently expose a 'censored regression' mode for xgboost.",
+              "Falling back to the native AFT implementation with resampling disabled."
+            )
+          )
+          resamples <- NULL
+          resample_plan <- NULL
+          prefer_parsnip <- FALSE
+        }
 
-        eta <- defaults$learn_rate
-        if (is.null(eta) || !is.finite(eta)) eta <- 0.1
+        if (prefer_parsnip) {
+          tuning_flag <- (!is.null(resamples)) && (use_default_tuning || (!is.null(tune_params) &&
+                                                   !is.null(tune_params[[algo]]) &&
+                                                   !is.null(tune_params[[algo]][[engine]])))
+          model_spec <- parsnip::boost_tree(
+            trees = if (tuning_flag) tune() else defaults$trees,
+            tree_depth = if (tuning_flag) tune() else defaults$tree_depth,
+            learn_rate = if (tuning_flag) tune() else defaults$learn_rate,
+            mtry = if (tuning_flag) tune() else defaults$mtry,
+            min_n = if (tuning_flag) tune() else defaults$min_n,
+            loss_reduction = if (tuning_flag) tune() else defaults$loss_reduction,
+            sample_size = if (tuning_flag) tune() else defaults$sample_size
+          ) %>%
+            parsnip::set_mode("censored regression")
 
-        gamma <- defaults$loss_reduction
-        if (is.null(gamma) || !is.finite(gamma)) gamma <- 0
-
-        min_child_weight <- defaults$min_n
-        if (is.null(min_child_weight) || !is.finite(min_child_weight)) min_child_weight <- 2
-
-        subsample <- defaults$sample_size
-        if (is.null(subsample) || !is.finite(subsample)) subsample <- 0.5
-
-        mtry <- defaults$mtry
-        if (is.null(mtry) || !is.finite(mtry)) {
-          colsample <- 1
+          engine_aug <- c(list(
+            model_spec,
+            engine = "xgboost",
+            objective = "survival:aft",
+            eval_metric = "aft-nloglik"
+          ), engine_args)
+          model_spec <- do.call(parsnip::set_engine, engine_aug)
+          spec <- model_spec
+          spec_is_parsnip <- TRUE
         } else {
-          colsample <- min(1, max(1, mtry) / max(1, ncol(design_mat)))
-        }
+          prep_dat <- get_prepped_data()
+          baked_train <- prep_dat$data
+          rec_prep <- prep_dat$recipe
 
-        nrounds <- defaults$trees
-        if (is.null(nrounds) || !is.finite(nrounds) || nrounds <= 0) nrounds <- 50
-        nrounds <- as.integer(max(1, round(nrounds)))
-
-        params <- list(
-          objective = "survival:aft",
-          eval_metric = "aft-nloglik",
-          max_depth = max_depth,
-          eta = eta,
-          gamma = gamma,
-          min_child_weight = min_child_weight,
-          subsample = subsample,
-          colsample_bytree = colsample,
-          aft_loss_distribution = "logistic",
-          aft_loss_distribution_scale = 1,
-          verbosity = 0
-        )
-
-        aft_quantiles <- c(0.25, 0.5, 0.75)
-        early_stop <- defaults$stop_iter
-        if (!is.null(early_stop) && is.finite(early_stop) && early_stop <= 0) {
-          early_stop <- NULL
-        }
-
-        extra_args <- list()
-        if (length(engine_args) > 0) {
-          if (!is.null(engine_args$params)) {
-            if (!is.list(engine_args$params)) {
-              stop("Engine parameters for xgboost must provide 'params' as a list.")
-            }
-            params <- merge_engine_args(params, engine_args$params)
-            engine_args$params <- NULL
+          predictor_cols <- setdiff(names(baked_train), response_col)
+          if (length(predictor_cols) == 0) {
+            warning("No predictors available after preprocessing; skipping xgboost survival model.")
+            next
           }
-          if (!is.null(engine_args$nrounds)) {
-            nrounds <- as.integer(engine_args$nrounds[1])
-            engine_args$nrounds <- NULL
-          }
-          if (!is.null(engine_args$early_stopping_rounds)) {
-            early_stop <- as.integer(engine_args$early_stopping_rounds[1])
-            engine_args$early_stopping_rounds <- NULL
-          }
-          if (!is.null(engine_args$quantiles)) {
-            aft_quantiles <- engine_args$quantiles
-            engine_args$quantiles <- NULL
-          }
-          if (!is.null(engine_args$aft_quantiles)) {
-            aft_quantiles <- engine_args$aft_quantiles
-            engine_args$aft_quantiles <- NULL
-          }
-          extra_args <- merge_engine_args(extra_args, engine_args)
-        }
+          predictors <- baked_train[, predictor_cols, drop = FALSE]
+          feature_names <- predictor_cols
+          design_mat <- fastml_prepare_xgb_matrix(predictors, feature_names)
 
-        aft_quantiles <- as.numeric(aft_quantiles)
-        aft_quantiles <- aft_quantiles[is.finite(aft_quantiles) & aft_quantiles > 0 & aft_quantiles < 1]
-        aft_quantiles <- sort(unique(aft_quantiles))
+          if (ncol(design_mat) == 0) {
+            warning("Unable to construct a feature matrix for xgboost; skipping.")
+            next
+          }
 
-        if (length(aft_quantiles) == 0) {
+          time_vec <- as.numeric(train_data[[time_col]])
+          status_vec <- as.numeric(train_data[[status_col]])
+          valid_idx <- is.finite(time_vec) & time_vec > 0 & is.finite(status_vec)
+          if (!any(valid_idx)) {
+            warning("No valid survival outcomes available for xgboost; skipping.")
+            next
+          }
+          if (!all(valid_idx)) {
+            design_mat <- design_mat[valid_idx, , drop = FALSE]
+            time_vec <- time_vec[valid_idx]
+            status_vec <- status_vec[valid_idx]
+          }
+          if (!any(status_vec > 0, na.rm = TRUE)) {
+            warning("XGBoost AFT requires at least one observed event; skipping.")
+            next
+          }
+
+          time_vec[time_vec <= 0 | !is.finite(time_vec)] <- min(time_vec[time_vec > 0 & is.finite(time_vec)])
+          log_time <- log(time_vec)
+          lower_bounds <- log_time
+          upper_bounds <- log_time
+          upper_bounds[status_vec <= 0 | !is.finite(status_vec)] <- Inf
+
+          dtrain <- xgboost::xgb.DMatrix(data = design_mat, label = log_time)
+          xgboost::setinfo(dtrain, "label_lower_bound", lower_bounds)
+          xgboost::setinfo(dtrain, "label_upper_bound", upper_bounds)
+
+          max_depth <- defaults$tree_depth
+          if (is.null(max_depth) || !is.finite(max_depth)) max_depth <- 6
+          max_depth <- as.integer(max(1, round(max_depth)))
+
+          eta <- defaults$learn_rate
+          if (is.null(eta) || !is.finite(eta)) eta <- 0.1
+
+          gamma <- defaults$loss_reduction
+          if (is.null(gamma) || !is.finite(gamma)) gamma <- 0
+
+          min_child_weight <- defaults$min_n
+          if (is.null(min_child_weight) || !is.finite(min_child_weight)) min_child_weight <- 2
+
+          subsample <- defaults$sample_size
+          if (is.null(subsample) || !is.finite(subsample)) subsample <- 0.5
+
+          mtry <- defaults$mtry
+          if (is.null(mtry) || !is.finite(mtry)) {
+            colsample <- 1
+          } else {
+            colsample <- min(1, max(1, mtry) / max(1, ncol(design_mat)))
+          }
+
+          nrounds <- defaults$trees
+          if (is.null(nrounds) || !is.finite(nrounds) || nrounds <= 0) nrounds <- 50
+          nrounds <- as.integer(max(1, round(nrounds)))
+
+          params <- list(
+            objective = "survival:aft",
+            eval_metric = "aft-nloglik",
+            max_depth = max_depth,
+            eta = eta,
+            gamma = gamma,
+            min_child_weight = min_child_weight,
+            subsample = subsample,
+            colsample_bytree = colsample,
+            aft_loss_distribution = "logistic",
+            aft_loss_distribution_scale = 1,
+            verbosity = 0
+          )
+
           aft_quantiles <- c(0.25, 0.5, 0.75)
+          early_stop <- defaults$stop_iter
+          if (!is.null(early_stop) && is.finite(early_stop) && early_stop <= 0) {
+            early_stop <- NULL
+          }
+
+          extra_args <- list()
+          if (length(engine_args) > 0) {
+            if (!is.null(engine_args$params)) {
+              if (!is.list(engine_args$params)) {
+                stop("Engine parameters for xgboost must provide 'params' as a list.")
+              }
+              params <- merge_engine_args(params, engine_args$params)
+              engine_args$params <- NULL
+            }
+            if (!is.null(engine_args$nrounds)) {
+              nrounds <- as.integer(engine_args$nrounds[1])
+              engine_args$nrounds <- NULL
+            }
+            if (!is.null(engine_args$early_stopping_rounds)) {
+              early_stop <- as.integer(engine_args$early_stopping_rounds[1])
+              engine_args$early_stopping_rounds <- NULL
+            }
+            if (!is.null(engine_args$quantiles)) {
+              aft_quantiles <- engine_args$quantiles
+              engine_args$quantiles <- NULL
+            }
+            if (!is.null(engine_args$aft_quantiles)) {
+              aft_quantiles <- engine_args$aft_quantiles
+              engine_args$aft_quantiles <- NULL
+            }
+            extra_args <- merge_engine_args(extra_args, engine_args)
+          }
+
+          aft_quantiles <- as.numeric(aft_quantiles)
+          aft_quantiles <- aft_quantiles[is.finite(aft_quantiles) & aft_quantiles > 0 & aft_quantiles < 1]
+          aft_quantiles <- sort(unique(aft_quantiles))
+
+          if (length(aft_quantiles) == 0) {
+            aft_quantiles <- c(0.25, 0.5, 0.75)
+          }
+
+          if (!is.finite(nrounds) || nrounds <= 0) {
+            warning("xgboost survival requires 'nrounds' > 0; skipping.")
+            next
+          }
+
+          train_args <- c(
+            list(
+              params = params,
+              data = dtrain,
+              nrounds = nrounds
+            ),
+            extra_args
+          )
+
+          if (!is.null(early_stop) && is.finite(early_stop) && early_stop > 0) {
+            train_args$early_stopping_rounds <- as.integer(early_stop)
+          }
+
+          booster <- do.call(xgboost::xgb.train, train_args)
+
+          aft_distribution <- params$aft_loss_distribution
+          if (is.null(aft_distribution) || !nzchar(as.character(aft_distribution)[1])) {
+            aft_distribution <- "logistic"
+          }
+          aft_scale <- params$aft_loss_distribution_scale
+          if (is.null(aft_scale) || !is.finite(aft_scale) || aft_scale <= 0) {
+            aft_scale <- 1
+          }
+
+          fit <- list(
+            booster = booster,
+            objective = "survival:aft",
+            feature_names = colnames(design_mat),
+            aft_distribution = as.character(aft_distribution)[1],
+            aft_scale = as.numeric(aft_scale)[1],
+            aft_quantiles = aft_quantiles
+          )
+          class(fit) <- "fastml_xgb_survival"
+
+          spec <- create_native_spec("xgboost", engine, fit, rec_prep)
         }
-
-        if (!is.finite(nrounds) || nrounds <= 0) {
-          warning("xgboost survival requires 'nrounds' > 0; skipping.")
-          next
-        }
-
-        train_args <- c(
-          list(
-            params = params,
-            data = dtrain,
-            nrounds = nrounds
-          ),
-          extra_args
-        )
-
-        if (!is.null(early_stop) && is.finite(early_stop) && early_stop > 0) {
-          train_args$early_stopping_rounds <- as.integer(early_stop)
-        }
-
-        booster <- do.call(xgboost::xgb.train, train_args)
-
-        aft_distribution <- params$aft_loss_distribution
-        if (is.null(aft_distribution) || !nzchar(as.character(aft_distribution)[1])) {
-          aft_distribution <- "logistic"
-        }
-        aft_scale <- params$aft_loss_distribution_scale
-        if (is.null(aft_scale) || !is.finite(aft_scale) || aft_scale <= 0) {
-          aft_scale <- 1
-        }
-
-        fit <- list(
-          booster = booster,
-          objective = "survival:aft",
-          feature_names = colnames(design_mat),
-          aft_distribution = as.character(aft_distribution)[1],
-          aft_scale = as.numeric(aft_scale)[1],
-          aft_quantiles = aft_quantiles
-        )
-        class(fit) <- "fastml_xgb_survival"
-
-        spec <- create_native_spec("xgboost", engine, fit, rec_prep)
       } else if (algo == "stratified_cox") {
         if (!requireNamespace("survival", quietly = TRUE)) {
           stop("The 'survival' package is required for stratified Cox. Please install it.")
@@ -1189,6 +1464,17 @@ train_models <- function(train_data,
         )
         spec <- create_native_spec("survreg", engine, fit, rec_prep,
                                    extras = list(distribution = "weibull"))
+        if (prefer_parsnip) {
+          dist_val <- "weibull"
+          if (!is.null(engine_args$dist)) {
+            dist_val <- engine_args$dist
+            engine_args$dist <- NULL
+          }
+          survreg_spec <- parsnip::survival_reg(dist = dist_val) %>%
+            parsnip::set_mode("censored regression")
+          spec <- do.call(parsnip::set_engine, c(list(survreg_spec, engine = engine), engine_args))
+          spec_is_parsnip <- TRUE
+        }
       } else if (algo == "parametric_surv") {
         if (!requireNamespace("flexsurv", quietly = TRUE)) {
           warning("Package 'flexsurv' not installed; skipping parametric_surv.")
@@ -1454,6 +1740,146 @@ train_models <- function(train_data,
         wf <- workflows::workflow() %>%
           workflows::add_recipe(recipe) %>%
           workflows::add_model(spec)
+
+        user_params <- NULL
+        if (!is.null(tune_params) &&
+            !is.null(tune_params[[algo]]) &&
+            !is.null(tune_params[[algo]][[engine]])) {
+          user_params <- tune_params[[algo]][[engine]]
+        }
+        defaults <- NULL
+        if (use_default_tuning) {
+          defaults <- get_default_tune_params(
+            algo,
+            train_data,
+            label,
+            engine
+          )
+        }
+        engine_tune_params <- if (is.null(defaults)) list() else defaults
+        if (!is.null(user_params)) {
+          for (nm in names(user_params)) {
+            engine_tune_params[[nm]] <- user_params[[nm]]
+          }
+        }
+
+        perform_tuning <- !is.null(resamples) &&
+          (use_default_tuning || !is.null(user_params)) &&
+          !identical(tuning_strategy, "none")
+
+        tune_grid_values <- NULL
+        if (perform_tuning) {
+          param_set <- extract_parameter_set_dials(spec)
+          param_set <- finalize(
+            param_set,
+            x = train_data %>% dplyr::select(-dplyr::all_of(label))
+          )
+          if (!is.null(engine_tune_params) && length(engine_tune_params) > 0) {
+            param_set <- update_params_surv(param_set, engine_tune_params)
+          }
+          if (nrow(param_set) > 0) {
+            if (tuning_strategy == "grid" && !adaptive) {
+              tune_grid_values <- grid_regular(param_set, levels = 3)
+            } else {
+              tune_grid_values <- grid_regular(param_set, levels = 3)
+            }
+          } else {
+            perform_tuning <- FALSE
+          }
+        }
+
+        metric_direction <- tryCatch({
+          if (requireNamespace("yardstick", quietly = TRUE) &&
+              exists(metric, envir = asNamespace("yardstick"), inherits = FALSE)) {
+            attr(get(metric, envir = asNamespace("yardstick")), "direction", exact = TRUE)
+          } else {
+            NA_character_
+          }
+        }, error = function(e) NA_character_)
+
+        lower_is_better <- if (!is.na(metric_direction) && !is.null(metric_direction)) {
+          identical(metric_direction, "minimize")
+        } else {
+          metric %in% c("rmse", "mae", "ibs", "logloss", "mse", "brier_score") ||
+            grepl("brier", metric, fixed = TRUE)
+        }
+
+        best_params <- NULL
+        res_summary_best <- NULL
+
+        if (perform_tuning && !is.null(tune_grid_values)) {
+          for (g in seq_len(nrow(tune_grid_values))) {
+            wf_g <- finalize_workflow(wf, tune_grid_values[g, ])
+            res_summary <- fastml_guarded_resample_fit(
+              workflow_spec = wf_g,
+              resamples = if (!is.null(resample_plan)) resample_plan else resamples,
+              original_train_rows = nrow(train_data),
+              task = task,
+              label = label,
+              metric = metric,
+              event_class = event_class,
+              engine = engine,
+              start_col = start_col,
+              time_col = time_col,
+              status_col = status_col,
+              eval_times = eval_times,
+              at_risk_threshold = at_risk_threshold
+            )
+            if (is.null(res_summary) || is.null(res_summary$aggregated)) {
+              next
+            }
+            score <- res_summary$aggregated %>%
+              dplyr::filter(.data$.metric == metric) %>%
+              dplyr::pull(.data$.estimate)
+            if (length(score) > 0) score <- score[1] else score <- NA_real_
+            if (is.null(res_summary_best) && !is.na(score)) {
+              res_summary_best <- res_summary
+              best_params <- tune_grid_values[g, , drop = FALSE]
+            } else if (!is.na(score)) {
+              best_score <- res_summary_best$aggregated %>%
+                dplyr::filter(.data$.metric == metric) %>%
+                dplyr::pull(.data$.estimate)
+              if (length(best_score) == 0) best_score <- NA_real_
+              choose_new <- if (is.na(best_score)) TRUE else {
+                if (lower_is_better) score < best_score else score > best_score
+              }
+              if (choose_new) {
+                res_summary_best <- res_summary
+                best_params <- tune_grid_values[g, , drop = FALSE]
+              }
+            }
+          }
+          if (!is.null(best_params)) {
+            wf <- finalize_workflow(wf, best_params)
+          }
+        } else if (!is.null(resamples)) {
+          res_summary_best <- fastml_guarded_resample_fit(
+            workflow_spec = wf,
+            resamples = if (!is.null(resample_plan)) resample_plan else resamples,
+            original_train_rows = nrow(train_data),
+            task = task,
+            label = label,
+            metric = metric,
+            event_class = event_class,
+            engine = engine,
+            start_col = start_col,
+            time_col = time_col,
+            status_col = status_col,
+            eval_times = eval_times,
+            at_risk_threshold = at_risk_threshold
+          )
+        }
+
+        if (!is.null(res_summary_best)) {
+          if (is.null(resampling_summaries[[algo]])) {
+            resampling_summaries[[algo]] <- list()
+          }
+          resampling_summaries[[algo]][[engine]] <- res_summary_best
+        } else if (perform_tuning && !is.null(tune_grid_values) && nrow(tune_grid_values) > 0) {
+          # Ensure the workflow is finalized even if resampling failed to return summaries
+          wf <- finalize_workflow(wf, tune_grid_values[1, , drop = FALSE])
+        }
+
         models[[algo]] <- do.call(
           parsnip::fit,
           c(list(object = wf, data = train_data), fit_engine_args)
@@ -1463,6 +1889,10 @@ train_models <- function(train_data,
 
     if (length(resampling_summaries) > 0) {
       attr(models, "guarded_resampling") <- resampling_summaries
+    }
+
+    if (!is.null(resample_plan)) {
+      attr(models, "resampling_plan") <- resample_plan
     }
 
     return(models)

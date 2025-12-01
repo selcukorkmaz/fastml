@@ -276,7 +276,7 @@ pbc_baseline <- pbc[1:312, ]
 model_reg <- fastml(
     data = pbc_baseline,
     label = "albumin",
-    algorithms = c("rand_forest", "xgboost"),
+    algorithms = c("rand_forest_survival", "xgboost_aft"),
     metric = "rmse",            # Optimize for RMSE
     impute_method = "remove" # Remove missing values
   )
@@ -300,6 +300,7 @@ These plots help assess whether errors are randomly distributed and whether any 
 # A Deeper Dive: Survival Analysis
 
 **fastml** provides native support for **survival analysis**, enabling the use of both classical and modern flexible models.  
+> Survival naming: `xgboost_aft` is the AFT-only xgboost alias (legacy `xgboost` maps here). `rand_forest_survival` is the censored RF alias (legacy `rand_forest` maps here).
 A survival workflow is automatically triggered when the `label` argument includes two variables: **time** and **status**.
 
 The package seamlessly integrates multiple survival modeling approaches, including:
@@ -319,7 +320,7 @@ data(lung, package = "survival")
 model_surv <- fastml(
   data = lung,
   label = c("time", "status"),  # triggers survival analysis
-  algorithms = c("cox_ph", "parametric_surv", "xgboost"),
+  algorithms = c("cox_ph", "parametric_surv", "xgboost_aft"),
   impute_method = "medianImpute",  # handle missing values
 
   # Specify the distribution for the parametric model
@@ -525,7 +526,7 @@ set.seed(123)
 model_bayes <- fastml(
   data = iris_binary,
   label = "Species",
-  algorithms = "xgboost",
+  algorithms = "xgboost_aft",
   use_default_tuning = TRUE,
   tuning_strategy = "bayes",     # enable Bayesian optimization
   tuning_iterations = 10         # number of search iterations

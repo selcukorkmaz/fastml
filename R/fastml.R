@@ -24,8 +24,10 @@
 #' @param resampling_method A string specifying the resampling method for model evaluation. Default is \code{"cv"}
 #'   (cross-validation) for classification/regression. Other options include \code{"none"}, \code{"boot"},
 #'   \code{"repeatedcv"}, \code{"grouped_cv"}, \code{"blocked_cv"}, \code{"rolling_origin"}, and \code{"nested_cv"}.
-#'   For survival tasks, resampling is not supported; the method is forced to \code{"none"} and supplying custom
-#'   resamples will error.
+#'   For survival tasks, resampling is supported for parsnip-compatible engines (e.g., censored/ranger, glmnet).
+#'   Native survival engines (flexsurv/rstpm2/custom xgboost) ignore resampling and will error if custom resamples
+#'   are supplied. When the task auto-detects survival and \code{resampling_method} is omitted, it defaults to
+#'   \code{"none"} so native engines continue to run; set it explicitly to enable resampling for parsnip survival fits.
 #' @param folds An integer specifying the number of folds for cross-validation. Default is \code{10} for methods containing "cv" and \code{25} otherwise.
 #' @param repeats Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").
 #' @param group_cols Character vector naming one or more grouping columns used when
@@ -208,6 +210,7 @@ fastml <- function(data = NULL,
                    at_risk_threshold = 0.1,
                    audit_mode = FALSE) {
 
+  resampling_method_missing <- missing(resampling_method)
   audit_env <- fastml_init_audit_env(audit_mode)
 
   set.seed(seed)
@@ -219,16 +222,9 @@ fastml <- function(data = NULL,
   } else {
     resampling_method <- tolower(resampling_method)
   }
-  if (task == "survival") {
-    if (!is.null(resamples)) {
-      stop("Resampling for survival tasks is not supported. Please set resampling_method = \"none\" and do not supply custom resamples.")
-    }
-    if (!identical(resampling_method, "none")) {
-      warning("Resampling for survival tasks is not supported; proceeding with resampling_method = \"none\".")
-      resampling_method <- "none"
-    }
+  if (task == "survival" && resampling_method_missing && !identical(resampling_method, "none")) {
+    resampling_method <- "none"
   }
-  resampling_active <- !is.null(resamples) || resampling_method != "none"
   custom_resamples <- !is.null(resamples)
 
   unsupported_imputers <- c("mice", "missforest", "custom")
@@ -635,6 +631,27 @@ fastml <- function(data = NULL,
     }
   }
 
+  if (task == "survival") {
+    warned_xgb <- FALSE
+    warned_rf <- FALSE
+    for (i in seq_along(algorithms)) {
+      alg <- algorithms[[i]]
+      if (identical(alg, "xgboost")) {
+        if (!warned_xgb) {
+          warning("Survival 'xgboost' is AFT-only; prefer 'xgboost_aft' (alias added).")
+          warned_xgb <- TRUE
+        }
+        algorithms[[i]] <- "xgboost_aft"
+      } else if (identical(alg, "rand_forest")) {
+        if (!warned_rf) {
+          warning("Survival 'rand_forest' uses censored RF engines; prefer 'rand_forest_survival' (alias added).")
+          warned_rf <- TRUE
+        }
+        algorithms[[i]] <- "rand_forest_survival"
+      }
+    }
+  }
+
 
   if(!is.null(impute_method) && impute_method == "remove") {
     if (anyNA(train_data)) {
@@ -893,12 +910,19 @@ fastml <- function(data = NULL,
   # Build a normalized performance list and align model names as "algorithm (engine)"
   combined_performance  <- list()
   model_map <- list()
+  display_algo <- function(algo, task) {
+    if (task == "survival") {
+      if (algo %in% c("xgboost", "xgboost_aft")) return("xgboost (AFT)")
+      if (algo %in% c("rand_forest", "rand_forest_survival")) return("rand_forest (censored)")
+    }
+    algo
+  }
   for (alg in names(performance)) {
     perf_alg <- performance[[alg]]
     # Case 1: nested by engine (list of tibbles)
     if (is.list(perf_alg) && !inherits(perf_alg, "data.frame")) {
       for (eng in names(perf_alg)) {
-        combined_name <- paste0(alg, " (", eng, ")")
+        combined_name <- paste0(display_algo(alg, task), " (", eng, ")")
         combined_performance[[combined_name]] <- perf_alg[[eng]]
         # Map corresponding model
         if (is.list(models[[alg]]) && !inherits(models[[alg]], "workflow") && !inherits(models[[alg]], "tune_results")) {
@@ -915,7 +939,7 @@ fastml <- function(data = NULL,
       } else {
         tryCatch(get_default_engine(alg, task), error = function(e) "unknown")
       }
-      combined_name <- paste0(alg, " (", eng, ")")
+      combined_name <- paste0(display_algo(alg, task), " (", eng, ")")
       combined_performance[[combined_name]] <- perf_alg
       model_map[[combined_name]] <- models[[alg]]
     }
@@ -946,7 +970,7 @@ fastml <- function(data = NULL,
       alg_entry <- resampling_results[[alg]]
       if (is.list(alg_entry) && !inherits(alg_entry, "data.frame")) {
         for (eng in names(alg_entry)) {
-          combined_name <- paste0(alg, " (", eng, ")")
+          combined_name <- paste0(display_algo(alg, task), " (", eng, ")")
           resampling_named[[combined_name]] <- alg_entry[[eng]]
         }
       } else if (!is.null(alg_entry)) {
@@ -956,7 +980,7 @@ fastml <- function(data = NULL,
         } else {
           tryCatch(get_default_engine(alg, task), error = function(e) "unknown")
         }
-        combined_name <- paste0(alg, " (", eng, ")")
+        combined_name <- paste0(display_algo(alg, task), " (", eng, ")")
         resampling_named[[combined_name]] <- alg_entry
       }
     }

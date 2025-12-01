@@ -77,8 +77,10 @@ You may also explicitly set to "classification", "regression", or "survival".}
 \item{resampling_method}{A string specifying the resampling method for model evaluation. Default is \code{"cv"}
 (cross-validation) for classification/regression. Other options include \code{"none"}, \code{"boot"},
 \code{"repeatedcv"}, \code{"grouped_cv"}, \code{"blocked_cv"}, \code{"rolling_origin"}, and \code{"nested_cv"}.
-For survival tasks, resampling is not supported; the method is forced to \code{"none"} and supplying custom
-resamples will error.}
+For survival tasks, resampling is supported for parsnip-compatible engines (e.g., censored/ranger, glmnet).
+Native survival engines (flexsurv/rstpm2/custom xgboost) ignore resampling and will error if custom resamples
+are supplied. When the task auto-detects survival and \code{resampling_method} is omitted, it defaults to
+\code{"none"} so native engines continue to run; set it explicitly to enable resampling for parsnip survival fits.}
 
 \item{folds}{An integer specifying the number of folds for cross-validation. Default is \code{10} for methods containing "cv" and \code{25} otherwise.}
 

@@ -60,6 +60,7 @@ availableMethods <- function(type = c("classification", "regression", "survival"
     } else {
       c(
         "rand_forest",
+        "rand_forest_survival",
         "cox_ph",
         "penalized_cox",
         "stratified_cox",
@@ -68,7 +69,8 @@ availableMethods <- function(type = c("classification", "regression", "survival"
         "royston_parmar",
         "parametric_surv",
         "piecewise_exp",
-        "xgboost"
+        "xgboost",
+        "xgboost_aft"
       )
     }
 
@@ -90,6 +92,9 @@ availableMethods <- function(type = c("classification", "regression", "survival"
 #' @export
 get_default_engine <- function(algo, task = NULL) {
   if (algo == "rand_forest" && !is.null(task) && task == "survival") {
+    return("aorsf")
+  }
+  if (algo == "rand_forest_survival" && !is.null(task) && task == "survival") {
     return("aorsf")
   }
   if (algo == "cox_ph" && !is.null(task) && task == "survival") {
@@ -120,6 +125,9 @@ get_default_engine <- function(algo, task = NULL) {
     return("survival")
   }
   if (algo == "xgboost" && !is.null(task) && task == "survival") {
+    return("aft")
+  }
+  if (algo == "xgboost_aft" && !is.null(task) && task == "survival") {
     return("aft")
   }
 
