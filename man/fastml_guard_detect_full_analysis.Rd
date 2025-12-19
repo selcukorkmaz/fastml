@@ -6,6 +6,11 @@
 \usage{
 fastml_guard_detect_full_analysis(split, total_rows)
 }
+\arguments{
+\item{split}{An `rsample` split object representing a single resample.}
+
+\item{total_rows}{Integer; total number of rows in the original dataset.}
+}
 \description{
 Internal helpers that enforce the Guarded Resampling Principle by
 fitting preprocessing pipelines independently within each resampling

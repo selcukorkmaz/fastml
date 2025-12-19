@@ -56,6 +56,8 @@
 #'
 #' @return A list of summaries (tables/tibbles) and plot objects (ggplot/plotly),
 #'   plus any saved file paths when `save_results`/`render_report` are enabled.
+#'
+#' @importFrom stats na.omit
 #' @export
 fastexplore <- function(
   data,
@@ -526,7 +528,7 @@ perform_normality_tests <- function(data, numeric_cols, normality_tests) {
   )
 
   for (col in numeric_cols) {
-    col_data <- stats::na.omit(data[[col]])
+    col_data <- na.omit(data[[col]])
     if (length(col_data) == 0) next
 
     if ("shapiro" %in% normality_tests && length(col_data) >= 3 && length(col_data) <= 5000) {
@@ -668,7 +670,7 @@ perform_outlier_detection <- function(data, numeric_cols, outlier_method) {
       return(NULL)
     }
     numeric_data <- data[, numeric_cols, drop = FALSE]
-    numeric_data <- stats::na.omit(numeric_data)
+    numeric_data <- na.omit(numeric_data)
     if (nrow(numeric_data) == 0) {
       return(NULL)
     }
