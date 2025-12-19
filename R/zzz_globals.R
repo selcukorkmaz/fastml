@@ -4,5 +4,5 @@ utils::globalVariables(c(
   "variable", "Missing",
   "Model", "Engine",
   "truth", "estimate",
-  "id"
+  "id",  "valid_model"
 ))

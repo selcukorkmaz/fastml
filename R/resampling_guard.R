@@ -3,6 +3,8 @@
 #' Internal helpers that enforce the Guarded Resampling Principle by
 #' fitting preprocessing pipelines independently within each resampling
 #' split. These functions are not exported.
+#' @param split An `rsample` split object representing a single resample.
+#' @param total_rows Integer; total number of rows in the original dataset.
 #'
 #' @importFrom dplyr bind_rows group_by summarise
 #' @importFrom rsample analysis assessment
