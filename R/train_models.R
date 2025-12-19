@@ -612,7 +612,7 @@ fastml_run_nested_cv <- function(workflow_spec,
 #' @importFrom tibble tibble
 #' @importFrom rlang sym syms call2 call_modify expr as_string
 #' @importFrom dials range_set value_set grid_regular grid_latin_hypercube finalize
-#' @importFrom parsnip fit extract_parameter_set_dials cox_ph survival_reg
+#' @importFrom parsnip fit extract_parameter_set_dials survival_reg
 #' @importFrom workflows workflow add_model add_recipe
 #' @importFrom tune tune_grid control_grid select_best finalize_workflow finalize_model tune_bayes control_grid control_bayes
 #' @importFrom yardstick metric_set accuracy kap roc_auc sens spec precision f_meas rmse rsq mae new_class_metric
