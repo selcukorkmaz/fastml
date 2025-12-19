@@ -644,7 +644,19 @@ summary.fastml <- function(object,
   # Filter rows where the Model is in best_model_name and its Engine equals best_model_name[Model]
   best_val_df <- performance_wide %>%
     filter(Model %in% names(best_model_name)) %>%
-    filter(mapply(function(m, e) e == best_model_name[[m]], Model, Engine))
+    filter({
+      if (length(Model) == 0) {
+        rep(FALSE, length(Model))
+      } else {
+        mapply(function(m, e) {
+          bm <- best_model_name[[m]]
+          if (is.null(bm) || length(bm) == 0 || is.na(bm)) {
+            return(FALSE)
+          }
+          e == bm
+        }, Model, Engine)
+      }
+    })
 
 
 
@@ -1527,4 +1539,3 @@ summary.fastml <- function(object,
 
   invisible(object)
 }
-

@@ -22,6 +22,7 @@ process_model(
   bootstrap_samples = 500,
   bootstrap_seed = 1234,
   at_risk_threshold = 0.1,
+  metrics = NULL,
   precomputed_predictions = NULL
 )
 }
@@ -75,6 +76,12 @@ resampling to make interval estimates reproducible.}
 \item{at_risk_threshold}{Numeric value between 0 and 1 defining the minimum
 proportion of subjects required to remain at risk when determining the
 maximum follow-up time used in survival metrics.}
+
+\item{metrics}{Optional yardstick metric set (e.g., `yardstick::metric_set(yardstick::rmse)`) used for computing regression performance.}
+
+\item{precomputed_predictions}{Optional data frame or nested list of
+previously generated predictions (per algorithm/engine) to reuse instead
+of re-predicting; primarily used when combining results across engines.}
 }
 \value{
 A list with two elements:

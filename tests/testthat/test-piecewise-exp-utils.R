@@ -1,3 +1,6 @@
+
+library(testthat)
+
 test_that("fastml_piecewise_rates handles scalar inputs", {
   skip_if_not_installed("flexsurv")
   base_log_rate <- log(0.1)

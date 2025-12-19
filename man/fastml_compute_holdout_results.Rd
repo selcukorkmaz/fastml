@@ -9,9 +9,9 @@ fastml_compute_holdout_results(
   train_data,
   test_data,
   label,
-  start_col,
-  time_col,
-  status_col,
+  start_col = NULL,
+  time_col = NULL,
+  status_col = NULL,
   task,
   metric = NULL,
   event_class,
@@ -67,6 +67,10 @@ in metric estimation.}
 \item{at_risk_threshold}{Minimum proportion of subjects that must remain at
 risk to define \eqn{t_{max}} when computing survival metrics such as the
 integrated Brier score.}
+
+\item{precomputed_predictions}{Optional data frame or nested list of
+previously generated predictions (per algorithm/engine) to reuse instead
+of recomputing. This is mainly used when combining results across engines.}
 }
 \value{
 A list with two elements:

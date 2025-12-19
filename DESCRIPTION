@@ -1,23 +1,25 @@
 Package: fastml
 Type: Package
-Title: Fast Machine Learning Model Training and Evaluation
-Version: 0.7.0
+Title: Architecturally Enforced Guarded Resampling for Machine Learning in R
+Version: 0.7.5
 Authors@R: c(person("Selcuk", "Korkmaz", email="selcukorkmaz@gmail.com", role=c("aut", "cre"),
                     comment = c(ORCID = "0000-0003-4632-6850")), 
              person("Dincer", "Goksuluk", email="dincer.goksuluk@gmail.com", role="aut",
                     comment = c(ORCID = "0000-0002-2752-7668")), 
              person("Eda", "Karaismailoglu", email="eda.karaismailoglu@sbu.edu.tr", role="aut",
                     comment = c(ORCID = "0000-0003-3085-7809")))
-Description: Streamlines the training, evaluation, and comparison of multiple machine learning models with minimal code by providing 
-            comprehensive data preprocessing and support for a wide range of algorithms with hyperparameter tuning. 
-            It offers performance metrics and visualization tools to facilitate efficient and effective machine learning workflows.
+Description: Provides an architecturally enforced framework for training and evaluating machine learning models 
+  under strict resampling isolation. The package implements guarded resampling, ensuring that all preprocessing, 
+  model fitting, and evaluation steps are re-estimated independently within each resampling split, thereby preventing 
+  common forms of data leakage. fastml supports grouped and nested cross-validation, integrates with established modeling 
+  engines in the 'tidymodels' ecosystem, and produces reliable performance estimates by construction rather than by convention.
 Encoding: UTF-8
 License: MIT + file LICENSE
 URL: https://github.com/selcukorkmaz/fastml
 BugReports: https://github.com/selcukorkmaz/fastml/issues
 LazyData: true
 Imports:
-    methods,
+    stats,
     recipes,
     dplyr,
     ggplot2,
@@ -32,7 +34,6 @@ Imports:
     dials,
     RColorBrewer,
     baguette,
-    bonsai,
     discrim,
     doFuture,
     finetune,
@@ -45,20 +46,7 @@ Imports:
     pROC,
     janitor,
     stringr,
-    DT,
-    UpSetR,
-    VIM,
     broom,
-    dbscan,
-    ggpubr,
-    gridExtra,
-    htmlwidgets,
-    kableExtra,
-    moments,
-    naniar,
-    plotly,
-    scales,
-    skimr,
     tidyr,
     purrr,
     survival,
@@ -67,10 +55,9 @@ Imports:
     iml,
     lime,
     survRM2,
-    ceterisParibus,
+    iBreakDown,
     xgboost,
-    knitr,
-    rmarkdown
+    pdp
 Suggests:
     testthat (>= 3.0.0),
     C50,
@@ -86,12 +73,25 @@ Suggests:
     lightgbm,
     rstanarm,
     mixOmics,
-    pdp,
     patchwork,
     GGally,
     glmnet,
     modelStudio,
-    fairmodels
-VignetteBuilder: knitr
+    fairmodels,
+    DT,
+    UpSetR,
+    VIM,
+    dbscan,
+    ggpubr,
+    gridExtra,
+    htmlwidgets,
+    kableExtra,
+    moments,
+    naniar,
+    plotly,
+    scales,
+    skimr,
+    knitr,
+    rmarkdown
 RoxygenNote: 7.3.2
 Config/testthat/edition: 3

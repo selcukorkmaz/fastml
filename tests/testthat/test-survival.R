@@ -380,28 +380,4 @@ test_that("survival random forest with aorsf engine trains when available", {
   expect_true(all(brier_val >= 0 & brier_val <= 1))
 })
 
-# test_that("survival random forest can run with ranger engine when censored is available", {
-#   skip_if_not_installed("censored")
-#   skip_if_not_installed("ranger")
-#   data(cancer, package = "survival")
-#   res <- fastml(
-#     data = cancer,
-#     label = c("time", "status"),
-#     algorithms = c("rand_forest"),
-#     task = "survival",
-#     resampling_method = "none",
-#     impute_method = "remove",
-#     test_size = 0.3,
-#     algorithm_engines = list(rand_forest = "ranger")
-#   )
-#   expect_s3_class(res, "fastml")
-#   # Check performance exists for the (ranger) engine
-#   nm <- names(res$performance)[[1]]
-#   pf <- res$performance[[nm]]
-#   if (is.list(pf)) {
-#     expect_true("ranger" %in% names(pf))
-#     expect_true(all(c("c_index", "uno_c", "ibs", "rmst_diff") %in% pf$ranger$.metric))
-#   } else {
-#     expect_true(all(c("c_index", "uno_c", "ibs", "rmst_diff") %in% pf$.metric))
-#   }
-# })
+

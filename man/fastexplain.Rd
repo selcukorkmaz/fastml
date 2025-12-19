@@ -24,14 +24,16 @@ fastexplain(
 
 \item{method}{Character string specifying the explanation method.
 Supported values are \code{"dalex"}, \code{"lime"}, \code{"ice"},
-\code{"ale"}, \code{"surrogate"}, \code{"interaction"}, and
-\code{"counterfactual"}, \code{"studio"}. Defaults to \code{"dalex"}.}
+\code{"ale"}, \code{"surrogate"}, \code{"interaction"}, \code{"studio"},
+\code{"fairness"}, \code{"breakdown"}, and \code{"counterfactual"}.
+Defaults to \code{"dalex"}.}
 
 \item{features}{Character vector of feature names for partial dependence (model profiles). Default NULL.}
 
 \item{variables}{Character vector. Variable names to compute explanations for (used for counterfactuals).}
 
-\item{observation}{A single observation for counterfactual explanations. Default NULL.}
+\item{observation}{A single observation for methods that need a new data point
+(\code{method = "counterfactual"} or \code{method = "breakdown"}). Default NULL.}
 
 \item{grid_size}{Number of grid points for partial dependence. Default 20.}
 
@@ -47,37 +49,35 @@ Supported values are \code{"dalex"}, \code{"lime"}, \code{"ice"},
   \item If \code{NULL} and task = 'regression', defaults to \code{DALEX::loss_root_mean_square}.
 }}
 
-\item{...}{Additional arguments passed to the underlying helper functions.}
+\item{protected}{Character or factor vector of protected attribute(s) required for
+\code{method = "fairness"}. Default NULL.}
+
+\item{...}{Additional arguments passed to the underlying helper functions
+for the chosen \code{method}.}
 }
 \value{
-Prints DALEX explanations: variable importance table & plot, model profiles (if any), and SHAP table & summary plot.
+For DALEX-based methods, prints variable importance, model profiles, and SHAP summaries.
+  Other methods return their respective explainer objects (e.g., LIME explanations, ALE plot,
+  surrogate tree, interaction strengths, modelStudio dashboard, fairmodels object, breakdown
+  object, or counterfactual results), usually invisibly after plotting or printing.
 }
 \description{
-Provides model explainability. When `method = "dalex"` this function:
+Provides model explainability across several backends. With \code{method = "dalex"} it:
 \itemize{
-  \item Creates a DALEX explainer.
-  \item Computes permutation-based variable importance with boxplots showing variability, displays the table and plot.
-  \item Computes partial dependence-like model profiles if `features` are provided.
-  \item Computes Shapley values (SHAP) for a sample of the training observations, displays the SHAP table,
-  and plots a summary bar chart of \eqn{\text{mean}(\vert \text{SHAP value} \vert)} per feature. For classification, it shows separate bars for each class.
+  \item Creates a DALEX explainer from the trained model.
+  \item Computes permutation-based variable importance with \code{vi_iterations} permutations and displays the table and plot.
+  \item Computes partial dependence-like model profiles when \code{features} are supplied.
+  \item Computes Shapley values (SHAP) for \code{shap_sample} training rows, displays the SHAP table,
+  and plots a summary bar chart of \eqn{\text{mean}(\vert \text{SHAP value} \vert)} per feature. For classification, separate bars per class are shown.
 }
 }
 \details{
-\enumerate{
-   \item \bold{Custom number of permutations for VI (vi_iterations):}
-
-   You can now specify how many permutations (B) to use for permutation-based variable importance.
-   More permutations yield more stable estimates but take longer.
-
-   \item \bold{Better error messages and checks:}
-
-   Improved checks and messages if certain packages or conditions are not met.
-
-   \item \bold{Loss Function:}
-
-   A \code{loss_function} argument has been added to let you pick a different performance measure (e.g., \code{loss_cross_entropy} for classification, \code{loss_root_mean_square} for regression).
-
-   \item \bold{Parallelization Suggestion:}
-
+\itemize{
+   \item \bold{Method dispatch:} \code{method} can route to LIME, ICE, ALE, surrogate tree, interaction strengths,
+   DALEX/modelStudio dashboards, fairness diagnostics, iBreakDown contributions, or counterfactual search.
+   \item \bold{Variable importance controls:} Use \code{vi_iterations} to tune permutation stability and \code{loss_function}
+   to override the default DALEX loss (cross-entropy for classification, RMSE for regression).
+   \item \bold{Fairness and breakdown support:} Provide \code{protected} for \code{method = "fairness"} and an \code{observation}
+   for \code{method = "breakdown"} or \code{method = "counterfactual"}. Observations are aligned to the explainer data before scoring.
  }
 }

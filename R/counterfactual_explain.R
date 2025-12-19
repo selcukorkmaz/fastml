@@ -6,9 +6,19 @@
 #' @param object A `fastml` object.
 #' @param observation A single observation (data frame with one row) to compute
 #'   counterfactuals for.
+#' @param variables Optional character vector of candidate variables to vary.
+#'   Only numeric variables are used for counterfactual profiling.
+#' @param positive_class Optional string used to filter lines/points in the
+#'   resulting profiles for classification tasks.
+#' @param event_class Optional event class indicator propagated from
+#'   `fastml_prepare_explainer_inputs()` (kept for compatibility).
+#' @param label_levels Optional vector of label levels propagated from
+#'   `fastml_prepare_explainer_inputs()` (kept for compatibility).
 #' @param ... Additional arguments passed to `DALEX::predict_profile`.
 #'
-#' @return A counterfactual explanation object.
+#' @return A list (returned invisibly) containing the DALEX profile, filtered
+#'   lines/points when `positive_class` is supplied, and the plotted object if
+#'   rendering succeeds.
 #' @importFrom DALEX explain predict_profile
 #' @export
 counterfactual_explain <- function(object,

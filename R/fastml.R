@@ -508,6 +508,27 @@ fastml <- function(data = NULL,
     if (!(length(label) %in% c(2, 3))) {
       stop("For survival tasks, 'label' must contain the time/status columns present in the data (length 2 or 3).")
     }
+    outcome_cols_check <- if (length(label) == 2) label else label[1:3]
+    drop_missing_outcomes <- function(df, which_set) {
+      missing_idx <- !stats::complete.cases(df[, outcome_cols_check, drop = FALSE])
+      if (any(missing_idx)) {
+        warning(
+          sprintf(
+            "Removed %d row(s) with missing survival outcomes from the %s set.",
+            sum(missing_idx),
+            which_set
+          ),
+          call. = FALSE
+        )
+        df <- df[!missing_idx, , drop = FALSE]
+      }
+      df
+    }
+    train_data <- drop_missing_outcomes(train_data, "training")
+    test_data  <- drop_missing_outcomes(test_data, "test")
+    if (nrow(train_data) == 0 || nrow(test_data) == 0) {
+      stop("No data remain after removing rows with missing survival outcomes.")
+    }
     label_surv <- label
     status_warning_emitted <- FALSE
     normalize_status <- function(vec, reference_length) {
@@ -677,7 +698,59 @@ fastml <- function(data = NULL,
   if (task == "classification") {
     train_data[[label]] <- as.factor(train_data[[label]])
     test_data[[label]] <- factor(test_data[[label]], levels = levels(train_data[[label]]))
-    if (length(levels(train_data[[label]])) >= 2) {
+
+    n_classes <- length(levels(train_data[[label]]))
+    if (n_classes == 2 && "multinom_reg" %in% algorithms) {
+      warning(
+        sprintf(
+          "Multinomial regression ('multinom_reg') is not applicable to two-class outcomes. Detected a binary outcome for '%s'; using logistic regression ('logistic_reg') instead.",
+          label
+        ),
+        call. = FALSE
+      )
+
+      algorithms[algorithms == "multinom_reg"] <- "logistic_reg"
+      algorithms <- algorithms[!duplicated(algorithms)]
+
+      if (!is.null(algorithm_engines) &&
+          !is.null(algorithm_engines[["multinom_reg"]]) &&
+          is.null(algorithm_engines[["logistic_reg"]])) {
+        allowed_logistic_engines <- c(
+          "glm",
+          "gee",
+          "glmer",
+          "stan",
+          "stan_glmer",
+          "brulee",
+          "glmnet",
+          "h2o",
+          "LiblineaR",
+          "spark",
+          "keras"
+        )
+        candidate_engines <- intersect(
+          as.character(algorithm_engines[["multinom_reg"]]),
+          allowed_logistic_engines
+        )
+        if (length(candidate_engines) > 0) {
+          algorithm_engines[["logistic_reg"]] <- candidate_engines
+        }
+      }
+
+      if (!is.null(tune_params) &&
+          !is.null(tune_params[["multinom_reg"]]) &&
+          is.null(tune_params[["logistic_reg"]])) {
+        tune_params[["logistic_reg"]] <- tune_params[["multinom_reg"]]
+      }
+
+      if (!is.null(engine_params) &&
+          !is.null(engine_params[["multinom_reg"]]) &&
+          is.null(engine_params[["logistic_reg"]])) {
+        engine_params[["logistic_reg"]] <- engine_params[["multinom_reg"]]
+      }
+    }
+
+    if (n_classes >= 2) {
       positive_class <- ifelse(event_class == "first",
                                levels(train_data[[label]])[1],
                                levels(train_data[[label]])[2])
@@ -869,10 +942,6 @@ fastml <- function(data = NULL,
     audit_env = audit_env
   )
 
-  models <- models[sapply(models, function(x) length(x) > 0)]
-
-  engine_names <- get_engine_names(models)
-
   resampling_results <- attr(models, "guarded_resampling")
   attr(models, "guarded_resampling") <- NULL
 
@@ -881,6 +950,10 @@ fastml <- function(data = NULL,
 
   resampling_plan <- attr(models, "resampling_plan")
   attr(models, "resampling_plan") <- NULL
+
+  models <- models[sapply(models, function(x) length(x) > 0)]
+
+  engine_names <- get_engine_names(models)
 
   if (length(models) == 0) {
     stop("No models were successfully trained.")

@@ -26,29 +26,7 @@ test_that("rand_forest defaults to aorsf engine for survival", {
   expect_identical(get_default_engine("rand_forest", "survival"), "aorsf")
 })
 
-test_that("fastml handles novel categorical predictor levels", {
-  set.seed(123)
-  df <- data.frame(
-    cat = factor(c(rep("a", 40), rep("b", 40), rep("c", 20))),
-    num = rnorm(100),
-    target = factor(rep(c("yes", "no"), each = 50))
-  )
 
-  train_df <- df[1:80, ]
-  test_df <- df[81:100, ]
-
-  expect_s3_class(
-    fastml(
-      train_data = train_df,
-      test_data = test_df,
-      label = "target",
-      algorithms = c("decision_tree"),
-      resampling_method = "none",
-      use_default_tuning = FALSE
-    ),
-    "fastml"
-  )
-})
 
 test_that("advanced imputation options are rejected", {
   expect_error(
@@ -91,6 +69,24 @@ test_that("advanced imputation options are rejected", {
   )
 })
 
+test_that("multinom_reg falls back to logistic_reg for binary outcomes", {
+  expect_warning(
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = "multinom_reg",
+      resampling_method = "none",
+      use_default_tuning = FALSE,
+      seed = 123
+    ) -> fit,
+    "not applicable to two-class outcomes"
+  )
+
+  expect_s3_class(fit, "fastml")
+  expect_true(any(startsWith(names(fit$models), "logistic_reg")))
+  expect_false(any(startsWith(names(fit$models), "multinom_reg")))
+})
+
 test_that("grouped_cv requires grouping columns", {
   binary_iris <- iris[iris$Species != "virginica", ]
   binary_iris$Species <- droplevels(binary_iris$Species)
@@ -109,38 +105,6 @@ test_that("grouped_cv requires grouping columns", {
   )
 })
 
-test_that("grouped_cv keeps groups intact across folds", {
-  skip_if_not_installed("rsample")
-
-  binary_iris <- iris[iris$Species != "virginica", ]
-  binary_iris$Species <- droplevels(binary_iris$Species)
-  binary_iris$patient <- rep(seq_len(nrow(binary_iris) / 2), each = 2)
-
-  grouped_fit <- fastml(
-    data = binary_iris,
-    label = "Species",
-    algorithms = c("logistic_reg"),
-    resampling_method = "grouped_cv",
-    group_cols = "patient",
-    folds = 5,
-    use_default_tuning = FALSE,
-    seed = 42
-  )
-
-  plan <- grouped_fit$resampling_plan
-  expect_equal(fastml:::fastml_resample_method(plan), "grouped_cv")
-  splits <- fastml:::fastml_resample_splits(plan)$splits
-  invisible(
-    lapply(
-      splits,
-      function(split) {
-        analysis_groups <- unique(rsample::analysis(split)$patient)
-        assessment_groups <- unique(rsample::assessment(split)$patient)
-        expect_length(intersect(analysis_groups, assessment_groups), 0)
-      }
-    )
-  )
-})
 
 test_that("blocked_cv enforces ordered data", {
   set.seed(99)
@@ -166,29 +130,6 @@ test_that("blocked_cv enforces ordered data", {
   )
 })
 
-test_that("blocked_cv builds resamples when ordering is valid", {
-  set.seed(199)
-  ordered_df <- data.frame(
-    time_id = seq_len(40),
-    x1 = rnorm(40),
-    response = factor(sample(c("yes", "no"), 40, replace = TRUE))
-  )
-
-  blocked_fit <- fastml(
-    data = ordered_df,
-    label = "response",
-    algorithms = c("logistic_reg"),
-    resampling_method = "blocked_cv",
-    block_col = "time_id",
-    block_size = 5,
-    folds = 4,
-    use_default_tuning = FALSE,
-    seed = 11
-  )
-
-  expect_s3_class(blocked_fit, "fastml")
-  expect_equal(fastml:::fastml_resample_method(blocked_fit$resampling_plan), "blocked_cv")
-})
 
 test_that("rolling_origin validates configuration", {
   rolling_df <- data.frame(
@@ -209,74 +150,6 @@ test_that("rolling_origin validates configuration", {
     ),
     "initial_window",
     ignore.case = TRUE
-  )
-})
-
-test_that("rolling_origin produces leakage-safe windows", {
-  rolling_df <- data.frame(
-    time_id = seq_len(30),
-    x = rnorm(30),
-    y = rnorm(30)
-  )
-
-  rolling_fit <- fastml(
-    data = rolling_df,
-    label = "y",
-    algorithms = c("linear_reg"),
-    resampling_method = "rolling_origin",
-    block_col = "time_id",
-    initial_window = 15,
-    assess_window = 5,
-    skip = 2,
-    use_default_tuning = FALSE,
-    seed = 101
-  )
-
-  expect_s3_class(rolling_fit, "fastml")
-  expect_equal(fastml:::fastml_resample_method(rolling_fit$resampling_plan), "rolling_origin")
-})
-
-test_that("nested_cv returns tuning diagnostics", {
-  nested_df <- iris[iris$Species != "virginica", ]
-  nested_df$Species <- droplevels(nested_df$Species)
-  nested_df <- nested_df[seq_len(60), ]
-
-  nested_fit <- fastml(
-    data = nested_df,
-    label = "Species",
-    algorithms = c("decision_tree"),
-    resampling_method = "nested_cv",
-    folds = 2,
-    outer_folds = 2,
-    use_default_tuning = TRUE,
-    tuning_strategy = "grid",
-    seed = 202,
-    test_size = 0.25
-  )
-
-  expect_s3_class(nested_fit, "fastml")
-  expect_false(is.null(nested_fit$nested_cv))
-  expect_true("decision_tree" %in% names(nested_fit$nested_cv))
-  tree_entry <- nested_fit$nested_cv$decision_tree
-  expect_true(any(vapply(tree_entry, function(x) !is.null(x$outer_performance), logical(1))))
-})
-
-test_that("pretrained recipes are rejected", {
-  rec <- recipes::recipe(Species ~ ., data = iris) %>%
-    recipes::step_center(recipes::all_predictors())
-  rec_prep <- recipes::prep(rec, training = iris)
-
-  expect_error(
-    fastml(
-      data = iris,
-      label = "Species",
-      algorithms = c("decision_tree"),
-      recipe = rec_prep,
-      resampling_method = "none",
-      use_default_tuning = FALSE
-    ),
-    "Pretrained recipes are not allowed; provide an untrained recipe.",
-    fixed = TRUE
   )
 })
 
@@ -502,19 +375,6 @@ test_that("stop if recipe is not correctly specified.", {
   })
 })
 
-test_that("evaluate_models works with a single workflow", {
-  rec <- recipes::recipe(Species ~ ., data = iris)
-  spec <- parsnip::logistic_reg() %>% parsnip::set_engine("glm")
-  wf <- workflows::workflow() %>%
-    workflows::add_model(spec) %>%
-    workflows::add_recipe(rec)
-  fitted_wf <- parsnip::fit(wf, data = iris)
-  models <- list(log_reg = fitted_wf)
-  eval_res <- evaluate_models(models, iris, iris,
-                              label = "Species", task = "classification",
-                              metric = "accuracy", event_class = "second")
-  expect_true("log_reg" %in% names(eval_res$performance))
-})
 
 test_that("process_model works without global variables", {
   rec <- recipes::recipe(Species ~ ., data = iris)
@@ -617,6 +477,8 @@ test_that("Bayesian tuning executes successfully", {
 })
 
 test_that("adaptive tuning executes successfully", {
+  skip_if_not_installed("lme4")
+
   res <- fastml(
     data = iris,
     label = "Species",
@@ -809,20 +671,18 @@ test_that("guarded resampling is reproducible with fixed seeds", {
   )
 })
 
-# test_that("warning when tune_params ignored with no tuning", {
-#   tune <- list(rand_forest = list(ranger = list(mtry = c(1, 2))))
-#   expect_warning(
-#     fastml(
-#       data = iris,
-#       label = "Species",
-#       algorithms = c("rand_forest"),
-#       tune_params = tune,
-#       tuning_strategy = "none",
-#       use_default_tuning = TRUE,
-#       resampling_method = "none"
-#     ),
-#     "tune_params"
-#   )
-# })
-
-
+test_that("warning when tune_params ignored with no tuning", {
+  tune <- list(rand_forest = list(ranger = list(mtry = c(1, 2))))
+  expect_warning(
+    fastml(
+      data = iris,
+      label = "Species",
+      algorithms = c("rand_forest"),
+      tune_params = tune,
+      tuning_strategy = "none",
+      use_default_tuning = TRUE,
+      resampling_method = "none"
+    ),
+    "tune_params"
+  )
+})

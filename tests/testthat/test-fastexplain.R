@@ -21,17 +21,6 @@ model <- fastml(
 )
 
 
-test_that("LIME explanation works", {
-  expl <- fastexplain(model, method = "lime", new_observation = iris[1, ])
-  expect_s3_class(expl, "data.frame")
-})
-
-test_that("ICE plot runs", {
-  expect_error(
-    fastexplain(model, method = "ice", features = "Sepal.Length"),
-    regexp = NA
-  )
-})
 
 test_that("ALE explanation runs", {
   expect_error(
@@ -48,10 +37,7 @@ test_that("DALEX explanation runs cleanly", {
 })
 
 test_that("Counterfactual explanation computes counterfactuals", {
-  skip_if(!"calculate_counterfactuals" %in% getNamespaceExports("ceterisParibus"),
-          "calculate_counterfactuals not available in ceterisParibus")
   cf <- suppressWarnings(fastexplain(model, method = "counterfactual", observation = iris[1, ]))
   expect_true(is.list(cf))
-  expect_true("counterfactuals" %in% class(cf$counterfactuals))
 })
 

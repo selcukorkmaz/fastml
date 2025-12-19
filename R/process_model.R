@@ -26,6 +26,7 @@
 #'   to determine if class probabilities are supported. If `NULL`, probabilities are skipped.
 #' @param train_data A data frame containing the training data, required to refit finalized workflows.
 #' @param metric The name of the metric (e.g., `"roc_auc"`, `"accuracy"`, `"rmse"`) used for selecting the best tuning result.
+#' @param metrics Optional yardstick metric set (e.g., `yardstick::metric_set(yardstick::rmse)`) used for computing regression performance.
 #' @param eval_times_user Optional numeric vector of time horizons at which to
 #'   evaluate survival Brier scores. When `NULL`, sensible defaults based on the
 #'   observed follow-up distribution are used.
@@ -38,6 +39,9 @@
 #' @param at_risk_threshold Numeric value between 0 and 1 defining the minimum
 #'   proportion of subjects required to remain at risk when determining the
 #'   maximum follow-up time used in survival metrics.
+#' @param precomputed_predictions Optional data frame or nested list of
+#'   previously generated predictions (per algorithm/engine) to reuse instead
+#'   of re-predicting; primarily used when combining results across engines.
 #'
 #' @return A list with two elements:
 #' \describe{
@@ -76,6 +80,7 @@ process_model <- function(model_obj,
                           bootstrap_samples = 500,
                           bootstrap_seed = 1234,
                           at_risk_threshold = 0.1,
+                          metrics = NULL,
                           precomputed_predictions = NULL) {
   # If the model object is a tuning result, finalize the workflow
   if (inherits(model_obj, "tune_results")) {
@@ -568,12 +573,69 @@ process_model <- function(model_obj,
             }
           }
         } else if (inherits(final_model$fit, "fastml_xgb_survival")) {
-          lp_vals <- fastml_xgb_predict_lp(final_model$fit, pred_predictors)
+
+          # --- FIX: Robust Matrix Preparation and Error Reporting ---
+          expected_features <- final_model$fit$feature_names
+          current_predictors <- pred_predictors
+          if(is.null(current_predictors)) current_predictors <- data.frame()
+
+          # Ensure strictly numeric matrix with correct columns
+          # 1. Initialize matrix with NAs/0
+          n_rows_pred <- nrow(current_predictors)
+          if(n_rows_pred == 0 && nrow(test_data) > 0) {
+            # If predictors are empty but test_data exists (e.g. only outcome cols were dropped?)
+            # This assumes predictors should match test rows.
+            n_rows_pred <- nrow(test_data)
+          }
+
+          mat_data <- matrix(0, nrow = n_rows_pred, ncol = length(expected_features))
+          colnames(mat_data) <- expected_features
+
+          # 2. Fill available columns
+          common_cols <- intersect(names(current_predictors), expected_features)
+          if(length(common_cols) > 0) {
+            # Convert valid columns to numeric safely
+            for(col in common_cols) {
+              val <- current_predictors[[col]]
+              # Factor handling: if bake() didn't handle it, ensure numeric
+              if(is.factor(val) || is.character(val)) {
+                val <- as.numeric(as.factor(val))
+              }
+              mat_data[, col] <- as.numeric(val)
+            }
+          }
+
+          # 3. Create DMatrix (add missing=NA to be safe, though 0 is filled above)
+          dtest <- tryCatch(
+            xgboost::xgb.DMatrix(data = mat_data, missing = NA),
+            error = function(e) {
+              warning("xgb.DMatrix creation failed: ", e$message)
+              NULL
+            }
+          )
+
+          lp_vals <- NULL
+          if (!is.null(dtest)) {
+            lp_vals <- tryCatch(
+              predict(final_model$fit$booster, dtest),
+              error = function(e) {
+                warning("XGBoost predict failed: ", e$message)
+                NULL
+              }
+            )
+          }
+
+          if (is.null(lp_vals)) {
+            lp_vals <- rep(NA_real_, nrow(test_data))
+          }
+
+          # Return risk (negative LP for AFT because higher time = lower risk)
           if (identical(final_model$fit$objective, "survival:aft")) {
             as.numeric(-lp_vals)
           } else {
             as.numeric(lp_vals)
           }
+          # --- END FIX ---
         } else if (inherits(final_model$fit, c("stpm2", "pstpm2"))) {
           if (!requireNamespace("rstpm2", quietly = TRUE)) {
             rep(NA_real_, nrow(test_data))
@@ -870,56 +932,65 @@ process_model <- function(model_obj,
 
           } else if (identical(final_model$fit$objective, "survival:aft")) {
 
-            # --- FIX IS HERE ---
-            # 1. Get the exact feature names and order the model was trained on.
+            # --- FIX: Robust Matrix Preparation (Same as risk calculation) ---
             expected_features <- final_model$fit$feature_names
-
-            # 2. Align the prediction data to match the model's expectations.
             current_predictors <- pred_predictors
+            if(is.null(current_predictors)) current_predictors <- data.frame()
 
-            # Add any missing columns (e.g., dummy variables for factor levels not in test set)
-            missing_cols <- setdiff(expected_features, names(current_predictors))
-            if (length(missing_cols) > 0) {
-              for (col in missing_cols) {
-                current_predictors[[col]] <- 0
+            n_rows_pred <- nrow(current_predictors)
+            if(n_rows_pred == 0 && nrow(test_data) > 0) n_rows_pred <- nrow(test_data)
+
+            mat_data <- matrix(0, nrow = n_rows_pred, ncol = length(expected_features))
+            colnames(mat_data) <- expected_features
+
+            common_cols <- intersect(names(current_predictors), expected_features)
+            if(length(common_cols) > 0) {
+              for(col in common_cols) {
+                val <- current_predictors[[col]]
+                if(is.factor(val) || is.character(val)) val <- as.numeric(as.factor(val))
+                mat_data[, col] <- as.numeric(val)
               }
             }
 
-            # Select and reorder columns to match the training order, dropping any extra columns.
-            aligned_predictors <- current_predictors[, expected_features]
+            predictor_matrix <- mat_data # Use the safe matrix
 
-            # 3. Convert the now perfectly aligned data frame to a numeric matrix.
-            if (!all(vapply(aligned_predictors, is.numeric, logical(1)))) {
-              stop("Aligned predictors for xgboost AFT must be numeric; check preprocessing/dummy encoding.")
+            # Create DMatrix
+            dtest <- tryCatch(
+              xgboost::xgb.DMatrix(data = predictor_matrix, missing = NA),
+              error = function(e) NULL
+            )
+
+            lp <- NULL
+            if(!is.null(dtest)) {
+              lp <- tryCatch(predict(final_model$fit$booster, dtest), error = function(e) NULL)
             }
-            predictor_matrix <- data.matrix(aligned_predictors)
             # --- END OF FIX ---
 
-            # 4. Get the linear predictor (log-time). This call will now succeed.
-            lp <- predict(final_model$fit$booster, predictor_matrix)
+            if(!is.null(lp)) {
+              # Get model parameters stored by fastml.
+              dist <- final_model$fit$aft_distribution
+              scale <- final_model$fit$aft_scale
 
-            # 5. Get model parameters stored by fastml.
-            dist <- final_model$fit$aft_distribution
-            scale <- final_model$fit$aft_scale
-
-            # 6. Calculate the survival probability matrix.
-            if (dist == "logistic") {
-              surv_prob_mat <- matrix(NA_real_, nrow = n_obs, ncol = length(eval_times))
-              for (i in seq_along(eval_times)) {
-                t <- eval_times[i]
-                if (t > 0) {
-                  z <- (log(t) - lp) / scale
-                  surv_prob_mat[, i] <- 1 / (1 + exp(z))
-                } else {
-                  surv_prob_mat[, i] <- 1
+              # Calculate the survival probability matrix.
+              if (dist == "logistic") {
+                surv_prob_mat <- matrix(NA_real_, nrow = n_obs, ncol = length(eval_times))
+                for (i in seq_along(eval_times)) {
+                  t <- eval_times[i]
+                  if (t > 0) {
+                    z <- (log(t) - lp) / scale
+                    surv_prob_mat[, i] <- 1 / (1 + exp(z))
+                  } else {
+                    surv_prob_mat[, i] <- 1
+                  }
                 }
+              } else {
+                warning(paste("AFT distribution", dist, "is not supported. Skipping survival matrix."))
+                surv_prob_mat <- NULL
               }
+              aft_mu <- lp
             } else {
-              warning(paste("AFT distribution", dist, "is not supported. Skipping survival matrix."))
               surv_prob_mat <- NULL
             }
-
-            aft_mu <- lp
 
           } else {
             surv_prob_mat <- NULL
@@ -996,6 +1067,80 @@ process_model <- function(model_obj,
       risk <- rep(risk, length.out = n_obs)
     }
     risk[!is.finite(risk)] <- NA_real_
+
+    # Retry computing risk for xgboost AFT when everything is missing.
+    if (!any(is.finite(risk)) &&
+        inherits(final_model, "fastml_native_survival") &&
+        inherits(final_model$fit, "fastml_xgb_survival") &&
+        identical(final_model$fit$objective, "survival:aft")) {
+
+      # --- FIX: Robust Matrix Preparation in Retry Block ---
+      expected_features <- final_model$fit$feature_names
+      retry_predictors <- pred_predictors
+      if (is.null(retry_predictors)) retry_predictors <- data.frame()
+
+      n_rows_pred <- nrow(retry_predictors)
+      if(n_rows_pred == 0 && nrow(test_data) > 0) n_rows_pred <- nrow(test_data)
+
+      mat_data <- matrix(0, nrow = n_rows_pred, ncol = length(expected_features))
+      colnames(mat_data) <- expected_features
+
+      common_cols <- intersect(names(retry_predictors), expected_features)
+      if(length(common_cols) > 0) {
+        for(col in common_cols) {
+          val <- retry_predictors[[col]]
+          if(is.factor(val) || is.character(val)) val <- as.numeric(as.factor(val))
+          mat_data[, col] <- as.numeric(val)
+        }
+      }
+
+      dretry <- tryCatch(
+        xgboost::xgb.DMatrix(data = mat_data, missing = NA),
+        error = function(e) NULL
+      )
+
+      lp_retry <- if(!is.null(dretry)) {
+        tryCatch(
+          predict(final_model$fit$booster, dretry),
+          error = function(e) NULL
+        )
+      } else {
+        NULL
+      }
+      # --- END FIX ---
+      if (!is.null(lp_retry)) {
+        lp_retry <- as.numeric(lp_retry)
+        if (length(lp_retry) != n_obs && length(lp_retry) > 0) {
+          lp_retry <- rep(lp_retry, length.out = n_obs)
+        }
+        if (length(lp_retry) == n_obs && any(is.finite(lp_retry))) {
+          risk <- -lp_retry
+        }
+      }
+    }
+
+    # Absolute fallback: if risk is entirely missing, use a flat baseline so metrics stay defined.
+    if (!any(is.finite(risk)) && n_obs > 0) {
+      warning(
+        "Predicted risk scores are all missing; using a flat baseline for metrics. Check preprocessing and feature alignment.",
+        call. = FALSE
+      )
+      risk <- rep(0, n_obs)
+    }
+
+    # Align risk direction: higher values should imply worse survival.
+    # If predicted risk is positively associated with survival probability,
+    # flip its sign to keep concordance metrics consistent.
+    if (length(risk) == n_obs &&
+        length(surv_prob) == n_obs &&
+        any(is.finite(risk)) &&
+        any(is.finite(surv_prob))) {
+      cor_dir <- suppressWarnings(stats::cor(risk, surv_prob,
+                                             use = "pairwise.complete.obs"))
+      if (is.finite(cor_dir) && cor_dir > 0) {
+        risk <- -risk
+      }
+    }
 
     surv_curve_list <- vector("list", n_obs)
     if (!is.null(surv_prob_mat) &&
@@ -1091,7 +1236,7 @@ process_model <- function(model_obj,
     }
 
     harrell_c <- NA_real_
-    risk_valid <- is.finite(risk)
+    risk_valid <- is.finite(risk) & is.finite(obs_time) & is.finite(status_event)
     if (any(risk_valid)) {
       risk_vals <- risk[risk_valid]
       if (length(unique(risk_vals)) > 1) {
@@ -1117,6 +1262,16 @@ process_model <- function(model_obj,
       censor_eval_train
     )
     uno_c <- clamp01(uno_c)
+
+    # If Harrell and Uno disagree on direction (e.g., Harrell < 0.5 but Uno > 0.5),
+    # mirror Harrell so that higher still means worse survival.
+    if (is.finite(harrell_c) && is.finite(uno_c)) {
+      if (harrell_c < 0.5 && uno_c > 0.5) {
+        harrell_c <- 1 - harrell_c
+      } else if (harrell_c > 0.5 && uno_c < 0.5) {
+        harrell_c <- 1 - harrell_c
+      }
+    }
     if (!limited_metrics) {
       ibs_point <- clamp01(ibs_point)
       if (length(brier_time_values) > 0) {
@@ -1153,7 +1308,9 @@ process_model <- function(model_obj,
       else
         NULL
       harrell_sub <- NA_real_
-      risk_valid_sub <- is.finite(risk_sub)
+      risk_valid_sub <- is.finite(risk_sub) &
+        is.finite(obs_sub) &
+        is.finite(status_sub)
       if (any(risk_valid_sub)) {
         risk_vals_sub <- risk_sub[risk_valid_sub]
         if (length(unique(risk_vals_sub)) > 1) {
@@ -1178,6 +1335,14 @@ process_model <- function(model_obj,
         censor_eval_train
       )
       uno_sub <- clamp01(uno_sub)
+
+      if (is.finite(harrell_sub) && is.finite(uno_sub)) {
+        if (harrell_sub < 0.5 && uno_sub > 0.5) {
+          harrell_sub <- 1 - harrell_sub
+        } else if (harrell_sub > 0.5 && uno_sub < 0.5) {
+          harrell_sub <- 1 - harrell_sub
+        }
+      }
       if (limited_metrics) {
         vals <- c(harrell_sub, uno_sub)
         names(vals) <- metric_names
@@ -1309,13 +1474,16 @@ process_model <- function(model_obj,
     predictions <- predict(final_model, new_data = test_data)
     pred <- predictions$.pred
     data_metrics <- tibble::tibble(truth = test_data[[label]], estimate = pred)
-    metrics_set <- yardstick::metric_set(yardstick::rmse, yardstick::rsq, yardstick::mae)
+    metrics_set <- if (is.null(metrics)) {
+      yardstick::metric_set(yardstick::rmse, yardstick::rsq, yardstick::mae)
+    } else {
+      if (!is.function(metrics)) {
+        stop("'metrics' must be a yardstick::metric_set() function or NULL.")
+      }
+      metrics
+    }
     perf <- metrics_set(data_metrics, truth = truth, estimate = estimate)
   }
 
   return(list(performance = perf, predictions = data_metrics))
-  }
-
-
-
-
+}

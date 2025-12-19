@@ -123,6 +123,10 @@ fastml_xgb_predict_lp <- function(fit_obj, predictors) {
   }
   feature_names <- fit_obj$feature_names
   mat <- fastml_prepare_xgb_matrix(predictors, feature_names)
+  # Ensure no non-finite values are passed to xgboost
+  if (length(mat) > 0L) {
+    mat[!is.finite(mat)] <- 0
+  }
   if (nrow(mat) == 0 && length(feature_names) > 0) {
     return(rep(NA_real_, n_obs))
   }
@@ -154,6 +158,20 @@ fastml_xgb_predict_lp <- function(fit_obj, predictors) {
       predict(booster, newdata = mat, strict_shape = TRUE),
       error = function(e) NULL
     )
+    if (!is.null(pred_raw) && length(pred_raw) > 0) {
+      pred_raw <- as.numeric(pred_raw)
+      pred_raw[!is.finite(pred_raw) | pred_raw <= 0] <- NA_real_
+      pred <- log(pred_raw)
+    }
+  }
+
+  # If still missing, try an explicit DMatrix prediction before giving up.
+  if (is.null(pred) || length(pred) == 0 || all(!is.finite(pred))) {
+    dmat <- tryCatch(xgboost::xgb.DMatrix(data = mat), error = function(e) NULL)
+    pred_raw <- if (!is.null(dmat)) {
+      tryCatch(predict(booster, newdata = dmat, strict_shape = TRUE),
+               error = function(e) NULL)
+    } else NULL
     if (!is.null(pred_raw) && length(pred_raw) > 0) {
       pred_raw <- as.numeric(pred_raw)
       pred_raw[!is.finite(pred_raw) | pred_raw <= 0] <- NA_real_

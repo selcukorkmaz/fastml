@@ -21,19 +21,12 @@ define_rand_forest_spec <- function(task, train_data, label, tuning = FALSE, eng
 
   if (task == "survival") {
 
-    # Ensure censored is attached and survival engines are registered properly
+    # Ensure censored is available so it can register parsnip's survival mode/engines.
     if (!requireNamespace("censored", quietly = TRUE)) {
       stop("Package 'censored' is required for survival random forest.", call. = FALSE)
     }
 
-    # Force reload censored *before* parsnip’s model environment is cached
-    if (!"package:censored" %in% search()) {
-      suppressMessages({
-        if ("package:parsnip" %in% search()) {
-          detach("package:parsnip", unload = TRUE, character.only = TRUE)
-        }
-      })
-    }
+    # Censored registers parsnip survival models on namespace load.
 
     # Build model spec
     if (tuning) {

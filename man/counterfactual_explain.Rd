@@ -20,10 +20,24 @@ counterfactual_explain(
 \item{observation}{A single observation (data frame with one row) to compute
 counterfactuals for.}
 
+\item{variables}{Optional character vector of candidate variables to vary.
+Only numeric variables are used for counterfactual profiling.}
+
+\item{positive_class}{Optional string used to filter lines/points in the
+resulting profiles for classification tasks.}
+
+\item{event_class}{Optional event class indicator propagated from
+`fastml_prepare_explainer_inputs()` (kept for compatibility).}
+
+\item{label_levels}{Optional vector of label levels propagated from
+`fastml_prepare_explainer_inputs()` (kept for compatibility).}
+
 \item{...}{Additional arguments passed to `DALEX::predict_profile`.}
 }
 \value{
-A counterfactual explanation object.
+A list (returned invisibly) containing the DALEX profile, filtered
+  lines/points when `positive_class` is supplied, and the plotted object if
+  rendering succeeds.
 }
 \description{
 Uses DALEX ceteris-paribus profiles (`predict_profile`) to compute

@@ -464,27 +464,28 @@ fastml_run_nested_cv <- function(workflow_spec,
     })
 
     if (!is.null(fitted_outer)) {
-      eval_result <- tryCatch({
-        process_model(
-          model_obj = fitted_outer,
-          model_id = paste0("outer_", outer_ids[[i]]),
-          task = task,
-          test_data = outer_assess,
-          label = label,
-          event_class = event_class,
-          start_col = start_col,
-          time_col = time_col,
-          status_col = status_col,
-          engine = engine,
-          train_data = outer_train,
-          metric = metric,
-          eval_times_user = eval_times,
-          bootstrap_ci = FALSE,
-          bootstrap_samples = 1,
-          bootstrap_seed = seed,
-          at_risk_threshold = at_risk_threshold
-        )
-      }, error = function(e) {
+        eval_result <- tryCatch({
+          process_model(
+            model_obj = fitted_outer,
+            model_id = paste0("outer_", outer_ids[[i]]),
+            task = task,
+            test_data = outer_assess,
+            label = label,
+            event_class = event_class,
+            start_col = start_col,
+            time_col = time_col,
+            status_col = status_col,
+            engine = engine,
+            train_data = outer_train,
+            metric = metric,
+            metrics = if (!is.null(my_metrics)) my_metrics else metrics,
+            eval_times_user = eval_times,
+            bootstrap_ci = FALSE,
+            bootstrap_samples = 1,
+            bootstrap_seed = seed,
+            at_risk_threshold = at_risk_threshold
+          )
+        }, error = function(e) {
         warning(sprintf("Evaluation failed for outer split '%s': %s", outer_ids[[i]], e$message))
         NULL
       })
@@ -1721,8 +1722,14 @@ train_models <- function(train_data,
         next
       }
 
+      # Apply engine-level arguments to parsnip specs and avoid passing them via fit(...),
+      # which would otherwise error in workflows.
+      if (spec_is_parsnip && length(engine_args) > 0) {
+        spec <- do.call(parsnip::set_engine, c(list(spec, engine = engine), engine_args))
+      }
+
       if (is.null(fit_engine_args)) {
-        fit_engine_args <- engine_args
+        fit_engine_args <- if (spec_is_parsnip) list() else engine_args
       }
 
       if (!is.null(resamples) && inherits(spec, "fastml_native_survival")) {
@@ -2232,6 +2239,17 @@ train_models <- function(train_data,
   }
 
   n_class <- length(levels(train_data[[label]]))
+  if (n_class == 2 && "multinom_reg" %in% algorithms) {
+    warning(
+      sprintf(
+        "Multinomial regression ('multinom_reg') is not applicable to two-class outcomes. Detected a binary outcome for '%s'; using logistic regression ('logistic_reg') instead.",
+        label
+      ),
+      call. = FALSE
+    )
+    algorithms[algorithms == "multinom_reg"] <- "logistic_reg"
+    algorithms <- algorithms[!duplicated(algorithms)]
+  }
 
   for (algo in algorithms) {
     set.seed(seed)
@@ -2573,4 +2591,3 @@ train_models <- function(train_data,
 
   return(models)
 }
-
