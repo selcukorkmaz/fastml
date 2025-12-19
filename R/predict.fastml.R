@@ -163,10 +163,10 @@ predict.fastml <- function(object, newdata,
     to_predict <- all_mods[na.omit(resolved)]
   } else {
     bm <- object$best_model
-    if (inherits(bm, "workflow")) {
+    if (inherits(bm, "workflow") || inherits(bm, "fastml_royston")) {
       to_predict <- list(bm)
       names(to_predict) <- if (!is.null(names(bm))) names(bm) else "best_model"
-    } else if (is.list(bm) && all(sapply(bm, inherits, "workflow"))) {
+    } else if (is.list(bm) && all(sapply(bm, valid_model))) {
       to_predict <- bm
     } else {
       to_predict <- all_mods
@@ -243,6 +243,8 @@ predict.fastml <- function(object, newdata,
                   numeric = p$.pred,
                   prob    = p
       )
+    } else {
+      stop("Unsupported model type for prediction.")
     }
     if (!is.null(postprocess_fn)) {
       p <- postprocess_fn(p)

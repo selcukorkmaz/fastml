@@ -57,9 +57,10 @@
 #'   F1-score, and ROC AUC (if probabilities are available).
 #'
 #' - For regression tasks, RMSE, R-squared, and MAE are returned.
-#'
+#' 
 #' - For models with missing prediction lengths, a helpful imputation error is thrown to guide data preprocessing.
-#'
+#' 
+#' @importFrom survival psurvreg survfit
 #' @export
 #' @importFrom stats model.matrix formula median quantile setNames
 #' @importFrom utils head tail
