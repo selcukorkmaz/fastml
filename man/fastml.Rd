@@ -12,22 +12,29 @@ fastml(
   algorithms = "all",
   task = "auto",
   test_size = 0.2,
-  resampling_method = "cv",
+  resampling_method = if (identical(task, "survival")) "none" else "cv",
   folds = ifelse(grepl("cv", resampling_method), 10, 25),
-  repeats = ifelse(resampling_method == "repeatedcv", 1, NA),
+  repeats = NULL,
+  group_cols = NULL,
+  block_col = NULL,
+  block_size = NULL,
+  initial_window = NULL,
+  assess_window = NULL,
+  skip = 0,
+  outer_folds = NULL,
   event_class = "first",
   exclude = NULL,
   recipe = NULL,
   tune_params = NULL,
+  engine_params = list(),
   metric = NULL,
   algorithm_engines = NULL,
   n_cores = 1,
   stratify = TRUE,
   impute_method = "error",
-  impute_custom_function = NULL,
   encode_categoricals = TRUE,
   scaling_methods = c("center", "scale"),
-  balance_method = c("none", "upsample", "downsample"),
+  balance_method = "none",
   resamples = NULL,
   summaryFunction = NULL,
   use_default_tuning = FALSE,
@@ -37,7 +44,13 @@ fastml(
   adaptive = FALSE,
   learning_curve = FALSE,
   seed = 123,
-  verbose = FALSE
+  verbose = FALSE,
+  eval_times = NULL,
+  bootstrap_ci = TRUE,
+  bootstrap_samples = 500,
+  bootstrap_seed = NULL,
+  at_risk_threshold = 0.1,
+  audit_mode = FALSE
 )
 }
 \arguments{
@@ -47,20 +60,54 @@ fastml(
 
 \item{test_data}{A data frame pre-split for model evaluation. If provided, `train_data` must also be supplied, and no internal splitting will occur. Defaults to `NULL`.}
 
-\item{label}{A string specifying the name of the target variable.}
+\item{label}{A string specifying the name of the target variable. For
+survival analysis, supply a character vector with the names of the time and
+status columns.}
 
 \item{algorithms}{A vector of algorithm names to use. Default is \code{"all"} to run all supported algorithms.}
 
-\item{task}{Character string specifying model type selection. Use "auto" to let the function detect whether the target is for classification or regression based on the data, or explicitly set to "classification" or "regression".}
+\item{task}{Character string specifying model type selection. Use "auto" to
+let the function detect whether the target is for classification, regression,
+or survival based on the data. Survival is detected when `label` is a
+character vector of length 2 that matches time and status columns in the data.
+You may also explicitly set to "classification", "regression", or "survival".}
 
 \item{test_size}{A numeric value between 0 and 1 indicating the proportion of the data to use for testing. Default is \code{0.2}.}
 
-\item{resampling_method}{A string specifying the resampling method for model evaluation. Default is \code{"cv"} (cross-validation).
-Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.}
+\item{resampling_method}{A string specifying the resampling method for model evaluation. Default is \code{"cv"}
+(cross-validation) for classification/regression. Other options include \code{"none"}, \code{"boot"},
+\code{"repeatedcv"}, \code{"grouped_cv"}, \code{"blocked_cv"}, \code{"rolling_origin"}, and \code{"nested_cv"}.
+For survival tasks, resampling is supported for parsnip-compatible engines (e.g., censored/ranger, glmnet).
+Native survival engines (flexsurv/rstpm2/custom xgboost) ignore resampling and will error if custom resamples
+are supplied. When the task auto-detects survival and \code{resampling_method} is omitted, it defaults to
+\code{"none"} so native engines continue to run; set it explicitly to enable resampling for parsnip survival fits.}
 
 \item{folds}{An integer specifying the number of folds for cross-validation. Default is \code{10} for methods containing "cv" and \code{25} otherwise.}
 
 \item{repeats}{Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").}
+
+\item{group_cols}{Character vector naming one or more grouping columns used when
+\code{resampling_method = "grouped_cv"} or when grouped nested cross-validation is desired.
+All rows that share the same combination of values remain together in every fold. Columns must exist
+in the training data and cannot contain missing values.}
+
+\item{block_col}{Single column name that defines the ordering variable for
+\code{resampling_method = "blocked_cv"} or \code{"rolling_origin"}. Data must already be sorted in
+ascending order by this column to avoid leakage from future observations.}
+
+\item{block_size}{Positive integer specifying the block size for \code{"blocked_cv"}.}
+
+\item{initial_window}{Positive integer giving the number of observations in the initial training
+window for \code{"rolling_origin"} resampling.}
+
+\item{assess_window}{Positive integer giving the number of observations in each assessment window for
+\code{"rolling_origin"} resampling.}
+
+\item{skip}{Non-negative integer specifying how many potential rolling windows to skip between
+successive resamples when \code{resampling_method = "rolling_origin"}.}
+
+\item{outer_folds}{Positive integer giving the number of outer folds to use when
+\code{resampling_method = "nested_cv"} and no custom \code{resamples} object is supplied.}
 
 \item{event_class}{A single string. Either "first" or "second" to specify which level of truth to consider as the "event". Default is "first".}
 
@@ -71,6 +118,15 @@ Other options include \code{"none"}, \code{"boot"}, \code{"repeatedcv"}, etc.}
 \item{tune_params}{A named list of tuning ranges for each algorithm and engine
 pair. Example: \code{list(rand_forest = list(ranger = list(mtry = c(1, 3))))}
 will override the defaults for the ranger engine. Default is \code{NULL}.}
+
+\item{engine_params}{A named list of engine-level arguments to pass directly
+to the underlying model fitting functions. Use this for fixed settings that
+should apply whenever an engine is fitted (for example,
+\code{list(royston_parmar = list(rstpm2 = list(link = "PO")))},
+\code{list(cox_ph = list(survival = list(ties = "breslow")))}, or
+\code{list(rand_forest = list(ranger = list(importance = "impurity")))}).
+These arguments are distinct from \code{tune_params}, which define ranges of
+hyperparameters to explore during tuning. Default is an empty list.}
 
 \item{metric}{The performance metric to optimize during training.}
 
@@ -86,15 +142,11 @@ will override the defaults for the ranger engine. Default is \code{NULL}.}
   \item{\code{"knnImpute"}}{Impute missing values using k-nearest neighbors (recipe-based).}
   \item{\code{"bagImpute"}}{Impute missing values using bagging (recipe-based).}
   \item{\code{"remove"}}{Remove rows with missing values from the data (recipe-based).}
-  \item{\code{"mice"}}{Impute missing values using MICE (Multiple Imputation by Chained Equations).}
-  \item{\code{"missForest"}}{Impute missing values using the missForest algorithm.}
-  \item{\code{"custom"}}{Use a user-provided imputation function (see `impute_custom_function`).}
   \item{\code{"error"}}{Do not perform imputation; if missing values are detected, stop execution with an error.}
   \item{\code{NULL}}{Equivalent to \code{"error"}. No imputation is performed, and the function will stop if missing values are present.}
 }
-Default is \code{"error"}.}
-
-\item{impute_custom_function}{A function that takes a data.frame as input and returns an imputed data.frame. Used only if \code{impute_method = "custom"}.}
+All imputation occurs inside the recipe so the same trained preprocessing
+can be applied at prediction time. Default is \code{"error"}.}
 
 \item{encode_categoricals}{Logical indicating whether to encode categorical variables. Default is \code{TRUE}.}
 
@@ -110,7 +162,13 @@ ignored.}
 
 \item{summaryFunction}{A custom summary function for model evaluation. Default is \code{NULL}.}
 
-\item{use_default_tuning}{Logical; if \code{TRUE} and \code{tune_params} is \code{NULL}, tuning is performed using default grids. Tuning also occurs when custom \code{tune_params} are supplied. When \code{FALSE} and no custom parameters are given, models are fitted once with default settings. Default is \code{FALSE}.}
+\item{use_default_tuning}{Logical. Tuning only runs when resamples are supplied and
+\code{tuning_strategy} is not \code{"none"}. If \code{TRUE} and
+\code{tune_params} is \code{NULL}, default grids are used; if
+\code{tune_params} is provided, those values override/extend defaults. When
+\code{FALSE} and no custom parameters are given, models are fitted once with
+default settings. If no resamples are available or \code{tuning_strategy =
+"none"}, tuning requests are ignored with a warning. Default is \code{FALSE}.}
 
 \item{tuning_strategy}{A string specifying the tuning strategy. Must be one of
 \code{"grid"}, \code{"bayes"}, or \code{"none"}. Default is \code{"grid"}.
@@ -131,6 +189,29 @@ occurs for the Bayesian strategy. Default is \code{10}.}
 
 \item{verbose}{Logical; if TRUE, prints progress messages during the training
 and evaluation process.}
+
+\item{eval_times}{Optional numeric vector of evaluation horizons for survival
+models. When \code{NULL}, defaults to the median and 75th percentile of the
+observed follow-up times (rounded to the dataset's time unit).}
+
+\item{bootstrap_ci}{Logical indicating whether bootstrap confidence intervals
+should be computed for performance metrics. Applies to all task types.}
+
+\item{bootstrap_samples}{Integer giving the number of bootstrap resamples to
+use when \code{bootstrap_ci = TRUE}. Defaults to 500.}
+
+\item{bootstrap_seed}{Optional seed passed to the bootstrap procedure used to
+estimate confidence intervals.}
+
+\item{at_risk_threshold}{Numeric value between 0 and 1 used for survival
+metrics to determine the last follow-up time (\eqn{t_{max}}). The maximum
+time is set to the largest observed time where at least this proportion of
+subjects remain at risk.}
+
+\item{audit_mode}{Logical; if \code{TRUE}, enables runtime auditing of custom
+preprocessing hooks and records potentially unsafe behaviour (such as global
+environment access or file I/O) while flagging the run as potentially
+unsafe.}
 }
 \value{
 An object of class \code{fastml} containing the best model, performance metrics, and other information.

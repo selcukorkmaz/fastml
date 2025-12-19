@@ -9,6 +9,8 @@
   algorithm = "best",
   type = c("all", "metrics", "params", "conf_mat"),
   sort_metric = NULL,
+  show_ci = FALSE,
+  brier_times = NULL,
   ...
 )
 }
@@ -25,6 +27,13 @@ Options are \code{"all"} (all available outputs),
 Default is \code{"all"}.}
 
 \item{sort_metric}{The metric to sort by. Default uses optimized metric.}
+
+\item{show_ci}{Logical indicating whether to display 95\% confidence intervals
+for performance metrics in survival models. Defaults to \code{FALSE}.}
+
+\item{brier_times}{Optional numeric or character vector that selects which
+time-specific Brier scores to display for survival models. When \code{NULL}
+(the default), time-specific Brier scores are omitted from the summary.}
 
 \item{...}{Additional arguments.}
 }
@@ -49,4 +58,7 @@ Users can control the type of output with the `type` argument:
 `all` includes all of the above.
 
 If multiple algorithms are trained, the summary highlights the best model based on the optimized metric.
+For survival tasks, Harrell's C-index, Uno's C-index, the integrated Brier
+score, and (when available) the RMST difference are shown by default. Specific
+Brier(t) horizons can be requested through the \code{brier_times} argument.
 }

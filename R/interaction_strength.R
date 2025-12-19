@@ -7,6 +7,7 @@
 #'
 #' @return An `iml::Interaction` object.
 #' @importFrom iml Predictor Interaction
+#' @importFrom recipes bake
 #' @export
 #' @examples
 #' \dontrun{
@@ -24,24 +25,61 @@ interaction_strength <- function(object, ...) {
     stop("The 'iml' package is required for interaction strength.")
   }
 
-  train_data <- object$processed_train_data
-  if (is.null(train_data) || !(object$label %in% names(train_data))) {
-    stop("Processed training data not available for interaction strength.")
+  prep <- fastml_prepare_explainer_inputs(object)
+  train_data <- prep$train_data
+  if (is.null(train_data) || !(prep$label %in% names(train_data))) {
+    stop("Training data not available for interaction strength.")
   }
-  x <- train_data[, setdiff(names(train_data), object$label), drop = FALSE]
-  y <- train_data[[object$label]]
+  x <- prep$x_raw
+  y <- prep$y_raw
 
-  parsnip_fit <- tryCatch(tune::extract_fit_parsnip(object$best_model[[1]]),
-                          error = function(e) NULL)
-  if (is.null(parsnip_fit) && inherits(object$best_model, "model_fit")) {
-    parsnip_fit <- object$best_model
-  }
-  if (is.null(parsnip_fit)) {
-    stop("Unable to extract parsnip model for interaction strength.")
+  # Convert factor/character targets to numeric (0/1) for iml
+  positive_class <- prep$positive_class
+  if (is.factor(y) || is.character(y)) {
+    y_factor <- if (is.factor(y)) y else factor(y)
+    if (is.null(positive_class) || !(positive_class %in% levels(y_factor))) {
+      positive_class <- levels(y_factor)[1]
+    }
+    y <- as.numeric(y_factor == positive_class)
   }
 
-  predictor <- iml::Predictor$new(parsnip_fit, data = x, y = y)
+  parsnip_fit <- prep$fits[[1]]
+
+  # Custom predict function returning numeric probabilities (or numeric predictions)
+  predict_fun <- function(model, newdata) {
+    newdata_processed <- tryCatch(
+      {
+        baked <- recipes::bake(prep$preprocessor, new_data = newdata)
+        if (!is.null(prep$label) && prep$label %in% names(baked)) {
+          baked[[prep$label]] <- NULL
+        }
+        baked
+      },
+      error = function(e) newdata
+    )
+
+    prob <- tryCatch(
+      predict(model, new_data = newdata_processed, type = "prob"),
+      error = function(e) NULL
+    )
+    if (!is.null(prob)) {
+      prob_col <- paste0(".pred_", positive_class)
+      if (!is.null(positive_class) && prob_col %in% names(prob)) {
+        return(as.numeric(prob[[prob_col]]))
+      }
+      num_cols <- names(prob)[vapply(prob, is.numeric, logical(1))]
+      if (length(num_cols) > 0) {
+        return(as.numeric(prob[[num_cols[1]]]))
+      }
+    }
+
+    preds <- predict(model, new_data = newdata_processed)
+    as.numeric(preds[[1]])
+  }
+
+  predictor <- iml::Predictor$new(parsnip_fit, data = x, y = y, predict.fun = predict_fun)
   ia <- iml::Interaction$new(predictor, ...)
-  plot(ia)
+  p <- plot(ia)
+  print(p)
   invisible(ia)
 }

@@ -7,7 +7,7 @@
 get_default_tune_params(algo, train_data, label, engine)
 }
 \arguments{
-\item{algo}{A character string specifying the algorithm name. Supported values include: \code{"rand_forest"}, \code{"C5_rules"}, \code{"xgboost"}, \code{"lightgbm"}, \code{"logistic_reg"}, \code{"multinom_reg"}, \code{"decision_tree"}, \code{"svm_linear"}, \code{"svm_rbf"}, \code{"nearest_neighbor"}, \code{"naive_Bayes"}, \code{"mlp"}, \code{"deep_learning"}, \code{"discrim_linear"}, \code{"discrim_quad"}, \code{"bag_tree"}, \code{"elastic_net"}, \code{"bayes_glm"}, \code{"pls"}, \code{"linear_reg"}, \code{"ridge_regression"}, and \code{"lasso_regression"}.}
+\item{algo}{A character string specifying the algorithm name. Supported values include: \code{"rand_forest"}, \code{"C5_rules"}, \code{"xgboost"}, \code{"lightgbm"}, \code{"logistic_reg"}, \code{"multinom_reg"}, \code{"decision_tree"}, \code{"svm_linear"}, \code{"svm_rbf"}, \code{"nearest_neighbor"}, \code{"naive_Bayes"}, \code{"mlp"}, \code{"deep_learning"}, \code{"discrim_linear"}, \code{"discrim_quad"}, \code{"bag_tree"}, \code{"elastic_net"}, \code{"bayes_glm"}, \code{"pls"}, \code{"linear_reg"}, \code{"ridge_reg"}, and \code{"lasso_reg"}.}
 
 \item{train_data}{A data frame containing the training data.}
 

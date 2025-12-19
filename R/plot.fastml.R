@@ -1,5 +1,3 @@
-utils::globalVariables(c("Model", "Value", "Measure"))
-
 #' Plot Methods for \code{fastml} Objects
 #'
 #' \code{plot.fastml} produces visual diagnostics for a trained \code{fastml} object.
@@ -13,6 +11,7 @@ utils::globalVariables(c("Model", "Value", "Measure"))
 #'     \item{\code{"roc"}}{ROC curve(s) for binary classification models.}
 #'     \item{\code{"calibration"}}{Calibration plot for the best model(s).}
 #'     \item{\code{"residual"}}{Residual diagnostics for the best model.}
+#'     \item{\code{"learning_curve"}}{Learning-curve plot if recorded during training.}
 #'     \item{\code{"all"}}{Produce all available plots.}
 #'   }
 #' @param ... Additional arguments (currently unused).
@@ -58,7 +57,7 @@ utils::globalVariables(c("Model", "Value", "Measure"))
 #' @export
 plot.fastml <- function(x,
                         algorithm = "best",
-                        type = c("all", "bar", "roc", "calibration", "residual"),
+                        type = c("all", "bar", "roc", "calibration", "residual", "learning_curve"),
                         ...) {
 
   if (!inherits(x, "fastml")) {
@@ -68,7 +67,7 @@ plot.fastml <- function(x,
   # Validate 'type' argument
   type <- match.arg(type, several.ok = TRUE)
   if ("all" %in% type) {
-    type <- c("bar", "roc", "calibration", "residual")
+    type <- c("bar", "roc", "calibration", "residual", "learning_curve")
   }
 
   performance      <- x$performance
@@ -78,15 +77,35 @@ plot.fastml <- function(x,
   optimized_metric <- x$metric
   positive_class   <- x$positive_class
   engine_names     <- x$engine_names
+  resampling_plan  <- x$resampling_plan
+  resampling_desc  <- fastml_describe_resampling(resampling_plan)
 
-  # Rebuild performance_wide (same logic as in summary.fastml)
+  # Rebuild performance_wide (robust to single- or multi-engine structures)
   metrics_list <- lapply(names(performance), function(model_name) {
-    engine_dfs <- lapply(names(performance[[model_name]]), function(engine_name) {
-      df <- as.data.frame(performance[[model_name]][[engine_name]])
-      df$Engine <- engine_name
-      df
-    })
-    combined_engines      <- do.call(rbind, engine_dfs)
+    perf_entry <- performance[[model_name]]
+
+    resolve_engine <- function(default_engine = NA_character_) {
+      if (!is.null(engine_names) && !is.null(engine_names[[model_name]]) && !is.na(engine_names[[model_name]])) {
+        return(engine_names[[model_name]])
+      }
+      if (!is.null(best_model_name) && model_name %in% names(best_model_name)) {
+        return(as.character(best_model_name[[model_name]]))
+      }
+      default_engine
+    }
+
+    if (is.list(perf_entry) && !is.data.frame(perf_entry)) {
+      engine_dfs <- lapply(names(perf_entry), function(engine_name) {
+        df <- as.data.frame(perf_entry[[engine_name]])
+        df$Engine <- engine_name
+        df
+      })
+      combined_engines <- do.call(rbind, engine_dfs)
+    } else {
+      combined_engines <- as.data.frame(perf_entry)
+      combined_engines$Engine <- resolve_engine()
+    }
+
     combined_engines$Model <- model_name
     combined_engines
   })
@@ -102,8 +121,13 @@ plot.fastml <- function(x,
 
   if (task == "classification") {
     desired_metrics <- c("accuracy", "f_meas", "kap", "precision", "sens", "spec", "roc_auc")
-  } else {
+  } else if (task == "regression") {
     desired_metrics <- c("rmse", "rsq", "mae")
+  } else if (task == "survival") {
+    brier_metrics <- sort(grep("^brier_t", all_metric_names, value = TRUE))
+    desired_metrics <- c("c_index", "uno_c", "ibs", "rmst_diff", brier_metrics)
+  } else {
+    desired_metrics <- unique(performance_df$.metric)
   }
   desired_metrics <- intersect(desired_metrics, all_metric_names)
   if (length(desired_metrics) == 0) {
@@ -118,29 +142,28 @@ plot.fastml <- function(x,
   if (length(engine_names) == 1 && "LiblineaR" %in% engine_names) {
     performance_wide <- tidyr::pivot_wider(
       performance_sub,
-      names_from  = .metric,
-      values_from = .estimate
+      names_from  = .data$.metric,
+      values_from = .data$.estimate
     ) %>%
       dplyr::select(Model, Engine, accuracy, kap, sens, spec, precision, f_meas)
   } else {
-    if (task == "classification") {
-      performance_wide <- tidyr::pivot_wider(
-        performance_sub,
-        names_from  = .metric,
-        values_from = .estimate
-      ) %>%
-        dplyr::select(Model, Engine, accuracy, kap, sens, spec, precision, f_meas, roc_auc)
-    } else {
-      performance_wide <- tidyr::pivot_wider(
-        performance_sub,
-        names_from  = .metric,
-        values_from = .estimate
-      ) %>%
-        dplyr::select(Model, Engine, rmse, rsq, mae)
+    keep_metrics <- desired_metrics
+    if (length(engine_names) == 1 && "LiblineaR" %in% engine_names) {
+      keep_metrics <- intersect(keep_metrics, c("accuracy", "kap", "sens", "spec", "precision", "f_meas"))
     }
+    performance_wide <- tidyr::pivot_wider(
+      performance_sub,
+      names_from  = .data$.metric,
+      values_from = .data$.estimate
+    )
+    select_cols <- c("Model", "Engine", keep_metrics)
+    select_cols <- intersect(select_cols, colnames(performance_wide))
+    performance_wide <- dplyr::select(performance_wide, dplyr::all_of(select_cols))
   }
 
-  if (task == "regression" && main_metric != "rsq") {
+  brier_cols <- grep("^brier_t", colnames(performance_wide), value = TRUE)
+  ascending_metrics <- unique(c("rmse", "mae", "ibs", "logloss", "mse", brier_cols))
+  if (main_metric %in% ascending_metrics) {
     performance_wide <- performance_wide[order(performance_wide[[main_metric]], na.last = TRUE), ]
   } else {
     performance_wide <- performance_wide[order(-performance_wide[[main_metric]], na.last = TRUE), ]
@@ -156,8 +179,33 @@ plot.fastml <- function(x,
     spec      = "Specificity",
     rsq       = "R-squared",
     mae       = "MAE",
-    rmse      = "RMSE"
+    rmse      = "RMSE",
+    c_index   = "Harrell C-index",
+    uno_c     = "Uno's C-index",
+    ibs       = "Integrated Brier Score",
+    rmst_diff = "RMST diff (t_max)"
   )
+  t_max_val <- x$survival_t_max
+  if (!is.null(t_max_val) && length(t_max_val) == 1 && is.finite(t_max_val) && t_max_val > 0) {
+    display_names[["rmst_diff"]] <- sprintf(
+      "RMST diff (t<=%s)",
+      format(t_max_val, trim = TRUE, digits = 4)
+    )
+  }
+  if (!is.null(x$survival_brier_times)) {
+    for (nm in names(x$survival_brier_times)) {
+      if (!is.null(x$survival_brier_times[[nm]]) && is.finite(x$survival_brier_times[[nm]])) {
+        time_label <- format(x$survival_brier_times[[nm]], trim = TRUE, digits = 4)
+      } else {
+        time_label <- nm
+      }
+      display_names[[nm]] <- sprintf("Brier(t=%s)", time_label)
+    }
+  }
+  auto_brier_cols <- setdiff(grep("^brier_t", colnames(performance_wide), value = TRUE), names(display_names))
+  if (length(auto_brier_cols) > 0) {
+    display_names[auto_brier_cols] <- auto_brier_cols
+  }
 
   # ============================
   # 1. Bar plot of metrics
@@ -188,11 +236,23 @@ plot.fastml <- function(x,
       if (length(present_reg_metrics) > 0) {
         performance_melt$Metric <- factor(performance_melt$Metric, levels = present_reg_metrics)
       }
+    } else if (task == "survival") {
+      rmst_label <- display_names[["rmst_diff"]]
+      if (is.null(rmst_label)) {
+        rmst_label <- "RMST diff (t_max)"
+      }
+      surv_order <- c("Harrell C-index", "Uno's C-index", "Integrated Brier Score", rmst_label)
+      brier_labels <- display_names[grep("^brier_t", names(display_names))]
+      surv_order <- c(surv_order, brier_labels)
+      present_surv_metrics <- intersect(surv_order, unique(performance_melt$Metric))
+      if (length(present_surv_metrics) > 0) {
+        performance_melt$Metric <- factor(performance_melt$Metric, levels = present_surv_metrics)
+      }
     }
 
     p_bar <- ggplot2::ggplot(
       performance_melt,
-      ggplot2::aes(x = Model, y = Value, fill = Engine)
+      ggplot2::aes(x = .data$Model, y = .data$Value, fill = .data$Engine)
     ) +
       ggplot2::geom_bar(stat = "identity", position = ggplot2::position_dodge()) +
       ggplot2::facet_wrap(~ Metric, scales = "free_y") +
@@ -337,10 +397,14 @@ plot.fastml <- function(x,
 
 
           # Create the ROC curve plot, using the compound ModelEngine label for color
-          roc_curve_plot <- ggplot(data = roc_data,
-                                   aes(x = 1 - FalsePositiveRate,
-                                       y = TruePositiveRate,
-                                       color = ModelEngine)) +
+          roc_curve_plot <- ggplot(
+            data = roc_data,
+            aes(
+              x = 1 - .data$FalsePositiveRate,
+              y = .data$TruePositiveRate,
+              color = .data$ModelEngine
+            )
+          ) +
             geom_line(linewidth = 1) +
             geom_abline(intercept = 0, slope = 1, linetype = "dashed", color = "grey") +
             theme_minimal() +
@@ -407,7 +471,9 @@ plot.fastml <- function(x,
               estimate = !!rlang::sym(pred_col),
               event_level = x$event_class
             ) +
-              ggplot2::labs(title = paste("Calibration Plot for", model_name))
+              ggplot2::labs(
+                title = paste("Calibration Plot for", model_name)
+              )
             print(p_cal)
           }
         } else {
@@ -443,20 +509,34 @@ plot.fastml <- function(x,
       names_df_best <- unique(unlist(lapply(df_best, names)))
       if (!is.null(df_best) && "truth" %in% names_df_best && "estimate" %in% names_df_best) {
         df_best_all <- dplyr::bind_rows(df_best, .id = "ModelEngine") %>%
-          dplyr::mutate(residual = truth - estimate)
+          dplyr::mutate(residual = .data$truth - .data$estimate)
 
         cat("\nResidual Diagnostics for Best Model:\n")
 
-        p_truth_pred <- ggplot2::ggplot(df_best_all, ggplot2::aes(x = estimate, y = truth)) +
+        p_truth_pred <- ggplot2::ggplot(
+          df_best_all,
+          ggplot2::aes(x = .data$estimate, y = .data$truth)
+        ) +
           ggplot2::geom_point(alpha = 0.6) +
           ggplot2::geom_abline(linetype = "dashed", color = "red") +
-          ggplot2::labs(title = "Truth vs Predicted", x = "Predicted", y = "Truth") +
+          ggplot2::labs(
+            title = "Truth vs Predicted",
+            x = "Predicted",
+            y = "Truth"
+          ) +
           ggplot2::theme_bw()
         print(p_truth_pred)
 
-        p_resid_hist <- ggplot2::ggplot(df_best_all, ggplot2::aes(x = residual)) +
+        p_resid_hist <- ggplot2::ggplot(
+          df_best_all,
+          ggplot2::aes(x = .data$residual)
+        ) +
           ggplot2::geom_histogram(bins = 30, fill = "steelblue", color = "white", alpha = 0.7) +
-          ggplot2::labs(title = "Residual Distribution", x = "Residual", y = "Count") +
+          ggplot2::labs(
+            title = "Residual Distribution",
+            x = "Residual",
+            y = "Count"
+          ) +
           ggplot2::theme_bw()
         print(p_resid_hist)
       } else {
@@ -464,6 +544,30 @@ plot.fastml <- function(x,
       }
     } else {
       cat("\nResidual diagnostics are only available for regression tasks.\n\n")
+    }
+  }
+
+  # 5. Learning curve (optional)
+  if ("learning_curve" %in% type) {
+    lc <- x$learning_curve
+    if (!is.null(lc) && !is.null(lc$plot)) {
+      print(lc$plot)
+    } else if (!is.null(lc) && !is.null(lc$data)) {
+      lc_plot <- ggplot2::ggplot(
+        lc$data,
+        ggplot2::aes(x = .data$Fraction, y = .data$Performance)
+      ) +
+        ggplot2::geom_line(color = "blue") +
+        ggplot2::geom_point(color = "blue") +
+        ggplot2::labs(
+          title = "Learning Curve",
+          x = "Training Set Size (fraction)",
+          y = paste("Mean", optimized_metric, "across models")
+        ) +
+        ggplot2::theme_minimal()
+      print(lc_plot)
+    } else {
+      cat("\nNo learning curve data available. Set `learning_curve = TRUE` when fitting to record it.\n\n")
     }
   }
 

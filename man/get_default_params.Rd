@@ -13,7 +13,7 @@ get_default_params(algo, task, num_predictors = NULL, engine = NULL)
 \code{"svm_rbf"}, \code{"nearest_neighbor"}, \code{"naive_Bayes"}, \code{"mlp"},
 \code{"deep_learning"}, \code{"discrim_linear"}, \code{"discrim_quad"}, \code{"bag_tree"},
 \code{"elastic_net"}, \code{"bayes_glm"}, \code{"pls"}, \code{"linear_reg"},
-\code{"ridge_regression"}, and \code{"lasso_regression"}.}
+\code{"ridge_reg"}, \code{"lasso_reg"}, and \code{"penalized_cox"}.}
 
 \item{task}{A character string specifying the task type, typically \code{"classification"} or \code{"regression"}.}
 
@@ -35,6 +35,6 @@ The function employs a \code{switch} statement to select and return a list of de
     \item For \code{"xgboost"} and \code{"lightgbm"}, default values are provided for parameters like tree depth, learning rate, and sample size.
     \item For \code{"logistic_reg"} and \code{"multinom_reg"}, the function returns defaults for regularization parameters (\code{penalty} and \code{mixture}) that vary with the specified engine.
     \item For \code{"decision_tree"}, the parameters (such as \code{tree_depth}, \code{min_n}, and \code{cost_complexity}) are set based on the engine (e.g., \code{"rpart"}, \code{"C5.0"}, \code{"partykit"}, \code{"spark"}).
-    \item Other algorithms, including \code{"svm_linear"}, \code{"svm_rbf"}, \code{"nearest_neighbor"}, \code{"naive_Bayes"}, \code{"mlp"}, \code{"deep_learning"}, \code{"elastic_net"}, \code{"bayes_glm"}, \code{"pls"}, \code{"linear_reg"}, \code{"ridge_regression"}, and \code{"lasso_regression"}, have their respective default parameter lists.
+    \item Other algorithms, including \code{"svm_linear"}, \code{"svm_rbf"}, \code{"nearest_neighbor"}, \code{"naive_Bayes"}, \code{"mlp"}, \code{"deep_learning"}, \code{"elastic_net"}, \code{"bayes_glm"}, \code{"pls"}, \code{"linear_reg"}, \code{"ridge_reg"}, and \code{"lasso_reg"}, have their respective default parameter lists.
   }
 }

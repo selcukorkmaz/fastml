@@ -2,13 +2,14 @@
 % Please edit documentation in R/fastexplore.R
 \name{fastexplore}
 \alias{fastexplore}
-\title{Explore and Summarize a Dataset Quickly}
+\title{Lightweight exploratory helper}
 \usage{
 fastexplore(
   data,
   label = NULL,
   visualize = c("histogram", "boxplot", "barplot", "heatmap", "scatterplot"),
-  save_results = TRUE,
+  save_results = FALSE,
+  render_report = FALSE,
   output_dir = NULL,
   sample_size = NULL,
   interactive = FALSE,
@@ -17,7 +18,7 @@ fastexplore(
   visualize_missing = TRUE,
   imputation_suggestions = FALSE,
   report_duplicate_details = TRUE,
-  detect_near_duplicates = TRUE,
+  detect_near_duplicates = FALSE,
   auto_convert_dates = FALSE,
   feature_engineering = FALSE,
   outlier_method = c("iqr", "zscore", "dbscan", "lof"),
@@ -30,106 +31,85 @@ fastexplore(
 )
 }
 \arguments{
-\item{data}{A \code{data.frame}. The dataset to analyze.}
+\item{data}{A `data.frame` to explore.}
 
-\item{label}{A character string specifying the name of the target or label column (optional).
-If provided, certain grouped plots and class imbalance checks will be performed.}
+\item{label}{Optional column name of the target/label. If supplied and
+categorical, grouped plots and class balance summaries are produced.}
 
-\item{visualize}{A character vector specifying which visualizations to produce.
-Possible values: \code{c("histogram", "boxplot", "barplot", "heatmap", "scatterplot")}.}
+\item{visualize}{Character vector indicating which plot families to build.
+Defaults to `c("histogram", "boxplot", "barplot", "heatmap", "scatterplot")`.}
 
-\item{save_results}{Logical. If \code{TRUE}, saves plots and a rendered report (HTML) into
-a timestamped \code{EDA_Results_} folder inside \code{output_dir}.}
+\item{save_results}{Logical; if `TRUE`, plots/results are saved under
+`output_dir` (defaults to the working directory). Default is `FALSE`.}
 
-\item{output_dir}{A character string specifying the output directory for saving results
-(if \code{save_results = TRUE}). Defaults to current working directory.}
+\item{render_report}{Logical; if `TRUE`, a short HTML report is rendered via
+`rmarkdown` (if available). Default is `FALSE`.}
 
-\item{sample_size}{An integer specifying a random sample size for the data to be used in
-visualizations. If \code{NULL}, uses the entire dataset.}
+\item{output_dir}{Directory to save results/report when `save_results` or
+`render_report` is `TRUE`.}
 
-\item{interactive}{Logical. If \code{TRUE}, attempts to produce interactive Plotly heatmaps
-and other interactive elements. If required packages are not installed, falls back to static plots.}
+\item{sample_size}{Optional integer; if supplied, visualizations are produced
+on a random sample of this size.}
 
-\item{corr_threshold}{Numeric. Threshold above which correlations (in absolute value)
-are flagged as high. Defaults to \code{0.9}.}
+\item{interactive}{Logical; if `TRUE` and `plotly` is available, an
+interactive correlation heatmap is produced. Falls back to static ggplot
+output otherwise.}
 
-\item{auto_convert_numeric}{Logical. If \code{TRUE}, automatically converts factor/character
-columns that look numeric (only digits, minus sign, or decimal point) to numeric.}
+\item{corr_threshold}{Absolute correlation threshold for flagging high
+correlations.}
 
-\item{visualize_missing}{Logical. If \code{TRUE}, attempts to visualize missingness patterns
-(e.g., via an \code{UpSet} plot, if \pkg{UpSetR} is available, or \pkg{VIM}, \pkg{naniar}).}
+\item{auto_convert_numeric}{Logical; convert factor/character columns that
+look numeric into numeric.}
 
-\item{imputation_suggestions}{Logical. If \code{TRUE}, prints simple text suggestions for imputation strategies.}
+\item{visualize_missing}{Logical; if `TRUE`, include simple missingness
+visualizations.}
 
-\item{report_duplicate_details}{Logical. If \code{TRUE}, shows top duplicated rows and their frequency.}
+\item{imputation_suggestions}{Logical; if `TRUE`, prints lightweight
+suggestions based on missingness patterns.}
 
-\item{detect_near_duplicates}{Logical. Placeholder for near-duplicate (fuzzy) detection.
-Currently not implemented.}
+\item{report_duplicate_details}{Logical; if `TRUE`, returns a small sample of
+duplicated rows when present.}
 
-\item{auto_convert_dates}{Logical. If \code{TRUE}, attempts to detect and convert date-like
-strings (\code{YYYY-MM-DD}) to \code{Date} format.}
+\item{detect_near_duplicates}{Placeholder for future fuzzy duplicate checks.}
 
-\item{feature_engineering}{Logical. If \code{TRUE}, automatically engineers derived features
-(day, month, year) from any date/time columns, and identifies potential ID columns.}
+\item{auto_convert_dates}{Logical; convert YYYY-MM-DD strings to `Date`.}
 
-\item{outlier_method}{A character string indicating which outlier detection method(s) to apply.
-One of \code{c("iqr", "zscore", "dbscan", "lof")}. Only the first match will be used in the code
-(though the function is designed to handle multiple).}
+\item{feature_engineering}{Logical; if `TRUE`, derive day/month/year from date
+columns to aid inspection of temporal structure.}
 
-\item{run_distribution_checks}{Logical. If \code{TRUE}, runs normality tests (e.g., Shapiro-Wilk)
-on numeric columns.}
+\item{outlier_method}{One of `"iqr"`, `"zscore"`, `"dbscan"`, `"lof"`.}
 
-\item{normality_tests}{A character vector specifying which normality tests to run.
-Possible values include \code{"shapiro"} or \code{"ks"} (Kolmogorov-Smirnov).
-Only used if \code{run_distribution_checks = TRUE}.}
+\item{run_distribution_checks}{Logical; if `TRUE`, run normality tests on
+numeric columns.}
 
-\item{pairwise_matrix}{Logical. If \code{TRUE}, produces a scatterplot matrix (using the \pkg{GGally} package if available)
-for numeric columns.}
+\item{normality_tests}{Character vector of normality tests to run; currently
+supports `"shapiro"` and `"ks"`.}
 
-\item{max_scatter_cols}{Integer. Maximum number of numeric columns to include in the pairwise matrix.}
+\item{pairwise_matrix}{Logical; if `TRUE` and `GGally` is available, returns a
+ggpairs scatterplot matrix for a subset of numeric columns.}
 
-\item{grouped_plots}{Logical. If \code{TRUE}, produce grouped histograms, violin plots,
-and density plots by label (if the label is a factor).}
+\item{max_scatter_cols}{Maximum number of numeric columns to include in the
+pairwise matrix.}
 
-\item{use_upset_missing}{Logical. If \code{TRUE}, attempts to produce an UpSet plot for missing data
-if \pkg{UpSetR} is available.}
+\item{grouped_plots}{Logical; if `TRUE` and `label` is a factor, group
+histograms/boxplots/density plots by label.}
+
+\item{use_upset_missing}{Logical; retained for compatibility. When `TRUE` and
+`UpSetR` is installed, an UpSet plot of missingness is returned; otherwise a
+simpler missingness heatmap is used.}
 }
 \value{
-A (silent) list containing:
-\itemize{
-  \item \code{data_overview} - A basic overview (head, unique values, skim summary).
-  \item \code{summary_stats} - Summary statistics for numeric columns.
-  \item \code{freq_tables} - Frequency tables for factor columns.
-  \item \code{missing_data} - Missing data overview (count, percentage).
-  \item \code{duplicated_rows} - Count of duplicated rows.
-  \item \code{class_imbalance} - Class distribution if \code{label} is provided and is categorical.
-  \item \code{correlation_matrix} - The correlation matrix for numeric variables.
-  \item \code{zero_variance_cols} - Columns with near-zero variance.
-  \item \code{potential_id_cols} - Columns with unique values in every row.
-  \item \code{date_time_cols} - Columns recognized as date/time.
-  \item \code{high_corr_pairs} - Pairs of variables with correlation above \code{corr_threshold}.
-  \item \code{outlier_method} - The chosen method for outlier detection.
-  \item \code{outlier_summary} - Outlier proportions or metrics (if computed).
-}
-If \code{save_results = TRUE}, additional side effects include saving figures, a correlation heatmap,
-and an R Markdown report in the specified directory.
+A list of summaries (tables/tibbles) and plot objects (ggplot/plotly),
+  plus any saved file paths when `save_results`/`render_report` are enabled.
 }
 \description{
-\code{fastexplore} provides a fast and comprehensive exploratory data analysis (EDA) workflow.
-It automatically detects variable types, checks for missing and duplicated data,
-suggests potential ID columns, and provides a variety of plots (histograms, boxplots,
-scatterplots, correlation heatmaps, etc.). It also includes optional outlier detection,
-normality testing, and feature engineering.
+`fastexplore()` is an optional, lightweight exploratory data analysis (EDA)
+helper. It returns summary tables and plot objects; it only writes to disk or
+renders a report when you explicitly request it via `save_results` or
+`render_report`.
 }
 \details{
-This function automates many steps of EDA:
-\enumerate{
-  \item Automatically detects numeric vs. categorical variables.
-  \item Auto-converts columns that look numeric (and optionally date-like).
-  \item Summarizes data structure, missingness, duplication, and potential ID columns.
-  \item Computes correlation matrix and flags highly correlated pairs.
-  \item (Optional) Outlier detection using IQR, Z-score, DBSCAN, or LOF methods.
-  \item (Optional) Normality tests on numeric columns.
-  \item Saves all results and an R Markdown report if \code{save_results = TRUE}.
-}
+This helper is intentionally decoupled from the core modeling workflow. Most
+of its heavy dependencies are treated as optional and loaded via
+`requireNamespace()` when requested features are used.
 }

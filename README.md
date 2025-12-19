@@ -1,15 +1,42 @@
-# fastml: Fast Machine Learning Model Training and Evaluation
+<img src="man/figures/fastml_hex.png" align="right" width="95"/>
 
-**fastml** is a streamlined R package designed to simplify the training, evaluation, and comparison of multiple machine learning models. It offers comprehensive data preprocessing, supports a wide range of algorithms with hyperparameter tuning, and provides performance metrics alongside visualization tools to facilitate efficient and effective machine learning workflows.
+# fastml: Guarded Resampling for Safe and Automated Machine Learning in R
+
+**fastml** is an R package for training, evaluating, and comparing machine learning models under *architecturally enforced, leakage-safe resampling*.  
+Rather than introducing new learning algorithms, fastml focuses on **guaranteeing methodological correctness** by binding preprocessing, model fitting, and evaluation inseparably to the resampling loop.
+
+In fastml, *“fast” refers to the rapid construction of statistically valid workflows*, not to computational shortcuts. By eliminating entire classes of user-induced errors—most notably preprocessing leakage—fastml allows practitioners to obtain reliable performance estimates with minimal configuration.
+
+## Core Principles
+
+- **Guarded Resampling by construction**  
+  All preprocessing and model fitting are re-estimated independently within each resampling split. Global preprocessing is structurally disallowed.
+
+- **Leakage prevention, not detection**  
+  fastml prevents common leakage modes (e.g., global scaling, imputation, batch correction before resampling) rather than relying on user discipline or post hoc checks.
+
+- **Single, unified interface**  
+  Multiple models can be trained and benchmarked through a single call, while internally enforcing correct interaction between resampling, preprocessing, and evaluation.
+
+- **Compatibility with established engines**  
+  fastml orchestrates existing modeling infrastructure (recipes, rsample, parsnip, yardstick) without modifying their statistical behavior.
 
 ## Features
 
-- **Comprehensive Data Preprocessing:** Handle missing values, encode categorical variables, and apply various scaling methods with minimal code.
-- **Support for Multiple Algorithms:** Train a wide array of machine learning models including XGBoost, Random Forest, SVMs, KNN, Neural Networks, and more.
-- **Hyperparameter Tuning:** Customize and automate hyperparameter tuning for each algorithm to optimize model performance.
-- **Performance Evaluation:** Evaluate models using metrics like Accuracy, Kappa, Sensitivity, Specificity, Precision, F1 Score, and ROC AUC.
-- **Visualization Tools:** Generate comparison plots to visualize and compare the performance of different models effortlessly.
-- **Easy Integration:** Designed to integrate seamlessly into your existing R workflows with intuitive function interfaces.
+- **Architecturally enforced preprocessing isolation**  
+  All transformations (scaling, imputation, encoding, feature construction) are learned strictly from training folds and applied to assessment folds.
+
+- **Support for multiple algorithms**  
+  Includes tree-based models, linear and penalized models, kernel methods, neural networks, and boosting approaches via established engines.
+
+- **Hyperparameter tuning within guarded resampling**  
+  Grid and Bayesian tuning are performed safely inside the resampling loop.
+
+- **Consistent performance evaluation**  
+  Metrics such as Accuracy, ROC AUC, Sensitivity, Specificity, Precision, and F1 are computed without leakage.
+
+- **Visualization and comparison tools**  
+  Built-in plots facilitate comparison across models while preserving statistical validity.
 
 ## Installation
 
@@ -46,50 +73,110 @@ library(fastml)
 
 # Example dataset
 data(iris)
-iris <- iris[iris$Species != "setosa", ]  # Binary classification
-iris$Species <- factor(iris$Species)
+
+iris_binary <- iris %>%
+  filter(Species != "setosa") %>%
+  mutate(Species = factor(Species))
 
 # Train models
-model <- fastml(
-  data = iris,
-  label = "Species"
+fit <- fastml(
+  data = iris_binary,
+  label = "Species",
+  algorithms = c("rand_forest", "logistic_reg")
 )
 
 # View model summary
-summary(model)
+summary(fit)
+
+# Plot the performance metrics
+plot(model_class, type = "bar")
+
+# Plot ROC curves
+plot(model_class, type = "roc")
+
+# Plot model calibration
+plot(model_class, type = "calibration")
 ```
 
 ## Tuning Strategies
 
-fastml supports both grid search and Bayesian optimization through the
-`tuning_strategy` argument. Use `"grid"` for a regular parameter grid or
-`"bayes"` for Bayesian hyperparameter search. The `tuning_iterations`
-parameter controls the number of iterations **only** when
-`tuning_strategy = "bayes"` and is ignored otherwise.
+Hyperparameter tuning is supported via:
+
+- `grid` — regular grid search
+
+- `bayes` — Bayesian optimization
+
+```r
+fastml(
+  data = iris_binary,
+  label = "Species",
+  algorithms = c("rand_forest", "logistic_reg"),
+  tuning_strategy = "bayes",
+  tuning_iterations = 20
+)
+```
+
+`tuning_iterations` is used only for Bayesian optimization.
 
 ## Explainability
 
-`fastexplain()` provides several ways to understand trained models. Set the
-`method` argument to choose an approach:
+Model explainability tools are provided through `fastexplain()`:
 
 ```r
-# LIME explanations
-explain_lime(model)
+# Prepare data
+library(survival)
+data(pbc, package = "survival")
+  
+# The pbc dataset has two parts; we only want the baseline data (rows 1-312)
+pbc_baseline <- pbc[1:312, -c(1:4)]
 
-# ICE curves
-fastexplain(model, method = "ice", features = "Sepal.Length")
+# Train a regression model
+fit_reg <- fastml(
+  data = pbc_baseline,
+  label = "albumin",
+  algorithms = c("xgboost"),
+  metric = "rmse",
+  impute_method = "medianImpute"
+)
+  
+# Feature importance and SHAP values based on DALEX
+fastexplain(fit_reg, method = "dalex")
 
-# Accumulated Local Effects
-fastexplain(model, method = "ale", features = "Sepal.Length")
+# Breakdown profile
+fastexplain(fit_reg, method = "breakdown", observation = pbc_baseline[1, -9])
 
-# Surrogate tree
-fastexplain(model, method = "surrogate")
+# Counterfactual explanation (Ceteris Paribus profile)
+fastexplain(fit_reg, method = "counterfactual", observation = pbc_baseline[1, -9])
 
-# Interaction strength
-fastexplain(model, method = "interaction")
-
-# Counterfactual explanation for a single observation
-fastexplain(model, method = "counterfactual", observation = iris[1, ])
 ```
 
+Explainability is performed on trained models and does not interfere with resampling or preprocessing.
+
+## Exploratory Diagnostics
+
+`fastexplore()` provides read-only exploratory diagnostics prior to model training.
+It summarizes distributions, missingness, correlations, and basic structure without invoking resampling, preprocessing, or model fitting.
+
+```r
+fastexplore(iris, label = "Species")
+```
+
+This function is architecturally decoupled from fastml’s guarded resampling core and cannot influence model evaluation.
+
+## Scope
+
+fastml is intended for users who require reliable performance estimation under cross-validation, particularly in:
+
+- multi-site or grouped data
+
+- high-dimensional biomedical applications
+
+- workflows prone to preprocessing leakage
+
+It prioritizes correctness guarantees over maximum flexibility.
+
+## License
+
+MIT License
+See `LICENSE` for details.
 

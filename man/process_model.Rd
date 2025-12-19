@@ -11,9 +11,19 @@ process_model(
   test_data,
   label,
   event_class,
+  start_col = NULL,
+  time_col = NULL,
+  status_col = NULL,
   engine,
   train_data,
-  metric
+  metric,
+  eval_times_user = NULL,
+  bootstrap_ci = TRUE,
+  bootstrap_samples = 500,
+  bootstrap_seed = 1234,
+  at_risk_threshold = 0.1,
+  metrics = NULL,
+  precomputed_predictions = NULL
 )
 }
 \arguments{
@@ -21,7 +31,8 @@ process_model(
 
 \item{model_id}{A character identifier for the model (used in warnings).}
 
-\item{task}{Type of task, either `"classification"` or `"regression"`.}
+\item{task}{Type of task, either `"classification"`, `"regression"`, or
+`"survival"`.}
 
 \item{test_data}{A data frame containing the test data.}
 
@@ -30,12 +41,47 @@ process_model(
 \item{event_class}{For binary classification, specifies which class is considered the positive class:
 `"first"` or `"second"`.}
 
+\item{start_col}{Optional string. The name of the column specifying the
+start time in counting process (e.g., `(start, stop, event)`) survival
+data. Only used when \code{task = "survival"}.}
+
+\item{time_col}{String. The name of the column specifying the event or
+censoring time (the "stop" time in counting process data). Only used
+when \code{task = "survival"}.}
+
+\item{status_col}{String. The name of the column specifying the event
+status (e.g., 0 for censored, 1 for event). Only used when
+\code{task = "survival"}.}
+
 \item{engine}{A character string indicating the model engine (e.g., `"xgboost"`, `"randomForest"`). Used
 to determine if class probabilities are supported. If `NULL`, probabilities are skipped.}
 
 \item{train_data}{A data frame containing the training data, required to refit finalized workflows.}
 
 \item{metric}{The name of the metric (e.g., `"roc_auc"`, `"accuracy"`, `"rmse"`) used for selecting the best tuning result.}
+
+\item{eval_times_user}{Optional numeric vector of time horizons at which to
+evaluate survival Brier scores. When `NULL`, sensible defaults based on the
+observed follow-up distribution are used.}
+
+\item{bootstrap_ci}{Logical; if `TRUE`, bootstrap confidence intervals are
+estimated for survival performance metrics.}
+
+\item{bootstrap_samples}{Integer giving the number of bootstrap resamples
+used when computing confidence intervals.}
+
+\item{bootstrap_seed}{Optional integer seed applied before bootstrap
+resampling to make interval estimates reproducible.}
+
+\item{at_risk_threshold}{Numeric value between 0 and 1 defining the minimum
+proportion of subjects required to remain at risk when determining the
+maximum follow-up time used in survival metrics.}
+
+\item{metrics}{Optional yardstick metric set (e.g., `yardstick::metric_set(yardstick::rmse)`) used for computing regression performance.}
+
+\item{precomputed_predictions}{Optional data frame or nested list of
+previously generated predictions (per algorithm/engine) to reuse instead
+of re-predicting; primarily used when combining results across engines.}
 }
 \value{
 A list with two elements:

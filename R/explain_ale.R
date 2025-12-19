@@ -8,6 +8,9 @@
 #'
 #' @return An `iml` object containing ALE results.
 #' @importFrom iml Predictor FeatureEffect
+#' @importFrom ggplot2 ggplot aes geom_line geom_col geom_rug labs
+#' @importFrom rlang sym
+#' @importFrom recipes bake
 #' @export
 #' @examples
 #' \dontrun{
@@ -28,24 +31,79 @@ explain_ale <- function(object, feature, ...) {
     stop("The 'iml' package is required for ALE explanations.")
   }
 
-  train_data <- object$processed_train_data
-  if (is.null(train_data) || !(object$label %in% names(train_data))) {
-    stop("Processed training data not available for ALE.")
+  prep <- fastml_prepare_explainer_inputs(object)
+  train_data <- prep$train_data
+  if (is.null(train_data) || !(prep$label %in% names(train_data))) {
+    stop("Training data not available for ALE.")
   }
-  x <- train_data[, setdiff(names(train_data), object$label), drop = FALSE]
-  y <- train_data[[object$label]]
+  x <- prep$x_raw
+  y <- prep$y_raw
 
-  parsnip_fit <- tryCatch(tune::extract_fit_parsnip(object$best_model[[1]]),
-                          error = function(e) NULL)
-  if (is.null(parsnip_fit) && inherits(object$best_model, "model_fit")) {
-    parsnip_fit <- object$best_model
-  }
-  if (is.null(parsnip_fit)) {
-    stop("Unable to extract parsnip model for ALE.")
+  # Convert factor/character targets to numeric (0/1) so iml can compute residuals
+  positive_class <- prep$positive_class
+  if (is.factor(y) || is.character(y)) {
+    y_factor <- if (is.factor(y)) y else factor(y)
+    if (is.null(positive_class) || !(positive_class %in% levels(y_factor))) {
+      positive_class <- levels(y_factor)[1]
+    }
+    y <- as.numeric(y_factor == positive_class)
   }
 
-  predictor <- iml::Predictor$new(parsnip_fit, data = x, y = y)
+  parsnip_fit <- prep$fits[[1]]
+
+  # Custom predict function returning a numeric probability vector for the positive class
+  predict_fun <- function(model, newdata) {
+    newdata_processed <- tryCatch(
+      {
+        baked <- recipes::bake(prep$preprocessor, new_data = newdata)
+        if (!is.null(prep$label) && prep$label %in% names(baked)) {
+          baked[[prep$label]] <- NULL
+        }
+        baked
+      },
+      error = function(e) newdata
+    )
+
+    # Try probabilities first (classification)
+    prob <- tryCatch(
+      predict(model, new_data = newdata_processed, type = "prob"),
+      error = function(e) NULL
+    )
+    if (!is.null(prob)) {
+      # Prefer column that matches the positive class; otherwise fall back to first numeric column
+      prob_col <- paste0(".pred_", positive_class)
+      if (!is.null(positive_class) && prob_col %in% names(prob)) {
+        return(as.numeric(prob[[prob_col]]))
+      }
+      num_cols <- names(prob)[vapply(prob, is.numeric, logical(1))]
+      if (length(num_cols) > 0) {
+        return(as.numeric(prob[[num_cols[1]]]))
+      }
+    }
+
+    # Fallback to standard predictions (regression)
+    preds <- predict(model, new_data = newdata_processed)
+    as.numeric(preds[[1]])
+  }
+
+  predictor <- iml::Predictor$new(parsnip_fit, data = x, y = y, predict.fun = predict_fun)
   fe <- iml::FeatureEffect$new(predictor, feature = feature, method = "ale", ...)
-  plot(fe)
+  plot_data <- fe$results
+  feature_sym <- rlang::sym(feature)
+  value_sym <- rlang::sym(".value")
+  is_categorical <- is.factor(plot_data[[feature]]) || is.character(plot_data[[feature]])
+
+  if (is_categorical) {
+    p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = !!feature_sym, y = !!value_sym)) +
+      ggplot2::geom_col() +
+      ggplot2::labs(x = feature, y = "ALE")
+  } else {
+    p <- ggplot2::ggplot(plot_data, ggplot2::aes(x = !!feature_sym, y = !!value_sym)) +
+      ggplot2::geom_line() +
+      ggplot2::geom_rug(data = x, ggplot2::aes(x = !!feature_sym), alpha = 0.2, inherit.aes = FALSE) +
+      ggplot2::labs(x = feature, y = "ALE")
+  }
+
+  print(p)
   invisible(fe)
 }

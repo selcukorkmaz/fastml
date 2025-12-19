@@ -4,10 +4,12 @@
 \alias{get_default_engine}
 \title{Get Default Engine}
 \usage{
-get_default_engine(algo)
+get_default_engine(algo, task = NULL)
 }
 \arguments{
 \item{algo}{A character string specifying the name of the algorithm. The value should match one of the supported algorithm names.}
+
+\item{task}{Optional task type (e.g., \code{"classification"}, \code{"regression"}, or \code{"survival"}). Used to determine defaults that depend on the task.}
 }
 \value{
 A character string containing the default engine name associated with the provided algorithm.
@@ -16,5 +18,5 @@ A character string containing the default engine name associated with the provid
 Returns the default engine corresponding to the specified algorithm.
 }
 \details{
-The function uses a \code{switch} statement to select the default engine based on the given algorithm. If the provided algorithm does not have a defined default engine, the function terminates with an error.
+The function uses a \code{switch} statement to select the default engine based on the given algorithm. For survival random forests, the function defaults to \code{"aorsf"}. If the provided algorithm does not have a defined default engine, the function terminates with an error.
 }

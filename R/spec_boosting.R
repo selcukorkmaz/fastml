@@ -7,7 +7,6 @@
 #' @importFrom parsnip boost_tree set_mode set_engine
 #' @importFrom dplyr select all_of
 #' @importFrom tune tune
-#' @import bonsai
 #' @noRd
 define_lightgbm_spec <- function(task, train_data, label, tuning = FALSE, engine = "lightgbm", early_stopping = FALSE) {
   # Ensure the lightgbm package is installed.
