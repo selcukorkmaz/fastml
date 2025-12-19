@@ -57,7 +57,9 @@ Imports:
     survRM2,
     iBreakDown,
     xgboost,
-    pdp
+    pdp,
+    modelStudio,
+    fairmodels
 Suggests:
     testthat (>= 3.0.0),
     C50,
@@ -65,7 +67,6 @@ Suggests:
     aorsf,
     censored,
     crayon,
-    sparsediscrim,
     kernlab,
     klaR,
     kknn,
@@ -76,8 +77,6 @@ Suggests:
     patchwork,
     GGally,
     glmnet,
-    modelStudio,
-    fairmodels,
     DT,
     UpSetR,
     VIM,
@@ -91,6 +90,7 @@ Suggests:
     plotly,
     scales,
     skimr,
+    sparsediscrim,
     knitr,
     rmarkdown
 RoxygenNote: 7.3.2

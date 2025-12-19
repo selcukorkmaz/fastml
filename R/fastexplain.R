@@ -48,6 +48,8 @@
 #' @importFrom DALEX explain model_parts loss_root_mean_square loss_cross_entropy model_profile predict_parts
 #' @importFrom ggplot2 labs
 #' @importFrom stats predict
+#' @importFrom modelStudio modelStudio
+#' @importFrom fairmodels fairness_check
 #'
 #' @return For DALEX-based methods, prints variable importance, model profiles, and SHAP summaries.
 #'   Other methods return their respective explainer objects (e.g., LIME explanations, ALE plot,
@@ -117,7 +119,7 @@ fastexplain <- function(object,
     if (!requireNamespace("modelStudio", quietly = TRUE)) {
       stop("Package 'modelStudio' required for method = 'studio'.")
     }
-    return(modelStudio::modelStudio(explainer, ...))
+    return(modelStudio(explainer, ...))
   } else if (method == "fairness") {
     if (is.null(protected)) {
       stop("Argument 'protected' is required for method = 'fairness'.")
@@ -125,7 +127,7 @@ fastexplain <- function(object,
     if (!requireNamespace("fairmodels", quietly = TRUE)) {
       stop("Package 'fairmodels' required for method = 'fairness'.")
     }
-    fairness_obj <- fairmodels::fairness_check(explainer, protected = protected, ...)
+    fairness_obj <- fairness_check(explainer, protected = protected, ...)
     print(plot(fairness_obj))
     return(invisible(fairness_obj))
   } else if (method == "breakdown") {
