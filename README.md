@@ -1,42 +1,45 @@
 <img src="man/figures/fastml_hex.png" align="right" width="95"/>
 
-# fastml: Guarded Resampling for Safe and Automated Machine Learning in R
+# fastml: Guarded Resampling Workflows for Safe and Automated Machine Learning in R
 
-**fastml** is an R package for training, evaluating, and comparing machine learning models under *architecturally enforced, leakage-safe resampling*.  
-Rather than introducing new learning algorithms, fastml focuses on **guaranteeing methodological correctness** by binding preprocessing, model fitting, and evaluation inseparably to the resampling loop.
+**fastml** is an R package for training, evaluating, and comparing machine learning models with a guarded resampling workflow.  
+Rather than introducing new learning algorithms, fastml focuses on **reducing leakage risk** by keeping preprocessing, model fitting, and evaluation aligned within supported resampling paths and resampling configurations.
 
 In fastml, *“fast” refers to the rapid construction of statistically valid workflows*, not to computational shortcuts. By eliminating entire classes of user-induced errors—most notably preprocessing leakage—fastml allows practitioners to obtain reliable performance estimates with minimal configuration.
 
 ## Core Principles
 
-- **Guarded Resampling by construction**  
-  All preprocessing and model fitting are re-estimated independently within each resampling split. Global preprocessing is structurally disallowed.
+- **Guarded resampling workflow**  
+  When the guarded resampling path is used, preprocessing and model fitting are re-estimated independently within each resampling split. This reduces leakage risk, but does not prevent users from supplying preprocessed inputs.
 
-- **Leakage prevention, not detection**  
-  fastml prevents common leakage modes (e.g., global scaling, imputation, batch correction before resampling) rather than relying on user discipline or post hoc checks.
+- **Leakage risk reduction, not guarantees**  
+  fastml can mitigate common leakage modes (e.g., global scaling or imputation before resampling) when workflows are fit within resamples. It does not universally prevent all leakage scenarios.
 
 - **Single, unified interface**  
-  Multiple models can be trained and benchmarked through a single call, while internally enforcing correct interaction between resampling, preprocessing, and evaluation.
+  Multiple models can be trained and benchmarked through a single call, while internally coordinating resampling, preprocessing, and evaluation in supported paths.
 
 - **Compatibility with established engines**  
   fastml orchestrates existing modeling infrastructure (recipes, rsample, parsnip, yardstick) without modifying their statistical behavior.
 
 ## Features
 
-- **Architecturally enforced preprocessing isolation**  
-  All transformations (scaling, imputation, encoding, feature construction) are learned strictly from training folds and applied to assessment folds.
+- **Preprocessing isolation within resampling**  
+  Transformations (scaling, imputation, encoding, feature construction) are learned from training folds and applied to assessment folds when the guarded resampling path is used.
 
 - **Support for multiple algorithms**  
   Includes tree-based models, linear and penalized models, kernel methods, neural networks, and boosting approaches via established engines.
 
 - **Hyperparameter tuning within guarded resampling**  
-  Grid and Bayesian tuning are performed safely inside the resampling loop.
+  Grid and Bayesian tuning run inside the resampling loop when resampling is enabled.
 
 - **Consistent performance evaluation**  
-  Metrics such as Accuracy, ROC AUC, Sensitivity, Specificity, Precision, and F1 are computed without leakage.
+  Metrics such as Accuracy, ROC AUC, Sensitivity, Specificity, Precision, and F1 are computed from evaluation outputs and reflect the configured resampling or holdout strategy.
 
 - **Visualization and comparison tools**  
   Built-in plots facilitate comparison across models while preserving statistical validity.
+
+- **Resampling options**  
+  Supports common resampling schemes (e.g., CV, repeated CV, grouped, blocked, rolling origin), with task-specific limitations noted in the function documentation.
 
 ## Installation
 
@@ -89,13 +92,13 @@ fit <- fastml(
 summary(fit)
 
 # Plot the performance metrics
-plot(model_class, type = "bar")
+plot(fit, type = "bar")
 
 # Plot ROC curves
-plot(model_class, type = "roc")
+plot(fit, type = "roc")
 
 # Plot model calibration
-plot(model_class, type = "calibration")
+plot(fit, type = "calibration")
 ```
 
 ## Tuning Strategies
@@ -161,7 +164,7 @@ It summarizes distributions, missingness, correlations, and basic structure with
 fastexplore(iris, label = "Species")
 ```
 
-This function is architecturally decoupled from fastml’s guarded resampling core and cannot influence model evaluation.
+This function is decoupled from fastml’s guarded resampling core and does not influence model evaluation unless its outputs are explicitly used in later modeling calls.
 
 ## Scope
 
@@ -173,10 +176,9 @@ fastml is intended for users who require reliable performance estimation under c
 
 - workflows prone to preprocessing leakage
 
-It prioritizes correctness guarantees over maximum flexibility.
+It prioritizes correctness-oriented defaults and workflow clarity over maximum flexibility.
 
 ## License
 
 MIT License
 See `LICENSE` for details.
-
