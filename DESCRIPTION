@@ -1,6 +1,6 @@
 Package: fastml
 Type: Package
-Title: Architecturally Enforced Guarded Resampling for Machine Learning in R
+Title: Guarded Resampling Workflows for Safe and Automated Machine Learning in R
 Version: 0.7.5
 Authors@R: c(person("Selcuk", "Korkmaz", email="selcukorkmaz@gmail.com", role=c("aut", "cre"),
                     comment = c(ORCID = "0000-0003-4632-6850")), 
@@ -8,16 +8,20 @@ Authors@R: c(person("Selcuk", "Korkmaz", email="selcukorkmaz@gmail.com", role=c(
                     comment = c(ORCID = "0000-0002-2752-7668")), 
              person("Eda", "Karaismailoglu", email="eda.karaismailoglu@sbu.edu.tr", role="aut",
                     comment = c(ORCID = "0000-0003-3085-7809")))
-Description: Provides an architecturally enforced framework for training and evaluating machine learning models 
-  under strict resampling isolation. The package implements guarded resampling, ensuring that all preprocessing, 
-  model fitting, and evaluation steps are re-estimated independently within each resampling split, thereby preventing 
-  common forms of data leakage. fastml supports grouped and nested cross-validation, integrates with established modeling 
-  engines in the 'tidymodels' ecosystem, and produces reliable performance estimates by construction rather than by convention.
+Description: Provides a guarded resampling workflow for training and evaluating machine‑learning models. 
+	When the guarded resampling path is used, preprocessing and model fitting are re‑estimated within 
+	each resampling split to reduce leakage risk. Supports multiple resampling schemes, integrates 
+	with established engines in the 'tidymodels' ecosystem, and aims to improve evaluation reliability by 
+	coordinating preprocessing, fitting, and evaluation within supported workflows. Offers a lightweight 
+	AutoML‑style workflow by automating model training, resampling, and tuning across multiple algorithms, 
+	while keeping evaluation design explicit and user‑controlled.
 Encoding: UTF-8
 License: MIT + file LICENSE
 URL: https://github.com/selcukorkmaz/fastml
 BugReports: https://github.com/selcukorkmaz/fastml/issues
 LazyData: true
+Depends:
+    R (>= 4.1.0)
 Imports:
     stats,
     recipes,
