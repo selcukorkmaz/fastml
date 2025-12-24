@@ -486,24 +486,6 @@ fastml <- function(data = NULL,
     test_data  <- rsample::testing(split)
   }
 
-  if (task == "classification" && balance_method != "none") {
-    label_sym <- rlang::sym(label)
-    class_counts <- table(train_data[[label]])
-    if (balance_method == "upsample") {
-      max_n <- max(class_counts)
-      train_data <- train_data %>%
-        dplyr::group_by(!!label_sym) %>%
-        dplyr::sample_n(max_n, replace = TRUE) %>%
-        dplyr::ungroup()
-    } else if (balance_method == "downsample") {
-      min_n <- min(class_counts)
-      train_data <- train_data %>%
-        dplyr::group_by(!!label_sym) %>%
-        dplyr::sample_n(min_n, replace = FALSE) %>%
-        dplyr::ungroup()
-    }
-  }
-
   if (task == "survival") {
     if (!(length(label) %in% c(2, 3))) {
       stop("For survival tasks, 'label' must contain the time/status columns present in the data (length 2 or 3).")
@@ -603,6 +585,24 @@ fastml <- function(data = NULL,
     train_data <- rsample::training(split)
     test_data  <- rsample::testing(split)
     target_var <- train_data[[label]]
+  }
+
+  if (task == "classification" && balance_method != "none") {
+    label_sym <- rlang::sym(label)
+    class_counts <- table(train_data[[label]])
+    if (balance_method == "upsample") {
+      max_n <- max(class_counts)
+      train_data <- train_data %>%
+        dplyr::group_by(!!label_sym) %>%
+        dplyr::sample_n(max_n, replace = TRUE) %>%
+        dplyr::ungroup()
+    } else if (balance_method == "downsample") {
+      min_n <- min(class_counts)
+      train_data <- train_data %>%
+        dplyr::group_by(!!label_sym) %>%
+        dplyr::sample_n(min_n, replace = FALSE) %>%
+        dplyr::ungroup()
+    }
   }
 
   # Set default metric now that task has been resolved and validate it
