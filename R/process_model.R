@@ -163,11 +163,6 @@ process_model <- function(model_obj,
       data_metrics <- dplyr::bind_cols(data_metrics, pred_prob)
     }
 
-    pred_name <- ".pred_"
-    if (prob_available && any(grepl("^\\.pred_p", names(pred_prob)))) {
-      pred_name <- ".pred_p"
-    }
-
     num_classes <- length(unique(data_metrics$truth))
 
     if (num_classes == 2) {
@@ -196,9 +191,28 @@ process_model <- function(model_obj,
         event_level = event_class
       )
 
+      prob_col <- NULL
       if (prob_available) {
-        prob_col <- paste0(pred_name, positive_class)
-        if (prob_col %in% names(data_metrics)) {
+        candidates <- c(
+          paste0(".pred_", positive_class),
+          paste0(".pred_p", positive_class)
+        )
+        safe_class <- make.names(positive_class)
+        if (!identical(safe_class, positive_class)) {
+          candidates <- c(
+            candidates,
+            paste0(".pred_", safe_class),
+            paste0(".pred_p", safe_class)
+          )
+        }
+        prob_col <- candidates[candidates %in% names(data_metrics)][1]
+        if (length(prob_col) == 0) {
+          prob_col <- NULL
+        }
+      }
+
+      if (prob_available) {
+        if (!is.null(prob_col)) {
           # Compute ROC AUC using the probability column for the positive class
           roc_auc_value <- yardstick::roc_auc(
             data_metrics,
@@ -210,7 +224,7 @@ process_model <- function(model_obj,
           warning(
             sprintf(
               "Probability column '%s' not found for model '%s'; ROC AUC will be skipped.",
-              prob_col,
+              paste(candidates, collapse = ", "),
               model_id
             ),
             call. = FALSE
