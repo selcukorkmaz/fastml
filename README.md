@@ -3,7 +3,7 @@
 # fastml: Guarded Resampling Workflows for Safe and Automated Machine Learning in R
 
 **fastml** is an R package for training, evaluating, and comparing machine learning models with a guarded resampling workflow.  
-Rather than introducing new learning algorithms, fastml focuses on **reducing leakage risk** by keeping preprocessing, model fitting, and evaluation aligned within supported resampling paths.
+Rather than introducing new learning algorithms, fastml focuses on **reducing leakage risk** by keeping preprocessing, model fitting, and evaluation aligned within supported resampling paths and resampling configurations.
 
 In fastml, *“fast” refers to the rapid construction of statistically valid workflows*, not to computational shortcuts. By eliminating entire classes of user-induced errors—most notably preprocessing leakage—fastml allows practitioners to obtain reliable performance estimates with minimal configuration.
 
@@ -30,13 +30,16 @@ In fastml, *“fast” refers to the rapid construction of statistically valid w
   Includes tree-based models, linear and penalized models, kernel methods, neural networks, and boosting approaches via established engines.
 
 - **Hyperparameter tuning within guarded resampling**  
-  Grid and Bayesian tuning are performed safely inside the resampling loop.
+  Grid and Bayesian tuning run inside the resampling loop when resampling is enabled.
 
 - **Consistent performance evaluation**  
-  Metrics such as Accuracy, ROC AUC, Sensitivity, Specificity, Precision, and F1 are computed without leakage.
+  Metrics such as Accuracy, ROC AUC, Sensitivity, Specificity, Precision, and F1 are computed from evaluation outputs and reflect the configured resampling or holdout strategy.
 
 - **Visualization and comparison tools**  
   Built-in plots facilitate comparison across models while preserving statistical validity.
+
+- **Resampling options**  
+  Supports common resampling schemes (e.g., CV, repeated CV, grouped, blocked, rolling origin), with task-specific limitations noted in the function documentation.
 
 ## Installation
 
