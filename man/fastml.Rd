@@ -54,7 +54,7 @@ fastml(
 )
 }
 \arguments{
-\item{data}{A data frame containing the complete dataset. If both `train_data` and `test_data` are `NULL`, `fastml()` will split this into training and testing sets according to `test_size` and `stratify`. Defaults to `NULL`.}
+\item{data}{A data frame containing the complete dataset. If both `train_data` and `test_data` are `NULL`, `fastml()` will split this into training and testing sets according to `test_size` and `stratify`. When `group_cols` is supplied, the holdout keeps groups intact; when `block_col` is supplied, the holdout uses the last rows in time order. Defaults to `NULL`.}
 
 \item{train_data}{A data frame pre-split for model training. If provided, `test_data` must also be supplied, and no internal splitting will occur. Defaults to `NULL`.}
 
@@ -72,7 +72,7 @@ or survival based on the data. Survival is detected when `label` is a
 character vector of length 2 that matches time and status columns in the data.
 You may also explicitly set to "classification", "regression", or "survival".}
 
-\item{test_size}{A numeric value between 0 and 1 indicating the proportion of the data to use for testing. Default is \code{0.2}.}
+\item{test_size}{A numeric value between 0 and 1 indicating the proportion of the data to use for testing. For grouped holdout, this is applied to groups; for time-ordered holdout, it selects the final proportion of rows. Default is \code{0.2}.}
 
 \item{resampling_method}{A string specifying the resampling method for model evaluation. Default is \code{"cv"}
 (cross-validation) for classification/regression. Other options include \code{"none"}, \code{"boot"},
@@ -134,7 +134,7 @@ hyperparameters to explore during tuning. Default is an empty list.}
 
 \item{n_cores}{An integer specifying the number of CPU cores to use for parallel processing. Default is \code{1}.}
 
-\item{stratify}{Logical indicating whether to use stratified sampling when splitting the data. Default is \code{TRUE} for classification and \code{FALSE} for regression.}
+\item{stratify}{Logical indicating whether to use stratified sampling when splitting the data. Only applied to random holdout splitting. Default is \code{TRUE} for classification and \code{FALSE} for regression.}
 
 \item{impute_method}{Method for handling missing values. Options include:
 \describe{

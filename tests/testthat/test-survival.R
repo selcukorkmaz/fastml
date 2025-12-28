@@ -120,6 +120,29 @@ test_that("cox_ph survival model trains and evaluates", {
   }
 })
 
+test_that("survival resampling results omit .estimator", {
+  data(cancer, package = "survival")
+
+  res <- suppressWarnings(
+    fastml(
+      data = cancer,
+      label = c("time", "status"),
+      algorithms = "cox_ph",
+      task = "survival",
+      resampling_method = "cv",
+      folds = 3,
+      impute_method = "remove",
+      test_size = 0.3,
+      seed = 123
+    )
+  )
+
+  resampling <- res$resampling_results[["cox_ph (survival)"]]
+  expect_true(is.list(resampling))
+  expect_false(".estimator" %in% names(resampling$aggregated))
+  expect_false(".estimator" %in% names(resampling$folds))
+})
+
 test_that("penalized Cox survival model trains and evaluates", {
   # Ensure required packages are installed
   skip_if_not_installed("censored")
@@ -379,5 +402,4 @@ test_that("survival random forest with aorsf engine trains when available", {
   expect_true(all(is.finite(brier_val)))
   expect_true(all(brier_val >= 0 & brier_val <= 1))
 })
-
 

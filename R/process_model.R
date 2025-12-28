@@ -27,11 +27,13 @@
 #' @param train_data A data frame containing the training data, required to refit finalized workflows.
 #' @param metric The name of the metric (e.g., `"roc_auc"`, `"accuracy"`, `"rmse"`) used for selecting the best tuning result.
 #' @param metrics Optional yardstick metric set (e.g., `yardstick::metric_set(yardstick::rmse)`) used for computing regression performance.
+#' @param summaryFunction Optional custom classification metric function passed to
+#'   `yardstick::new_class_metric()` and included in holdout evaluation.
 #' @param eval_times_user Optional numeric vector of time horizons at which to
 #'   evaluate survival Brier scores. When `NULL`, sensible defaults based on the
 #'   observed follow-up distribution are used.
 #' @param bootstrap_ci Logical; if `TRUE`, bootstrap confidence intervals are
-#'   estimated for survival performance metrics.
+#'   estimated for performance metrics.
 #' @param bootstrap_samples Integer giving the number of bootstrap resamples
 #'   used when computing confidence intervals.
 #' @param bootstrap_seed Optional integer seed applied before bootstrap
@@ -82,6 +84,7 @@ process_model <- function(model_obj,
                           bootstrap_seed = 1234,
                           at_risk_threshold = 0.1,
                           metrics = NULL,
+                          summaryFunction = NULL,
                           precomputed_predictions = NULL) {
   # If the model object is a tuning result, finalize the workflow
   if (inherits(model_obj, "tune_results")) {
@@ -114,6 +117,69 @@ process_model <- function(model_obj,
   } else {
     # Otherwise, assume the model is already a fitted workflow
     final_model <- model_obj
+  }
+
+  normalize_estimator <- function(df) {
+    if (!".estimator" %in% names(df)) {
+      df$.estimator <- NA_character_
+    }
+    df
+  }
+
+  metric_key <- function(df) {
+    df <- normalize_estimator(df)
+    estimator <- df$.estimator
+    estimator[is.na(estimator)] <- ""
+    paste(df$.metric, estimator, sep = "::")
+  }
+
+  add_bootstrap_ci <- function(perf_df, data_df, boot_fun) {
+    n_obs <- nrow(data_df)
+    ci_lower <- rep(NA_real_, nrow(perf_df))
+    ci_upper <- rep(NA_real_, nrow(perf_df))
+    n_boot_used <- 0L
+    if (isTRUE(bootstrap_ci) &&
+        bootstrap_samples > 1 && n_obs > 1) {
+      if (!is.null(bootstrap_seed)) {
+        set.seed(bootstrap_seed)
+      }
+      perf_key <- metric_key(perf_df)
+      boot_matrix <- matrix(NA_real_,
+                            nrow = bootstrap_samples,
+                            ncol = nrow(perf_df))
+      colnames(boot_matrix) <- perf_key
+      for (b in seq_len(bootstrap_samples)) {
+        idx <- sample.int(n_obs, size = n_obs, replace = TRUE)
+        boot_perf <- boot_fun(data_df[idx, , drop = FALSE])
+        if (!is.null(boot_perf) && nrow(boot_perf) > 0) {
+          boot_key <- metric_key(boot_perf)
+          match_idx <- match(boot_key, perf_key)
+          valid <- !is.na(match_idx)
+          if (any(valid)) {
+            boot_matrix[b, match_idx[valid]] <- as.numeric(boot_perf$.estimate[valid])
+          }
+        }
+      }
+      for (j in seq_len(nrow(perf_df))) {
+        vals <- boot_matrix[, j]
+        vals <- vals[is.finite(vals)]
+        if (length(vals) > 0) {
+          ci_lower[j] <- stats::quantile(vals,
+                                         probs = 0.025,
+                                         names = FALSE,
+                                         na.rm = TRUE)
+          ci_upper[j] <- stats::quantile(vals,
+                                         probs = 0.975,
+                                         names = FALSE,
+                                         na.rm = TRUE)
+        }
+      }
+      n_boot_used <- bootstrap_samples
+    }
+    perf_df$.lower <- as.numeric(ci_lower)
+    perf_df$.upper <- as.numeric(ci_upper)
+    perf_df$.n_boot <- n_boot_used
+    perf_df
   }
 
   # Make predictions and compute performance metrics
@@ -152,7 +218,40 @@ process_model <- function(model_obj,
       pred_name = ".pred_"
     }
 
+    prob_cols <- setdiff(names(data_metrics), c("truth", "estimate"))
+    has_probabilities <- !is.null(engine) &&
+      !is.na(engine) && engine != "LiblineaR" &&
+      length(prob_cols) > 0
+
     num_classes <- length(unique(data_metrics$truth))
+
+    metric_name <- metric
+    build_class_metrics <- function() {
+      if (is.null(summaryFunction)) {
+        return(yardstick::metric_set(
+          yardstick::accuracy,
+          yardstick::kap,
+          yardstick::sens,
+          yardstick::spec,
+          yardstick::precision,
+          yardstick::f_meas
+        ))
+      }
+      if (is.null(metric_name) || !nzchar(metric_name)) {
+        metric_name <- "custom_metric"
+      }
+      new_class_metric <- yardstick::new_class_metric(summaryFunction, "maximize")
+      assign(metric_name, new_class_metric, envir = environment())
+      yardstick::metric_set(
+        yardstick::accuracy,
+        yardstick::kap,
+        yardstick::sens,
+        yardstick::spec,
+        yardstick::precision,
+        yardstick::f_meas,
+        !!rlang::sym(metric_name)
+      )
+    }
 
     if (num_classes == 2) {
       # Determine the positive class based on event_class parameter
@@ -164,15 +263,7 @@ process_model <- function(model_obj,
         stop("Invalid event_class argument. It should be either 'first' or 'second'.")
       }
 
-      # Compute standard classification metrics
-      metrics_class <- yardstick::metric_set(
-        yardstick::accuracy,
-        yardstick::kap,
-        yardstick::sens,
-        yardstick::spec,
-        yardstick::precision,
-        yardstick::f_meas
-      )
+      metrics_class <- build_class_metrics()
       perf_class <- metrics_class(
         data_metrics,
         truth = truth,
@@ -180,8 +271,7 @@ process_model <- function(model_obj,
         event_level = event_class
       )
 
-      if (!is.null(engine) &&
-          !is.na(engine) && engine != "LiblineaR") {
+      if (has_probabilities) {
         # Compute ROC AUC using the probability column for the positive class
         roc_auc_value <- yardstick::roc_auc(
           data_metrics,
@@ -192,16 +282,38 @@ process_model <- function(model_obj,
       } else{
         perf <- perf_class
       }
+
+      compute_boot_perf <- function(df) {
+        perf_boot <- tryCatch(
+          metrics_class(
+            df,
+            truth = truth,
+            estimate = estimate,
+            event_level = event_class
+          ),
+          error = function(e) NULL
+        )
+        if (is.null(perf_boot)) {
+          perf_boot <- perf[0, , drop = FALSE]
+        }
+        if (has_probabilities) {
+          roc_boot <- tryCatch(
+            yardstick::roc_auc(
+              df,
+              truth = truth,!!rlang::sym(paste0(pred_name, positive_class)),
+              event_level = event_class
+            ),
+            error = function(e) NULL
+          )
+          if (!is.null(roc_boot)) {
+            perf_boot <- dplyr::bind_rows(perf_boot, roc_boot)
+          }
+        }
+        perf_boot
+      }
     } else {
       # Multiclass classification (using macro averaging)
-      metrics_class <- yardstick::metric_set(
-        yardstick::accuracy,
-        yardstick::kap,
-        yardstick::sens,
-        yardstick::spec,
-        yardstick::precision,
-        yardstick::f_meas
-      )
+      metrics_class <- build_class_metrics()
       perf_class <- metrics_class(
         data_metrics,
         truth = truth,
@@ -209,9 +321,7 @@ process_model <- function(model_obj,
         estimator = "macro"
       )
 
-      if (!is.null(engine) &&
-          !is.na(engine) && engine != "LiblineaR") {
-        prob_cols <- names(pred_prob)
+      if (has_probabilities) {
         perf_roc_auc <- yardstick::roc_auc(
           data_metrics,
           truth = truth,!!!rlang::syms(prob_cols),
@@ -221,7 +331,38 @@ process_model <- function(model_obj,
       } else {
         perf <- perf_class
       }
+
+      compute_boot_perf <- function(df) {
+        perf_boot <- tryCatch(
+          metrics_class(
+            df,
+            truth = truth,
+            estimate = estimate,
+            estimator = "macro"
+          ),
+          error = function(e) NULL
+        )
+        if (is.null(perf_boot)) {
+          perf_boot <- perf[0, , drop = FALSE]
+        }
+        if (has_probabilities) {
+          roc_boot <- tryCatch(
+            yardstick::roc_auc(
+              df,
+              truth = truth,!!!rlang::syms(prob_cols),
+              estimator = "macro_weighted"
+            ),
+            error = function(e) NULL
+          )
+          if (!is.null(roc_boot)) {
+            perf_boot <- dplyr::bind_rows(perf_boot, roc_boot)
+          }
+        }
+        perf_boot
+      }
     }
+
+    perf <- add_bootstrap_ci(perf, data_metrics, compute_boot_perf)
   } else if (task == "survival") {
     status_warning_emitted <- FALSE
     normalize_status <- function(status_vec, reference_length) {
@@ -1484,6 +1625,13 @@ process_model <- function(model_obj,
       metrics
     }
     perf <- metrics_set(data_metrics, truth = truth, estimate = estimate)
+    compute_boot_perf <- function(df) {
+      tryCatch(
+        metrics_set(df, truth = truth, estimate = estimate),
+        error = function(e) perf[0, , drop = FALSE]
+      )
+    }
+    perf <- add_bootstrap_ci(perf, data_metrics, compute_boot_perf)
   }
 
   return(list(performance = perf, predictions = data_metrics))

@@ -20,7 +20,8 @@ fastml_compute_holdout_results(
   bootstrap_samples = 500,
   bootstrap_seed = 1234,
   at_risk_threshold = 0.1,
-  precomputed_predictions = NULL
+  precomputed_predictions = NULL,
+  summaryFunction = NULL
 )
 }
 \arguments{
@@ -71,6 +72,9 @@ integrated Brier score.}
 \item{precomputed_predictions}{Optional data frame or nested list of
 previously generated predictions (per algorithm/engine) to reuse instead
 of recomputing. This is mainly used when combining results across engines.}
+
+\item{summaryFunction}{Optional custom classification metric function passed
+through to \code{process_model} for holdout evaluation.}
 }
 \value{
 A list with two elements:

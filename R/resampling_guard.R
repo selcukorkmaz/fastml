@@ -99,14 +99,23 @@ fastml_guarded_resample_fit <- function(workflow_spec,
   }
 
   fold_metrics_df <- dplyr::bind_rows(fold_metrics, .id = "fold")
+  ci_cols <- c(".lower", ".upper", ".n_boot")
+  keep_cols <- setdiff(names(fold_metrics_df), ci_cols)
+  fold_metrics_df <- fold_metrics_df[, keep_cols, drop = FALSE]
 
-  if (!".estimator" %in% names(fold_metrics_df)) {
-    fold_metrics_df$.estimator <- NA_character_
+  if (identical(task, "survival")) {
+    fold_metrics_df <- fold_metrics_df[, setdiff(names(fold_metrics_df), ".estimator"), drop = FALSE]
+    aggregated <- fold_metrics_df %>%
+      dplyr::group_by(.data$.metric) %>%
+      dplyr::summarise(.estimate = mean(.data$.estimate, na.rm = TRUE), .groups = "drop")
+  } else {
+    if (!".estimator" %in% names(fold_metrics_df)) {
+      fold_metrics_df$.estimator <- NA_character_
+    }
+    aggregated <- fold_metrics_df %>%
+      dplyr::group_by(.data$.metric, .data$.estimator) %>%
+      dplyr::summarise(.estimate = mean(.data$.estimate, na.rm = TRUE), .groups = "drop")
   }
-
-  aggregated <- fold_metrics_df %>%
-    dplyr::group_by(.data$.metric, .data$.estimator) %>%
-    dplyr::summarise(.estimate = mean(.data$.estimate, na.rm = TRUE), .groups = "drop")
 
   result <- list(
     aggregated = aggregated,
