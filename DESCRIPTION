@@ -1,7 +1,7 @@
 Package: fastml
 Type: Package
 Title: Guarded Resampling Workflows for Safe and Automated Machine Learning in R
-Version: 0.7.5
+Version: 0.7.6
 Authors@R: c(person("Selcuk", "Korkmaz", email="selcukorkmaz@gmail.com", role=c("aut", "cre"),
                     comment = c(ORCID = "0000-0003-4632-6850")), 
              person("Dincer", "Goksuluk", email="dincer.goksuluk@gmail.com", role="aut",
