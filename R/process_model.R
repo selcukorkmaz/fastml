@@ -150,7 +150,7 @@ process_model <- function(model_obj,
       colnames(boot_matrix) <- perf_key
       for (b in seq_len(bootstrap_samples)) {
         idx <- sample.int(n_obs, size = n_obs, replace = TRUE)
-        boot_perf <- boot_fun(data_df[idx, , drop = FALSE])
+        boot_perf <- suppressWarnings(boot_fun(data_df[idx, , drop = FALSE]))
         if (!is.null(boot_perf) && nrow(boot_perf) > 0) {
           boot_key <- metric_key(boot_perf)
           match_idx <- match(boot_key, perf_key)
@@ -253,6 +253,17 @@ process_model <- function(model_obj,
       )
     }
 
+    safe_metrics_class <- function(df, ...) {
+      withCallingHandlers(
+        metrics_class(df, ...),
+        warning = function(w) {
+          if (inherits(w, "yardstick_warning_precision_undefined")) {
+            invokeRestart("muffleWarning")
+          }
+        }
+      )
+    }
+
     if (num_classes == 2) {
       # Determine the positive class based on event_class parameter
       if (event_class == "first") {
@@ -264,7 +275,7 @@ process_model <- function(model_obj,
       }
 
       metrics_class <- build_class_metrics()
-      perf_class <- metrics_class(
+      perf_class <- safe_metrics_class(
         data_metrics,
         truth = truth,
         estimate = estimate,
@@ -285,12 +296,12 @@ process_model <- function(model_obj,
 
       compute_boot_perf <- function(df) {
         perf_boot <- tryCatch(
-          metrics_class(
+          suppressWarnings(safe_metrics_class(
             df,
             truth = truth,
             estimate = estimate,
             event_level = event_class
-          ),
+          )),
           error = function(e) NULL
         )
         if (is.null(perf_boot)) {
@@ -298,11 +309,11 @@ process_model <- function(model_obj,
         }
         if (has_probabilities) {
           roc_boot <- tryCatch(
-            yardstick::roc_auc(
+            suppressWarnings(yardstick::roc_auc(
               df,
               truth = truth,!!rlang::sym(paste0(pred_name, positive_class)),
               event_level = event_class
-            ),
+            )),
             error = function(e) NULL
           )
           if (!is.null(roc_boot)) {
@@ -314,7 +325,7 @@ process_model <- function(model_obj,
     } else {
       # Multiclass classification (using macro averaging)
       metrics_class <- build_class_metrics()
-      perf_class <- metrics_class(
+      perf_class <- safe_metrics_class(
         data_metrics,
         truth = truth,
         estimate = estimate,
@@ -334,12 +345,12 @@ process_model <- function(model_obj,
 
       compute_boot_perf <- function(df) {
         perf_boot <- tryCatch(
-          metrics_class(
+          suppressWarnings(safe_metrics_class(
             df,
             truth = truth,
             estimate = estimate,
             estimator = "macro"
-          ),
+          )),
           error = function(e) NULL
         )
         if (is.null(perf_boot)) {
@@ -347,11 +358,11 @@ process_model <- function(model_obj,
         }
         if (has_probabilities) {
           roc_boot <- tryCatch(
-            yardstick::roc_auc(
+            suppressWarnings(yardstick::roc_auc(
               df,
               truth = truth,!!!rlang::syms(prob_cols),
               estimator = "macro_weighted"
-            ),
+            )),
             error = function(e) NULL
           )
           if (!is.null(roc_boot)) {
@@ -1624,10 +1635,20 @@ process_model <- function(model_obj,
       }
       metrics
     }
-    perf <- metrics_set(data_metrics, truth = truth, estimate = estimate)
+    safe_metrics_regression <- function(df, ...) {
+      withCallingHandlers(
+        metrics_set(df, ...),
+        warning = function(w) {
+          if (inherits(w, "yardstick_warning_correlation_undefined")) {
+            invokeRestart("muffleWarning")
+          }
+        }
+      )
+    }
+    perf <- safe_metrics_regression(data_metrics, truth = truth, estimate = estimate)
     compute_boot_perf <- function(df) {
       tryCatch(
-        metrics_set(df, truth = truth, estimate = estimate),
+        safe_metrics_regression(df, truth = truth, estimate = estimate),
         error = function(e) perf[0, , drop = FALSE]
       )
     }

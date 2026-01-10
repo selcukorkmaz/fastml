@@ -179,6 +179,19 @@ fastml_compute_holdout_results <- function(models,
     }
   }
 
+  unwrap_single_engine <- function(entry) {
+    if (is.list(entry) && !inherits(entry, "data.frame") && length(entry) == 1) {
+      single <- entry[[1]]
+      if (inherits(single, "data.frame")) {
+        return(single)
+      }
+    }
+    entry
+  }
+
+  performance <- lapply(performance, unwrap_single_engine)
+  predictions_list <- lapply(predictions_list, unwrap_single_engine)
+
   list(performance = performance, predictions = predictions_list)
 }
 

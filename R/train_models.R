@@ -698,11 +698,16 @@ train_models <- function(train_data,
     adaptive <- FALSE
   }
 
-  if (tuning_strategy == "none" && !is.null(tune_params)) {
-    warning("'tune_params' are ignored when 'tuning_strategy' is 'none'")
-  }
-  if (tuning_strategy == "none" && isTRUE(use_default_tuning)) {
-    warning("'use_default_tuning = TRUE' is ignored because 'tuning_strategy' is 'none'")
+  if (tuning_strategy == "none") {
+    has_tune_params <- !is.null(tune_params)
+    has_default_tuning <- isTRUE(use_default_tuning)
+    if (has_tune_params && has_default_tuning) {
+      warning("'tune_params' and 'use_default_tuning = TRUE' are ignored because 'tuning_strategy' is 'none'")
+    } else if (has_tune_params) {
+      warning("'tune_params' are ignored when 'tuning_strategy' is 'none'")
+    } else if (has_default_tuning) {
+      warning("'use_default_tuning = TRUE' is ignored because 'tuning_strategy' is 'none'")
+    }
   }
 
   if (tuning_strategy == "bayes") {
@@ -945,7 +950,8 @@ train_models <- function(train_data,
 
     resamples <- if (!is.null(resample_plan)) fastml_resample_splits(resample_plan) else NULL
 
-    if (is.null(resamples) && (use_default_tuning || !is.null(tune_params))) {
+    if (is.null(resamples) && (use_default_tuning || !is.null(tune_params)) &&
+        !identical(tuning_strategy, "none")) {
       warning("Tuning is skipped because no resamples were supplied (set resampling_method or provide resamples).")
     }
 
@@ -2157,7 +2163,8 @@ train_models <- function(train_data,
 
   resamples <- if (!is.null(resample_plan)) fastml_resample_splits(resample_plan) else NULL
 
-  if (is.null(resamples) && (use_default_tuning || !is.null(tune_params))) {
+  if (is.null(resamples) && (use_default_tuning || !is.null(tune_params)) &&
+      !identical(tuning_strategy, "none")) {
     warning("Tuning is skipped because no resamples were supplied (set resampling_method or provide resamples).")
   }
 

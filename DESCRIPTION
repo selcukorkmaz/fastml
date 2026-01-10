@@ -17,7 +17,7 @@ Description: Provides a guarded resampling workflow for training and evaluating 
 	while keeping evaluation design explicit and user‑controlled.
 Encoding: UTF-8
 License: MIT + file LICENSE
-URL: https://github.com/selcukorkmaz/fastml
+URL: https://selcukorkmaz.github.io/fastml-tutorial/, https://github.com/selcukorkmaz/fastml
 BugReports: https://github.com/selcukorkmaz/fastml/issues
 LazyData: true
 Depends:

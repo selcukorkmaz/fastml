@@ -27,8 +27,11 @@ test_that("rand_forest defaults to aorsf engine for survival", {
 })
 
 test_that("bootstrap CI columns are returned for classification and regression", {
+  # Reduce separation risk in glm for stable bootstrap fits.
+  iris_bootstrap <- iris[, c("Sepal.Length", "Sepal.Width", "Species")]
+
   fit_class <- fastml(
-    data = iris,
+    data = iris_bootstrap,
     label = "Species",
     algorithms = "logistic_reg",
     task = "classification",
@@ -112,9 +115,11 @@ test_that("advanced imputation options are rejected", {
 })
 
 test_that("multinom_reg falls back to logistic_reg for binary outcomes", {
+  binary_iris <- iris[, c("Sepal.Length", "Sepal.Width", "Species")]
+
   expect_warning(
     fastml(
-      data = iris,
+      data = binary_iris,
       label = "Species",
       algorithms = "multinom_reg",
       resampling_method = "none",

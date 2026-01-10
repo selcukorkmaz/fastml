@@ -550,21 +550,21 @@ summary.fastml <- function(object,
   }
   keep_metrics <- unique(keep_metrics)
   performance_numeric <- performance_sub %>%
-    dplyr::select(.data$Model, .data$Engine, .data$.metric, .data$.estimate) %>%
+    dplyr::select(dplyr::all_of(c("Model", "Engine", ".metric", ".estimate"))) %>%
     dplyr::distinct()
 
   performance_wide <- tidyr::pivot_wider(
     performance_numeric,
-    names_from = .data$.metric,
-    values_from = .data$.estimate
+    names_from = ".metric",
+    values_from = ".estimate"
   )
 
   performance_display <- performance_sub %>%
-    dplyr::select(.data$Model, .data$Engine, .data$.metric, .data$metric_display) %>%
+    dplyr::select(dplyr::all_of(c("Model", "Engine", ".metric", "metric_display"))) %>%
     dplyr::distinct() %>%
     tidyr::pivot_wider(
-      names_from = .data$.metric,
-      values_from = .data$metric_display
+      names_from = ".metric",
+      values_from = "metric_display"
     )
   select_cols_numeric <- c("Model", "Engine", keep_metrics)
   select_cols_numeric <- intersect(select_cols_numeric, colnames(performance_wide))

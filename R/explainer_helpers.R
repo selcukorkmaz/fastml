@@ -38,8 +38,11 @@ fastml_prepare_explainer_inputs <- function(object) {
   label_levels <- if (is.factor(y_raw)) levels(y_raw) else NULL
 
   add_fit <- function(name, mod) {
+    if (is.null(mod)) {
+      return()
+    }
     pf <- tryCatch(tune::extract_fit_parsnip(mod), error = function(e) NULL)
-    if (is.null(pf) && inherits(mod, "model_fit")) {
+    if (is.null(pf) && inherits(mod, c("model_fit", "workflow"))) {
       pf <- mod
     }
     if (!is.null(pf)) {
@@ -48,15 +51,42 @@ fastml_prepare_explainer_inputs <- function(object) {
     }
   }
 
-  if (inherits(best_model, c("workflow", "model_fit"))) {
-    nm <- if (!is.null(names(best_model)) && nzchar(names(best_model))) names(best_model) else "best_model"
-    add_fit(nm, best_model)
-  } else if (is.list(best_model)) {
-    bm_names <- names(best_model)
-    for (i in seq_along(best_model)) {
-      nm <- if (!is.null(bm_names) && nzchar(bm_names[i])) bm_names[i] else paste0("model_", i)
-      add_fit(nm, best_model[[i]])
+  combine_names <- function(parent, child) {
+    if (is.null(parent) || !nzchar(parent)) return(child)
+    if (is.null(child) || !nzchar(child)) return(parent)
+    if (grepl(paste0("\\(", child, "\\)$"), parent)) return(parent)
+    paste0(parent, " (", child, ")")
+  }
+
+  collect_fits <- function(models, parent = NULL) {
+    if (is.null(models)) return()
+    if (inherits(models, c("workflow", "model_fit"))) {
+      add_fit(if (!is.null(parent) && nzchar(parent)) parent else "best_model", models)
+      return()
     }
+    if (is.list(models)) {
+      model_names_local <- names(models)
+      for (i in seq_along(models)) {
+        nm <- if (!is.null(model_names_local) && nzchar(model_names_local[i])) {
+          model_names_local[i]
+        } else {
+          paste0("model_", i)
+        }
+        combined <- combine_names(parent, nm)
+        collect_fits(models[[i]], combined)
+      }
+    }
+  }
+
+  collect_fits(best_model)
+
+  if (length(fits) == 0 && !is.null(object$best_model_name) && !is.null(object$models)) {
+    target_names <- paste0(names(object$best_model_name), " (", object$best_model_name, ")")
+    collect_fits(object$models[target_names])
+  }
+
+  if (length(fits) == 0 && !is.null(object$models)) {
+    collect_fits(object$models)
   }
 
   if (length(fits) == 0) {

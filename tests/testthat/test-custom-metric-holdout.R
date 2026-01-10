@@ -7,6 +7,8 @@ test_that("custom summaryFunction metric is included in holdout performance", {
 
   data <- iris[iris$Species != "setosa", , drop = FALSE]
   data$Species <- factor(data$Species)
+  # Reduce separation risk in glm for stable fits.
+  data <- data[, c("Sepal.Length", "Sepal.Width", "Species")]
 
   custom_metric <- function(data, truth, estimate, ...) {
     truth <- rlang::enquo(truth)

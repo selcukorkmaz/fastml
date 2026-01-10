@@ -1067,6 +1067,17 @@ fastml <- function(data = NULL,
   performance <- eval_output$performance
   predictions <- eval_output$predictions
 
+  # Unwrap single-engine performance entries for easier access.
+  performance <- lapply(performance, function(entry) {
+    if (is.list(entry) && !inherits(entry, "data.frame") && length(entry) == 1) {
+      single <- entry[[1]]
+      if (inherits(single, "data.frame")) {
+        return(single)
+      }
+    }
+    entry
+  })
+
   # metric_values <- sapply(performance, function(x) x %>% filter(.metric == metric) %>% pull(.estimate))
 
   # Build a normalized performance list and align model names as "algorithm (engine)"
@@ -1103,7 +1114,19 @@ fastml <- function(data = NULL,
       }
       combined_name <- paste0(display_algo(alg, task), " (", eng, ")")
       combined_performance[[combined_name]] <- perf_alg
-      model_map[[combined_name]] <- models[[alg]]
+      model_entry <- models[[alg]]
+      if (is.list(model_entry) &&
+          !inherits(model_entry, c("workflow", "tune_results", "fastml_native_survival", "model_fit"))) {
+        if (!is.null(eng) && !is.na(eng) && !is.null(model_entry[[eng]])) {
+          model_map[[combined_name]] <- model_entry[[eng]]
+        } else if (length(model_entry) == 1) {
+          model_map[[combined_name]] <- model_entry[[1]]
+        } else {
+          model_map[[combined_name]] <- model_entry
+        }
+      } else {
+        model_map[[combined_name]] <- model_entry
+      }
     }
   }
 
