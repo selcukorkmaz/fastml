@@ -660,7 +660,13 @@ summary.fastml <- function(object,
 
 
 
-  best_model_idx <- get_best_model_idx(performance_wide, optimized_metric)
+  best_lookup <- if (!is.null(best_model_name)) {
+    stats::setNames(as.character(best_model_name), names(best_model_name))
+  } else {
+    character(0)
+  }
+  expected_engine <- best_lookup[performance_wide$Model]
+  best_model_idx <- which(!is.na(expected_engine) & performance_wide$Engine == expected_engine)
 
 
   if(length(algorithm) == 1 && algorithm == "best"){
@@ -694,6 +700,10 @@ summary.fastml <- function(object,
   cat("\n===== fastml Model Summary =====\n")
   cat("Task:", task, "\n")
   cat("Number of Models Trained:", model_count, "\n")
+  if (!is.null(object$selection) && !is.null(object$selection$source)) {
+    cat("Selection:", object$selection$source,
+        sprintf("(metric: %s)", object$selection$metric), "\n")
+  }
 
   # If you just want the unique metric values:
   best_val <- best_val_df %>%
@@ -712,7 +722,6 @@ summary.fastml <- function(object,
 
     performance_wide <- performance_wide %>% dplyr::filter(Model %in% algorithm)
     performance_display <- performance_display %>% dplyr::filter(Model %in% algorithm)
-    best_model_idx <- get_best_model_idx(performance_wide, optimized_metric)
     performance_lookup <- performance_wide
   }
 
@@ -1500,9 +1509,15 @@ summary.fastml <- function(object,
         engine     <- best_model_name[i]
         name_combined <- sprintf("%s (%s)", model_name, engine)
 
-        if (!is.null(predictions_list[[model_name]]) &&
-            !is.null(predictions_list[[model_name]][[engine]])) {
-          df_best[[name_combined]] <- predictions_list[[model_name]][[engine]]
+        pred_entry <- predictions_list[[model_name]]
+        if (!is.null(pred_entry)) {
+          if (is.data.frame(pred_entry)) {
+            df_best[[name_combined]] <- pred_entry
+          } else if (!is.null(pred_entry[[engine]])) {
+            df_best[[name_combined]] <- pred_entry[[engine]]
+          }
+        } else if (!is.null(predictions_list[[name_combined]])) {
+          df_best[[name_combined]] <- predictions_list[[name_combined]]
         } else {
           cat("No predictions found for", model_name, "with engine", engine, "\n")
         }

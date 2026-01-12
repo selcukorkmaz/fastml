@@ -229,12 +229,24 @@ process_model <- function(model_obj,
       data_metrics <- dplyr::bind_cols(data_metrics, pred_prob)
     }
 
-    prob_cols <- setdiff(names(data_metrics), c("truth", "estimate"))
+    prob_cols_all <- setdiff(names(data_metrics), c("truth", "estimate"))
+    prob_cols <- prob_cols_all
+    if (length(prob_cols_all) > 0) {
+      prob_cols <- prob_cols_all[
+        vapply(data_metrics[prob_cols_all], is.numeric, logical(1))
+      ]
+    }
+    prob_available <- prob_available && length(prob_cols) > 0
     has_probabilities <- !is.null(engine) &&
       !is.na(engine) && engine != "LiblineaR" &&
       length(prob_cols) > 0
 
-    num_classes <- length(unique(data_metrics$truth))
+    truth_levels <- levels(data_metrics$truth)
+    if (is.null(truth_levels) || length(truth_levels) == 0) {
+      truth_levels <- unique(as.character(data_metrics$truth))
+    }
+    num_classes <- length(truth_levels)
+    observed_classes <- length(unique(data_metrics$truth))
 
     metric_name <- metric
     build_class_metrics <- function() {
@@ -276,12 +288,7 @@ process_model <- function(model_obj,
     }
 
     if (num_classes == 2) {
-      # Determine the positive class based on event_class parameter
-      if (event_class == "first") {
-        positive_class <- levels(data_metrics$truth)[1]
-      } else if (event_class == "second") {
-        positive_class <- levels(data_metrics$truth)[2]
-      } else {
+      if (!event_class %in% c("first", "second")) {
         stop("Invalid event_class argument. It should be either 'first' or 'second'.")
       }
 
@@ -293,29 +300,42 @@ process_model <- function(model_obj,
         event_level = event_class
       )
 
-      if (has_probabilities) {
-        # Compute ROC AUC using the probability column for the positive class
-        roc_auc_value <- yardstick::roc_auc(
-          data_metrics,
-          truth = truth,!!rlang::sym(paste0(pred_name, positive_class)),
-          event_level = event_class
+      prob_meta <- fastml_resolve_binary_prob_column(
+        prob_cols = prob_cols,
+        truth_levels = truth_levels,
+        event_class = event_class
+      )
+      prob_col <- prob_meta$prob_col
+      positive_class <- prob_meta$positive_class
+
+      if (!is.null(prob_col) && !is.numeric(data_metrics[[prob_col]])) {
+        prob_col <- NULL
+      }
+      if (!is.null(prob_col) && !any(is.finite(data_metrics[[prob_col]]))) {
+        prob_col <- NULL
+      }
+      if (prob_available && !is.null(prob_col) && isTRUE(prob_meta$used_fallback)) {
+        warning(
+          sprintf(
+            "Probability column for positive class '%s' not found; using '%s' based on column order.",
+            positive_class,
+            prob_col
+          ),
+          call. = FALSE
         )
-        safe_class <- make.names(positive_class)
-        if (!identical(safe_class, positive_class)) {
-          candidates <- c(
-            candidates,
-            paste0(".pred_", safe_class),
-            paste0(".pred_p", safe_class)
-          )
-        }
-        prob_col <- candidates[candidates %in% names(data_metrics)][1]
-        if (length(prob_col) == 0) {
-          prob_col <- NULL
-        }
       }
 
       if (prob_available) {
-        if (!is.null(prob_col)) {
+        if (observed_classes < 2) {
+          warning(
+            sprintf(
+              "Only one class present in truth for model '%s'; ROC AUC will be skipped.",
+              model_id
+            ),
+            call. = FALSE
+          )
+          perf <- perf_class
+        } else if (!is.null(prob_col)) {
           # Compute ROC AUC using the probability column for the positive class
           roc_auc_value <- yardstick::roc_auc(
             data_metrics,
@@ -326,9 +346,10 @@ process_model <- function(model_obj,
         } else {
           warning(
             sprintf(
-              "Probability column '%s' not found for model '%s'; ROC AUC will be skipped.",
-              paste(candidates, collapse = ", "),
-              model_id
+              "Probability column for positive class '%s' not found for model '%s'; ROC AUC will be skipped. Available columns: %s",
+              ifelse(is.null(positive_class), "", positive_class),
+              model_id,
+              paste(prob_cols, collapse = ", ")
             ),
             call. = FALSE
           )
@@ -351,11 +372,11 @@ process_model <- function(model_obj,
         if (is.null(perf_boot)) {
           perf_boot <- perf[0, , drop = FALSE]
         }
-        if (has_probabilities) {
+        if (prob_available && !is.null(prob_col) && prob_col %in% names(df)) {
           roc_boot <- tryCatch(
             suppressWarnings(yardstick::roc_auc(
               df,
-              truth = truth,!!rlang::sym(paste0(pred_name, positive_class)),
+              truth = truth,!!rlang::sym(prob_col),
               event_level = event_class
             )),
             error = function(e) NULL

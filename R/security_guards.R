@@ -166,7 +166,8 @@ fastml_detect_leaky_recipe_steps <- function(recipe) {
   safe_classes <- c(
     "step_dummy", "step_novel", "step_unknown", "step_zv",
     "step_normalize", "step_center", "step_scale",
-    "step_impute_median", "step_impute_knn", "step_impute_bag", "step_naomit"
+    "step_impute_median", "step_impute_knn", "step_impute_bag", "step_naomit",
+    "step_upsample", "step_downsample"
   )
   for (idx in seq_along(recipe$steps)) {
     step <- recipe$steps[[idx]]

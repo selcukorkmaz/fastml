@@ -153,8 +153,9 @@ can be applied at prediction time. Default is \code{"error"}.}
 \item{scaling_methods}{Vector of scaling methods to apply. Default is \code{c("center", "scale")}.}
 
 \item{balance_method}{Method to handle class imbalance. One of \code{"none"},
-\code{"upsample"}, or \code{"downsample"}. Applied to the training set for
-classification tasks. Default is \code{"none"}.}
+\code{"upsample"}, or \code{"downsample"}. Applied inside the preprocessing
+recipe so each resampling split is balanced independently (requires the
+\code{themis} package when enabled). Default is \code{"none"}.}
 
 \item{resamples}{Optional rsample object providing custom resampling splits.
 If supplied, \code{resampling_method}, \code{folds}, and \code{repeats} are
@@ -225,6 +226,12 @@ Fast Machine Learning Function
 Trains and evaluates multiple classification or regression models. The function automatically
 detects the task based on the target variable type and can perform advanced hyperparameter tuning
 using various tuning strategies.
+
+
+Model selection is based exclusively on resampling metrics (cross-validation
+or nested CV). The holdout split is reserved for final performance
+estimation and is never used to choose the best model, mirroring
+\code{tidymodels::last_fit()} semantics.
 }
 \examples{
 \donttest{

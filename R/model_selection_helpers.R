@@ -154,3 +154,72 @@ get_best_model_idx <- function(df, metric, group_cols = c("Model", "Engine")) {
   idx <- which(group_values %in% best_groups)
   return(idx)
 }
+
+fastml_aggregate_resample_metrics <- function(perf, task) {
+  if (is.null(perf) || !is.data.frame(perf) || nrow(perf) == 0) {
+    return(NULL)
+  }
+  if (!".estimate" %in% names(perf)) {
+    return(NULL)
+  }
+  if (!".estimator" %in% names(perf)) {
+    perf$.estimator <- NA_character_
+  }
+
+  if (identical(task, "survival")) {
+    dplyr::summarise(
+      dplyr::group_by(perf, .data$.metric),
+      .estimate = mean(.data$.estimate, na.rm = TRUE),
+      .groups = "drop"
+    )
+  } else {
+    dplyr::summarise(
+      dplyr::group_by(perf, .data$.metric, .data$.estimator),
+      .estimate = mean(.data$.estimate, na.rm = TRUE),
+      .groups = "drop"
+    )
+  }
+}
+
+fastml_extract_selection_performance <- function(resampling_results,
+                                                 nested_results,
+                                                 task) {
+  selection_perf <- list()
+  selection_source <- NULL
+
+  if (!is.null(nested_results) && length(nested_results) > 0) {
+    selection_perf <- lapply(nested_results, function(entry) {
+      outer_perf <- NULL
+      if (is.list(entry) && !is.null(entry$outer_performance)) {
+        outer_perf <- entry$outer_performance
+      } else if (is.data.frame(entry)) {
+        outer_perf <- entry
+      }
+      fastml_aggregate_resample_metrics(outer_perf, task)
+    })
+    selection_perf <- selection_perf[!vapply(selection_perf, is.null, logical(1))]
+    if (length(selection_perf) > 0) {
+      selection_source <- "nested_cv"
+    }
+  }
+
+  if (is.null(selection_source) &&
+      !is.null(resampling_results) &&
+      length(resampling_results) > 0) {
+    selection_perf <- lapply(resampling_results, function(entry) {
+      if (is.list(entry) && !inherits(entry, "data.frame")) {
+        entry$aggregated
+      } else if (is.data.frame(entry)) {
+        entry
+      } else {
+        NULL
+      }
+    })
+    selection_perf <- selection_perf[!vapply(selection_perf, is.null, logical(1))]
+    if (length(selection_perf) > 0) {
+      selection_source <- "resampling"
+    }
+  }
+
+  list(performance = selection_perf, source = selection_source)
+}

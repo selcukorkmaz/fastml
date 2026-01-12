@@ -1182,3 +1182,62 @@ compute_ibrier <- function(eval_times,
   list(ibs = ibs, curve = bs_t)
 }
 
+fastml_normalize_class_name <- function(x) {
+  tolower(trimws(as.character(x)))
+}
+
+fastml_resolve_binary_prob_column <- function(prob_cols, truth_levels, event_class) {
+  if (!event_class %in% c("first", "second")) {
+    stop("Invalid event_class argument. It should be either 'first' or 'second'.")
+  }
+
+  prob_cols <- as.character(prob_cols)
+  truth_levels <- as.character(truth_levels)
+
+  result <- list(
+    prob_col = NULL,
+    positive_class = NULL,
+    candidates = character(),
+    used_fallback = FALSE
+  )
+
+  if (length(prob_cols) == 0 || length(truth_levels) < 2) {
+    return(result)
+  }
+
+  pos_idx <- if (event_class == "first") 1L else 2L
+  positive_class <- truth_levels[pos_idx]
+  result$positive_class <- positive_class
+
+  candidate_levels <- unique(c(positive_class, make.names(positive_class)))
+  candidates <- unique(c(
+    paste0(".pred_", candidate_levels),
+    paste0(".pred_p", candidate_levels)
+  ))
+  event_idx <- if (event_class == "first") 0L else 1L
+  candidates <- unique(c(candidates, paste0(".pred_p", event_idx)))
+  result$candidates <- candidates
+
+  prob_col <- candidates[candidates %in% prob_cols][1]
+  if (!is.na(prob_col) && length(prob_col) > 0) {
+    result$prob_col <- prob_col
+    return(result)
+  }
+
+  prob_levels <- sub("^\\.pred_p", "", sub("^\\.pred_", "", prob_cols))
+  prob_levels_norm <- fastml_normalize_class_name(make.names(prob_levels))
+  candidate_norm <- fastml_normalize_class_name(make.names(candidate_levels))
+  match_idx <- match(candidate_norm, prob_levels_norm)
+  match_idx <- match_idx[!is.na(match_idx)][1]
+  if (!is.na(match_idx)) {
+    result$prob_col <- prob_cols[match_idx]
+    return(result)
+  }
+
+  if (length(prob_cols) == 2) {
+    result$prob_col <- prob_cols[pos_idx]
+    result$used_fallback <- TRUE
+  }
+
+  result
+}

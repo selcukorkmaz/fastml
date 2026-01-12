@@ -78,8 +78,9 @@
 #' @param encode_categoricals Logical indicating whether to encode categorical variables. Default is \code{TRUE}.
 #' @param scaling_methods Vector of scaling methods to apply. Default is \code{c("center", "scale")}.
 #' @param balance_method Method to handle class imbalance. One of \code{"none"},
-#'   \code{"upsample"}, or \code{"downsample"}. Applied to the training set for
-#'   classification tasks. Default is \code{"none"}.
+#'   \code{"upsample"}, or \code{"downsample"}. Applied inside the preprocessing
+#'   recipe so each resampling split is balanced independently (requires the
+#'   \code{themis} package when enabled). Default is \code{"none"}.
 #' @param resamples Optional rsample object providing custom resampling splits.
 #'   If supplied, \code{resampling_method}, \code{folds}, and \code{repeats} are
 #'   ignored.
@@ -124,7 +125,7 @@
 #' @importFrom magrittr %>%
 #' @importFrom rsample initial_split training testing
 #' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake all_numeric_predictors all_predictors all_nominal_predictors all_outcomes step_zv step_rm step_novel step_unknown
-#' @importFrom dplyr filter pull rename_with mutate across where select all_of group_by sample_n ungroup
+#' @importFrom dplyr filter pull rename_with mutate across where select all_of
 #' @importFrom rlang sym .data
 #' @importFrom stats as.formula complete.cases
 #' @importFrom doFuture registerDoFuture
@@ -132,6 +133,11 @@
 #' @importFrom janitor make_clean_names
 #' @importFrom stringr str_detect
 #' @importFrom purrr flatten
+#' @details
+#' Model selection is based exclusively on resampling metrics (cross-validation
+#' or nested CV). The holdout split is reserved for final performance
+#' estimation and is never used to choose the best model, mirroring
+#' \code{tidymodels::last_fit()} semantics.
 #' @return An object of class \code{fastml} containing the best model, performance metrics, and other information.
 #' @examples
 #' \donttest{
@@ -675,24 +681,6 @@ fastml <- function(data = NULL,
     }
   }
 
-  if (task == "classification" && balance_method != "none") {
-    label_sym <- rlang::sym(label)
-    class_counts <- table(train_data[[label]])
-    if (balance_method == "upsample") {
-      max_n <- max(class_counts)
-      train_data <- train_data %>%
-        dplyr::group_by(!!label_sym) %>%
-        dplyr::sample_n(max_n, replace = TRUE) %>%
-        dplyr::ungroup()
-    } else if (balance_method == "downsample") {
-      min_n <- min(class_counts)
-      train_data <- train_data %>%
-        dplyr::group_by(!!label_sym) %>%
-        dplyr::sample_n(min_n, replace = FALSE) %>%
-        dplyr::ungroup()
-    }
-  }
-
   # Set default metric now that task has been resolved and validate it
   if (is.null(metric)) {
     metric <- if (task == "classification") {
@@ -991,6 +979,33 @@ fastml <- function(data = NULL,
     # do not prep yet
   }
 
+  if (task == "classification" && balance_method != "none") {
+    if (!requireNamespace("themis", quietly = TRUE)) {
+      stop("The 'themis' package is required for balance_method = \"upsample\" or \"downsample\".")
+    }
+
+    has_balance_step <- FALSE
+    if (!is.null(recipe$steps) && length(recipe$steps) > 0) {
+      has_balance_step <- any(vapply(recipe$steps, inherits, logical(1), "step_upsample")) ||
+        any(vapply(recipe$steps, inherits, logical(1), "step_downsample"))
+    }
+
+    if (has_balance_step) {
+      warning(
+        "balance_method was ignored because the recipe already includes a sampling step.",
+        call. = FALSE
+      )
+    } else if (balance_method == "upsample") {
+      recipe <- recipe %>%
+        themis::step_upsample(all_outcomes(), seed = seed, skip = TRUE)
+    } else if (balance_method == "downsample") {
+      recipe <- recipe %>%
+        themis::step_downsample(all_outcomes(), seed = seed, skip = TRUE)
+    } else {
+      stop("Invalid balance_method. Use \"none\", \"upsample\", or \"downsample\".")
+    }
+  }
+
   if (verbose) message("Training models: ", paste(algorithms, collapse = ", "))
 
   models <- train_models(
@@ -1196,10 +1211,18 @@ fastml <- function(data = NULL,
   }
 
 
-  # Now apply the function over the flattened list
+  selection_bundle <- fastml_extract_selection_performance(
+    resampling_results = resampling_results,
+    nested_results = nested_results,
+    task = task
+  )
+  selection_performance <- selection_bundle$performance
+  selection_source <- if (is.null(selection_bundle$source)) "none" else selection_bundle$source
+
+  # Select best model strictly from resampling metrics (CV or nested CV).
   lower_is_better_metrics <- c("rmse", "mae", "ibs", "logloss", "mse", "brier_score")
   extract_metric_values <- function(metric_name) {
-    sapply(combined_performance, function(x) {
+    sapply(selection_performance, function(x) {
       if (is.data.frame(x)) {
         vals <- x[x$.metric == metric_name, ".estimate", drop = TRUE]
         if (length(vals) == 0) {
@@ -1235,65 +1258,79 @@ fastml <- function(data = NULL,
     }
   }
 
-  metric_values <- extract_metric_values(metric)
-  lower_is_better <- compute_lower_is_better(metric)
-
-  if (!any(is.finite(metric_values))) {
-    available_metrics <- unique(unlist(lapply(combined_performance, function(x) {
-      if (is.data.frame(x)) {
-        as.character(x$.metric)
-      } else {
-        character(0)
-      }
-    })))
-
-    fallback_priority <- if (task == "classification") {
-      c("roc_auc", "accuracy", "kap", "sens", "spec", "precision", "f_meas")
-    } else if (task == "regression") {
-      c("rmse", "mae", "rsq")
-    } else {
-      c("c_index", "uno_c", "ibs", "rmst_diff")
+  if (length(selection_performance) == 0) {
+    if (length(models) > 1) {
+      warning(
+        paste(
+          "No resampling metrics are available for model selection.",
+          "Holdout evaluation is reserved for final performance estimation.",
+          "Defaulting to the first trained model."
+        ),
+        call. = FALSE
+      )
     }
-
-    candidate_metrics <- setdiff(fallback_priority, metric)
-    candidate_metrics <- candidate_metrics[candidate_metrics %in% available_metrics]
-    remaining_metrics <- setdiff(available_metrics, c(metric, candidate_metrics))
-    candidate_metrics <- c(candidate_metrics, remaining_metrics)
-
-    fallback_metric <- NULL
-    for (cand in candidate_metrics) {
-      cand_values <- extract_metric_values(cand)
-      if (any(is.finite(cand_values))) {
-        fallback_metric <- cand
-        metric_values <- cand_values
-        lower_is_better <- compute_lower_is_better(cand)
-        break
-      }
-    }
-
-    if (!is.null(fallback_metric)) {
-      warning(sprintf("Metric '%s' unavailable across models; falling back to '%s'.", metric, fallback_metric), call. = FALSE)
-      metric <- fallback_metric
-    }
-  }
-
-  if (!any(is.finite(metric_values))) {
-    stop("None of the models returned the specified metric.")
-  }
-
-  if (any(is.na(metric_values))) {
-    warning("Some models did not return the specified metric.")
-    metric_values[is.na(metric_values)] <- if (lower_is_better) Inf else -Inf
-  }
-
-  if (all(metric_values == if (lower_is_better) Inf else -Inf)) {
-    stop("None of the models returned the specified metric.")
-  }
-
-  best_model_idx <- if (lower_is_better) {
-    names(metric_values[metric_values == min(metric_values)])
+    best_model_idx <- names(models)[1]
   } else {
-    names(metric_values[metric_values == max(metric_values)])
+    metric_values <- extract_metric_values(metric)
+    lower_is_better <- compute_lower_is_better(metric)
+
+    if (!any(is.finite(metric_values))) {
+      available_metrics <- unique(unlist(lapply(selection_performance, function(x) {
+        if (is.data.frame(x)) {
+          as.character(x$.metric)
+        } else {
+          character(0)
+        }
+      })))
+
+      fallback_priority <- if (task == "classification") {
+        c("roc_auc", "accuracy", "kap", "sens", "spec", "precision", "f_meas")
+      } else if (task == "regression") {
+        c("rmse", "mae", "rsq")
+      } else {
+        c("c_index", "uno_c", "ibs", "rmst_diff")
+      }
+
+      candidate_metrics <- setdiff(fallback_priority, metric)
+      candidate_metrics <- candidate_metrics[candidate_metrics %in% available_metrics]
+      remaining_metrics <- setdiff(available_metrics, c(metric, candidate_metrics))
+      candidate_metrics <- c(candidate_metrics, remaining_metrics)
+
+      fallback_metric <- NULL
+      for (cand in candidate_metrics) {
+        cand_values <- extract_metric_values(cand)
+        if (any(is.finite(cand_values))) {
+          fallback_metric <- cand
+          metric_values <- cand_values
+          lower_is_better <- compute_lower_is_better(cand)
+          break
+        }
+      }
+
+      if (!is.null(fallback_metric)) {
+        warning(sprintf("Metric '%s' unavailable across models; falling back to '%s'.", metric, fallback_metric), call. = FALSE)
+        metric <- fallback_metric
+      }
+    }
+
+    if (!any(is.finite(metric_values))) {
+      stop("None of the models returned the specified metric from resampling.")
+    }
+
+    if (any(is.na(metric_values))) {
+      warning("Some models did not return the specified metric from resampling.")
+      metric_values[is.na(metric_values)] <- if (lower_is_better) Inf else -Inf
+    }
+
+    if (all(metric_values == if (lower_is_better) Inf else -Inf)) {
+      stop("None of the models returned the specified metric from resampling.")
+    }
+
+    best_model_idx <- if (lower_is_better) {
+      names(metric_values[metric_values == min(metric_values)])
+    } else {
+      names(metric_values[metric_values == max(metric_values)])
+    }
   }
 
   # model_names <- get_model_engine_names(models)
@@ -1313,7 +1350,11 @@ fastml <- function(data = NULL,
 
   if (verbose) {
     msg <- paste0(names(best_model_name), " (", best_model_name, ")", collapse = ", ")
-    message("Best model selected: ", msg)
+    if (selection_source == "none") {
+      message("Best model defaulted to first trained model (no resampling metrics available).")
+    } else {
+      message("Best model selected using ", selection_source, " metrics: ", msg)
+    }
   }
 
 
@@ -1464,6 +1505,7 @@ fastml <- function(data = NULL,
     task = task,
     models = models,
     metric = metric,
+    selection = list(source = selection_source, metric = metric),
     positive_class = positive_class,
     event_class = event_class,
     engine_names = engine_names,

@@ -532,6 +532,92 @@ fastml_run_nested_cv <- function(workflow_spec,
   )
 }
 
+fastml_filter_tune_metrics <- function(metrics_tbl, best_params) {
+  if (is.null(metrics_tbl) || !is.data.frame(metrics_tbl) || nrow(metrics_tbl) == 0) {
+    return(metrics_tbl)
+  }
+  if (is.null(best_params) || !is.data.frame(best_params) || nrow(best_params) == 0) {
+    return(metrics_tbl)
+  }
+
+  param_cols <- intersect(names(best_params), names(metrics_tbl))
+  if (length(param_cols) == 0) {
+    return(metrics_tbl)
+  }
+
+  non_param <- c(".metric", ".estimator", "mean", "n", "std_err", ".estimate",
+                 "id", "fold", ".iter", ".order")
+  param_cols <- setdiff(param_cols, non_param)
+  if (length(param_cols) == 0 && ".config" %in% names(best_params) &&
+      ".config" %in% names(metrics_tbl)) {
+    param_cols <- ".config"
+  }
+  if (length(param_cols) == 0) {
+    return(metrics_tbl)
+  }
+
+  dplyr::semi_join(metrics_tbl, best_params, by = param_cols)
+}
+
+fastml_collect_tune_resample_summary <- function(tune_results, best_params, task) {
+  metrics_tbl <- tryCatch(
+    tune::collect_metrics(tune_results, summarize = TRUE),
+    error = function(e) NULL
+  )
+  if (is.null(metrics_tbl) || nrow(metrics_tbl) == 0) {
+    return(NULL)
+  }
+
+  metrics_tbl <- fastml_filter_tune_metrics(metrics_tbl, best_params)
+  if (is.null(metrics_tbl) || nrow(metrics_tbl) == 0) {
+    return(NULL)
+  }
+
+  if (!".estimator" %in% names(metrics_tbl)) {
+    metrics_tbl$.estimator <- NA_character_
+  }
+  estimate_col <- if ("mean" %in% names(metrics_tbl)) {
+    "mean"
+  } else if (".estimate" %in% names(metrics_tbl)) {
+    ".estimate"
+  } else {
+    NULL
+  }
+  if (is.null(estimate_col)) {
+    return(NULL)
+  }
+
+  aggregated <- dplyr::transmute(
+    metrics_tbl,
+    .metric = .data$.metric,
+    .estimator = .data$.estimator,
+    .estimate = .data[[estimate_col]]
+  )
+  if (identical(task, "survival")) {
+    aggregated <- aggregated[, setdiff(names(aggregated), ".estimator"), drop = FALSE]
+  }
+
+  folds_tbl <- tryCatch(
+    tune::collect_metrics(tune_results, summarize = FALSE),
+    error = function(e) NULL
+  )
+  if (!is.null(folds_tbl) && nrow(folds_tbl) > 0) {
+    folds_tbl <- fastml_filter_tune_metrics(folds_tbl, best_params)
+    if ("id" %in% names(folds_tbl)) {
+      folds_tbl <- dplyr::rename(folds_tbl, fold = .data$id)
+    }
+    drop_cols <- intersect(names(folds_tbl), c(".config", ".iter", ".order"))
+    if (length(drop_cols) > 0) {
+      folds_tbl <- folds_tbl[, setdiff(names(folds_tbl), drop_cols), drop = FALSE]
+    }
+    if (identical(task, "survival") && ".estimator" %in% names(folds_tbl)) {
+      folds_tbl <- folds_tbl[, setdiff(names(folds_tbl), ".estimator"), drop = FALSE]
+    }
+  }
+
+  list(aggregated = aggregated, folds = folds_tbl)
+}
+
 #' Train Specified Machine Learning Algorithms on the Training Data
 #'
 #' Trains specified machine learning algorithms on the preprocessed training data.
@@ -2601,6 +2687,13 @@ train_models <- function(train_data,
           }
 
           best_params <- select_best(model_tuned, metric = metric)
+          res_summary <- fastml_collect_tune_resample_summary(model_tuned, best_params, task)
+          if (!is.null(res_summary)) {
+            if (is.null(resampling_summaries[[algo]])) {
+              resampling_summaries[[algo]] <- list()
+            }
+            resampling_summaries[[algo]][[engine]] <- res_summary
+          }
           final_workflow <- finalize_workflow(workflow_spec, best_params)
           model <- do.call(
             parsnip::fit,
