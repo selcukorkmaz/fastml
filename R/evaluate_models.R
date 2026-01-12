@@ -41,6 +41,8 @@
 #' @param precomputed_predictions Optional data frame or nested list of
 #'   previously generated predictions (per algorithm/engine) to reuse instead
 #'   of recomputing. This is mainly used when combining results across engines.
+#' @param summaryFunction Optional custom classification metric function passed
+#'   through to \code{process_model} for holdout evaluation.
 #' @return A list with two elements:
 #'   \describe{
 #'     \item{performance}{A named list of performance metric tibbles for each model.}
@@ -62,7 +64,8 @@ fastml_compute_holdout_results <- function(models,
                                            bootstrap_samples = 500,
                                            bootstrap_seed = 1234,
                                            at_risk_threshold = 0.1,
-                                           precomputed_predictions = NULL) {
+                                           precomputed_predictions = NULL,
+                                           summaryFunction = NULL) {
   # Load required packages
   required_pkgs <- c("yardstick", "parsnip", "tune", "workflows",
                      "dplyr", "rlang", "tibble")
@@ -123,6 +126,7 @@ fastml_compute_holdout_results <- function(models,
                                 engine = eng,
                                 train_data = train_data,
                                 metric = metric,
+                                summaryFunction = summaryFunction,
                                 eval_times_user = eval_times,
                                 bootstrap_ci = bootstrap_ci,
                                 bootstrap_samples = bootstrap_samples,
@@ -158,6 +162,7 @@ fastml_compute_holdout_results <- function(models,
                               engine = eng,
                               train_data = train_data,
                               metric = metric,
+                              summaryFunction = summaryFunction,
                               eval_times_user = eval_times,
                               bootstrap_ci = bootstrap_ci,
                               bootstrap_samples = bootstrap_samples,
@@ -173,6 +178,19 @@ fastml_compute_holdout_results <- function(models,
       }
     }
   }
+
+  unwrap_single_engine <- function(entry) {
+    if (is.list(entry) && !inherits(entry, "data.frame") && length(entry) == 1) {
+      single <- entry[[1]]
+      if (inherits(single, "data.frame")) {
+        return(single)
+      }
+    }
+    entry
+  }
+
+  performance <- lapply(performance, unwrap_single_engine)
+  predictions_list <- lapply(predictions_list, unwrap_single_engine)
 
   list(performance = performance, predictions = predictions_list)
 }
@@ -192,7 +210,8 @@ evaluate_models <- function(models,
                             bootstrap_samples = 500,
                             bootstrap_seed = 1234,
                             at_risk_threshold = 0.1,
-                            precomputed_predictions = NULL) {
+                            precomputed_predictions = NULL,
+                            summaryFunction = NULL) {
   fastml_compute_holdout_results(
     models = models,
     train_data = train_data,
@@ -209,6 +228,7 @@ evaluate_models <- function(models,
     bootstrap_samples = bootstrap_samples,
     bootstrap_seed = bootstrap_seed,
     at_risk_threshold = at_risk_threshold,
-    precomputed_predictions = precomputed_predictions
+    precomputed_predictions = precomputed_predictions,
+    summaryFunction = summaryFunction
   )
 }

@@ -8,7 +8,7 @@
 #' detects the task based on the target variable type and can perform advanced hyperparameter tuning
 #' using various tuning strategies.
 #'
-#' @param data A data frame containing the complete dataset. If both `train_data` and `test_data` are `NULL`, `fastml()` will split this into training and testing sets according to `test_size` and `stratify`. Defaults to `NULL`.
+#' @param data A data frame containing the complete dataset. If both `train_data` and `test_data` are `NULL`, `fastml()` will split this into training and testing sets according to `test_size` and `stratify`. When `group_cols` is supplied, the holdout keeps groups intact; when `block_col` is supplied, the holdout uses the last rows in time order. Defaults to `NULL`.
 #' @param train_data A data frame pre-split for model training. If provided, `test_data` must also be supplied, and no internal splitting will occur. Defaults to `NULL`.
 #' @param test_data A data frame pre-split for model evaluation. If provided, `train_data` must also be supplied, and no internal splitting will occur. Defaults to `NULL`.
 #' @param label A string specifying the name of the target variable. For
@@ -20,7 +20,7 @@
 #'   or survival based on the data. Survival is detected when `label` is a
 #'   character vector of length 2 that matches time and status columns in the data.
 #'   You may also explicitly set to "classification", "regression", or "survival".
-#' @param test_size A numeric value between 0 and 1 indicating the proportion of the data to use for testing. Default is \code{0.2}.
+#' @param test_size A numeric value between 0 and 1 indicating the proportion of the data to use for testing. For grouped holdout, this is applied to groups; for time-ordered holdout, it selects the final proportion of rows. Default is \code{0.2}.
 #' @param resampling_method A string specifying the resampling method for model evaluation. Default is \code{"cv"}
 #'   (cross-validation) for classification/regression. Other options include \code{"none"}, \code{"boot"},
 #'   \code{"repeatedcv"}, \code{"grouped_cv"}, \code{"blocked_cv"}, \code{"rolling_origin"}, and \code{"nested_cv"}.
@@ -63,7 +63,7 @@
 #' @param metric The performance metric to optimize during training.
 #' @param algorithm_engines A named list specifying the engine to use for each algorithm.
 #' @param n_cores An integer specifying the number of CPU cores to use for parallel processing. Default is \code{1}.
-#' @param stratify Logical indicating whether to use stratified sampling when splitting the data. Default is \code{TRUE} for classification and \code{FALSE} for regression.
+#' @param stratify Logical indicating whether to use stratified sampling when splitting the data. Only applied to random holdout splitting. Default is \code{TRUE} for classification and \code{FALSE} for regression.
 #' @param impute_method Method for handling missing values. Options include:
 #'   \describe{
 #'     \item{\code{"medianImpute"}}{Impute missing values using median imputation (recipe-based).}
@@ -431,6 +431,95 @@ fastml <- function(data = NULL,
   # ---------------- END TASK DETECTION ----------------
 
 
+  holdout_mode <- "random"
+  if (!is.null(block_col)) {
+    if (!is.null(group_cols)) {
+      warning(
+        "Both 'block_col' and 'group_cols' were provided; holdout splitting will use 'block_col' ordering and ignore grouping.",
+        call. = FALSE
+      )
+    }
+    holdout_mode <- "time"
+  } else if (!is.null(group_cols)) {
+    holdout_mode <- "group"
+  }
+
+  split_holdout <- function(df, use_strata = FALSE) {
+    if (use_strata && !identical(holdout_mode, "random")) {
+      warning(
+        "Stratified holdout is only supported for random splitting; proceeding without stratification.",
+        call. = FALSE
+      )
+      use_strata <- FALSE
+    }
+
+    if (identical(holdout_mode, "time")) {
+      if (is.null(block_col) || !block_col %in% names(df)) {
+        stop("`block_col` must be present in the data for time-ordered holdout splitting.", call. = FALSE)
+      }
+      block_vals <- df[[block_col]]
+      if (any(is.na(block_vals))) {
+        stop(sprintf("Column '%s' contains missing values which are not supported for time-ordered holdout splitting.", block_col), call. = FALSE)
+      }
+      if (!identical(order(block_vals), seq_len(nrow(df)))) {
+        stop(sprintf("Data must be sorted by '%s' in ascending order before time-ordered holdout splitting.", block_col), call. = FALSE)
+      }
+
+      n_rows <- nrow(df)
+      n_test <- max(1L, floor(n_rows * test_size))
+      if (n_rows - n_test < 1L) {
+        stop("`test_size` leaves no data for training after time-ordered splitting; reduce `test_size`.", call. = FALSE)
+      }
+      test_idx <- seq.int(n_rows - n_test + 1L, n_rows)
+      train_idx <- seq_len(n_rows - n_test)
+      return(list(
+        train_data = df[train_idx, , drop = FALSE],
+        test_data = df[test_idx, , drop = FALSE]
+      ))
+    }
+
+    if (identical(holdout_mode, "group")) {
+      if (is.null(group_cols) || !all(group_cols %in% names(df))) {
+        stop("`group_cols` must be present in the data for grouped holdout splitting.", call. = FALSE)
+      }
+      group_df <- df[, group_cols, drop = FALSE]
+      group_id <- if (length(group_cols) == 1) {
+        group_df[[1]]
+      } else {
+        interaction(group_df, drop = TRUE)
+      }
+      if (any(is.na(group_id))) {
+        stop("Grouping columns contain missing values, which are not supported for grouped holdout splitting.", call. = FALSE)
+      }
+      unique_groups <- unique(group_id)
+      n_groups <- length(unique_groups)
+      n_test_groups <- max(1L, floor(n_groups * test_size))
+      if (n_groups - n_test_groups < 1L) {
+        stop("`test_size` leaves no groups for training after grouped splitting; reduce `test_size`.", call. = FALSE)
+      }
+      test_groups <- sample(unique_groups, size = n_test_groups, replace = FALSE)
+      in_test <- group_id %in% test_groups
+      return(list(
+        train_data = df[!in_test, , drop = FALSE],
+        test_data = df[in_test, , drop = FALSE]
+      ))
+    }
+
+    split <- if (use_strata) {
+      rsample::initial_split(
+        df,
+        prop = 1 - test_size,
+        strata = dplyr::all_of(label)
+      )
+    } else {
+      rsample::initial_split(df, prop = 1 - test_size)
+    }
+    list(
+      train_data = rsample::training(split),
+      test_data = rsample::testing(split)
+    )
+  }
+
   provisional_split_used <- FALSE
   # If initial data provided, perform exclusion and checks, then split
   if (!is.null(data)) {
@@ -470,20 +559,16 @@ fastml <- function(data = NULL,
     if (verbose) message("Splitting data into training and test sets...")
     # Split into train/test
     if (pending_auto_detection && task == "auto") {
-      split <- rsample::initial_split(data, prop = 1 - test_size)
+      split_result <- split_holdout(data, use_strata = FALSE)
       provisional_split_used <- TRUE
     } else if (stratify && task == "classification") {
-      split <- rsample::initial_split(
-        data,
-        prop = 1 - test_size,
-        strata = dplyr::all_of(label)
-      )
+      split_result <- split_holdout(data, use_strata = TRUE)
     } else {
-      split <- rsample::initial_split(data, prop = 1 - test_size)
+      split_result <- split_holdout(data, use_strata = FALSE)
     }
 
-    train_data <- rsample::training(split)
-    test_data  <- rsample::testing(split)
+    train_data <- split_result$train_data
+    test_data  <- split_result$test_data
   }
 
   if (task == "survival") {
@@ -576,15 +661,18 @@ fastml <- function(data = NULL,
   }
 
   if (provisional_split_used && stratify && task == "classification") {
-    set.seed(seed)
-    split <- rsample::initial_split(
-      data,
-      prop = 1 - test_size,
-      strata = dplyr::all_of(label)
-    )
-    train_data <- rsample::training(split)
-    test_data  <- rsample::testing(split)
-    target_var <- train_data[[label]]
+    if (identical(holdout_mode, "random")) {
+      set.seed(seed)
+      split_result <- split_holdout(data, use_strata = TRUE)
+      train_data <- split_result$train_data
+      test_data  <- split_result$test_data
+      target_var <- train_data[[label]]
+    } else {
+      warning(
+        "Stratified holdout is not supported for grouped/time-based splitting; keeping the existing holdout split.",
+        call. = FALSE
+      )
+    }
   }
 
   if (task == "classification" && balance_method != "none") {
@@ -974,9 +1062,21 @@ fastml <- function(data = NULL,
                                                bootstrap_ci = bootstrap_ci,
                                                bootstrap_samples = bootstrap_samples,
                                                bootstrap_seed = bootstrap_seed,
-                                               at_risk_threshold = at_risk_threshold)
+                                               at_risk_threshold = at_risk_threshold,
+                                               summaryFunction = summaryFunction)
   performance <- eval_output$performance
   predictions <- eval_output$predictions
+
+  # Unwrap single-engine performance entries for easier access.
+  performance <- lapply(performance, function(entry) {
+    if (is.list(entry) && !inherits(entry, "data.frame") && length(entry) == 1) {
+      single <- entry[[1]]
+      if (inherits(single, "data.frame")) {
+        return(single)
+      }
+    }
+    entry
+  })
 
   # metric_values <- sapply(performance, function(x) x %>% filter(.metric == metric) %>% pull(.estimate))
 
@@ -1014,7 +1114,19 @@ fastml <- function(data = NULL,
       }
       combined_name <- paste0(display_algo(alg, task), " (", eng, ")")
       combined_performance[[combined_name]] <- perf_alg
-      model_map[[combined_name]] <- models[[alg]]
+      model_entry <- models[[alg]]
+      if (is.list(model_entry) &&
+          !inherits(model_entry, c("workflow", "tune_results", "fastml_native_survival", "model_fit"))) {
+        if (!is.null(eng) && !is.na(eng) && !is.null(model_entry[[eng]])) {
+          model_map[[combined_name]] <- model_entry[[eng]]
+        } else if (length(model_entry) == 1) {
+          model_map[[combined_name]] <- model_entry[[1]]
+        } else {
+          model_map[[combined_name]] <- model_entry
+        }
+      } else {
+        model_map[[combined_name]] <- model_entry
+      }
     }
   }
 

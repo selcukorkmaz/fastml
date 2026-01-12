@@ -1,7 +1,7 @@
 Package: fastml
 Type: Package
 Title: Guarded Resampling Workflows for Safe and Automated Machine Learning in R
-Version: 0.7.5
+Version: 0.7.6
 Authors@R: c(person("Selcuk", "Korkmaz", email="selcukorkmaz@gmail.com", role=c("aut", "cre"),
                     comment = c(ORCID = "0000-0003-4632-6850")), 
              person("Dincer", "Goksuluk", email="dincer.goksuluk@gmail.com", role="aut",
@@ -17,7 +17,7 @@ Description: Provides a guarded resampling workflow for training and evaluating 
 	while keeping evaluation design explicit and user‑controlled.
 Encoding: UTF-8
 License: MIT + file LICENSE
-URL: https://github.com/selcukorkmaz/fastml
+URL: https://selcukorkmaz.github.io/fastml-tutorial/, https://github.com/selcukorkmaz/fastml
 BugReports: https://github.com/selcukorkmaz/fastml/issues
 LazyData: true
 Depends:
@@ -97,5 +97,5 @@ Suggests:
     sparsediscrim,
     knitr,
     rmarkdown
-RoxygenNote: 7.3.2
+RoxygenNote: 7.3.3
 Config/testthat/edition: 3

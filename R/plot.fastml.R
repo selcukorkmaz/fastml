@@ -142,8 +142,8 @@ plot.fastml <- function(x,
   if (length(engine_names) == 1 && "LiblineaR" %in% engine_names) {
     performance_wide <- tidyr::pivot_wider(
       performance_sub,
-      names_from  = .data$.metric,
-      values_from = .data$.estimate
+      names_from  = ".metric",
+      values_from = ".estimate"
     ) %>%
       dplyr::select(Model, Engine, accuracy, kap, sens, spec, precision, f_meas)
   } else {
@@ -153,8 +153,8 @@ plot.fastml <- function(x,
     }
     performance_wide <- tidyr::pivot_wider(
       performance_sub,
-      names_from  = .data$.metric,
-      values_from = .data$.estimate
+      names_from  = ".metric",
+      values_from = ".estimate"
     )
     select_cols <- c("Model", "Engine", keep_metrics)
     select_cols <- intersect(select_cols, colnames(performance_wide))

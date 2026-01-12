@@ -26,6 +26,51 @@ test_that("rand_forest defaults to aorsf engine for survival", {
   expect_identical(get_default_engine("rand_forest", "survival"), "aorsf")
 })
 
+test_that("bootstrap CI columns are returned for classification and regression", {
+  # Reduce separation risk in glm for stable bootstrap fits.
+  iris_bootstrap <- iris[, c("Sepal.Length", "Sepal.Width", "Species")]
+
+  fit_class <- fastml(
+    data = iris_bootstrap,
+    label = "Species",
+    algorithms = "logistic_reg",
+    task = "classification",
+    resampling_method = "none",
+    use_default_tuning = FALSE,
+    test_size = 0.3,
+    seed = 123,
+    bootstrap_ci = TRUE,
+    bootstrap_samples = 10,
+    bootstrap_seed = 123
+  )
+
+  perf_class <- fit_class$performance[[1]]
+  expect_true(all(c(".lower", ".upper", ".n_boot") %in% names(perf_class)))
+  expect_true(all(perf_class$.n_boot == 10))
+  expect_true(any(is.finite(perf_class$.lower)))
+  expect_true(any(is.finite(perf_class$.upper)))
+
+  fit_reg <- fastml(
+    data = mtcars,
+    label = "mpg",
+    algorithms = "linear_reg",
+    task = "regression",
+    resampling_method = "none",
+    use_default_tuning = FALSE,
+    test_size = 0.3,
+    seed = 123,
+    bootstrap_ci = TRUE,
+    bootstrap_samples = 10,
+    bootstrap_seed = 123
+  )
+
+  perf_reg <- fit_reg$performance[[1]]
+  expect_true(all(c(".lower", ".upper", ".n_boot") %in% names(perf_reg)))
+  expect_true(all(perf_reg$.n_boot == 10))
+  expect_true(any(is.finite(perf_reg$.lower)))
+  expect_true(any(is.finite(perf_reg$.upper)))
+})
+
 
 
 test_that("advanced imputation options are rejected", {
@@ -70,9 +115,11 @@ test_that("advanced imputation options are rejected", {
 })
 
 test_that("multinom_reg falls back to logistic_reg for binary outcomes", {
+  binary_iris <- iris[, c("Sepal.Length", "Sepal.Width", "Species")]
+
   expect_warning(
     fastml(
-      data = iris,
+      data = binary_iris,
       label = "Species",
       algorithms = "multinom_reg",
       resampling_method = "none",
@@ -632,10 +679,12 @@ test_that("guarded folds avoid performance inflation", {
   )
 
   guard_metrics <- res_noise$resampling_results[["logistic_reg (glm)"]]$aggregated
+  guard_folds <- res_noise$resampling_results[["logistic_reg (glm)"]]$folds
   noise_accuracy <- guard_metrics[guard_metrics$.metric == "accuracy", ".estimate", drop = TRUE]
 
   expect_true(is.numeric(noise_accuracy))
   expect_lt(noise_accuracy, 0.8)
+  expect_false(any(c(".lower", ".upper", ".n_boot") %in% names(guard_folds)))
 })
 
 test_that("guarded resampling is reproducible with fixed seeds", {

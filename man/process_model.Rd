@@ -23,6 +23,7 @@ process_model(
   bootstrap_seed = 1234,
   at_risk_threshold = 0.1,
   metrics = NULL,
+  summaryFunction = NULL,
   precomputed_predictions = NULL
 )
 }
@@ -65,7 +66,7 @@ evaluate survival Brier scores. When `NULL`, sensible defaults based on the
 observed follow-up distribution are used.}
 
 \item{bootstrap_ci}{Logical; if `TRUE`, bootstrap confidence intervals are
-estimated for survival performance metrics.}
+estimated for performance metrics.}
 
 \item{bootstrap_samples}{Integer giving the number of bootstrap resamples
 used when computing confidence intervals.}
@@ -78,6 +79,9 @@ proportion of subjects required to remain at risk when determining the
 maximum follow-up time used in survival metrics.}
 
 \item{metrics}{Optional yardstick metric set (e.g., `yardstick::metric_set(yardstick::rmse)`) used for computing regression performance.}
+
+\item{summaryFunction}{Optional custom classification metric function passed to
+`yardstick::new_class_metric()` and included in holdout evaluation.}
 
 \item{precomputed_predictions}{Optional data frame or nested list of
 previously generated predictions (per algorithm/engine) to reuse instead
