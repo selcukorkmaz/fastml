@@ -186,13 +186,32 @@ process_model <- function(model_obj,
   if (task == "classification") {
     pred_class <- predict(final_model, new_data = test_data, type = "class")$.pred_class
 
-
+    pred_prob <- NULL
+    pred_prob_error <- NULL
     if (!is.null(engine) &&
         !is.na(engine) && engine != "LiblineaR") {
-      pred_prob <- predict(final_model, new_data = test_data, type = "prob")
+      pred_prob <- tryCatch(
+        predict(final_model, new_data = test_data, type = "prob"),
+        error = function(e) {
+          pred_prob_error <<- e
+          NULL
+        }
+      )
+      if (!is.null(pred_prob) && !is.data.frame(pred_prob)) {
+        pred_prob <- NULL
+      }
+      if (is.null(pred_prob) && !is.null(pred_prob_error)) {
+        warning(
+          sprintf(
+            "Probability predictions failed for model '%s' (engine: %s); ROC AUC will be skipped. %s",
+            model_id,
+            engine,
+            conditionMessage(pred_prob_error)
+          ),
+          call. = FALSE
+        )
+      }
     }
-
-
 
     if (nrow(test_data) != length(pred_class)) {
       stop(
@@ -203,19 +222,11 @@ process_model <- function(model_obj,
 
     data_metrics <- test_data %>%
       dplyr::select(truth = !!rlang::sym(label)) %>%
-      dplyr::mutate(estimate = pred_class) %>%
-      {
-        if (!is.null(engine) && !is.na(engine) && engine != "LiblineaR") {
-          dplyr::bind_cols(., pred_prob)
-        } else {
-          .
-        }
-      }
+      dplyr::mutate(estimate = pred_class)
 
-    if (all(grepl("^\\.pred_p", names(data_metrics)[3:4]))) {
-      pred_name = ".pred_p"
-    } else{
-      pred_name = ".pred_"
+    prob_available <- !is.null(pred_prob) && is.data.frame(pred_prob) && ncol(pred_prob) > 0
+    if (prob_available) {
+      data_metrics <- dplyr::bind_cols(data_metrics, pred_prob)
     }
 
     prob_cols <- setdiff(names(data_metrics), c("truth", "estimate"))
@@ -289,8 +300,41 @@ process_model <- function(model_obj,
           truth = truth,!!rlang::sym(paste0(pred_name, positive_class)),
           event_level = event_class
         )
-        perf <- dplyr::bind_rows(perf_class, roc_auc_value)
-      } else{
+        safe_class <- make.names(positive_class)
+        if (!identical(safe_class, positive_class)) {
+          candidates <- c(
+            candidates,
+            paste0(".pred_", safe_class),
+            paste0(".pred_p", safe_class)
+          )
+        }
+        prob_col <- candidates[candidates %in% names(data_metrics)][1]
+        if (length(prob_col) == 0) {
+          prob_col <- NULL
+        }
+      }
+
+      if (prob_available) {
+        if (!is.null(prob_col)) {
+          # Compute ROC AUC using the probability column for the positive class
+          roc_auc_value <- yardstick::roc_auc(
+            data_metrics,
+            truth = truth,!!rlang::sym(prob_col),
+            event_level = event_class
+          )
+          perf <- dplyr::bind_rows(perf_class, roc_auc_value)
+        } else {
+          warning(
+            sprintf(
+              "Probability column '%s' not found for model '%s'; ROC AUC will be skipped.",
+              paste(candidates, collapse = ", "),
+              model_id
+            ),
+            call. = FALSE
+          )
+          perf <- perf_class
+        }
+      } else {
         perf <- perf_class
       }
 

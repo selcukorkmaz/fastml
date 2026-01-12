@@ -2245,6 +2245,61 @@ train_models <- function(train_data,
     return(params_model)
   }
 
+  predictors_all_numeric <- function(df) {
+    if (is.null(df) || ncol(df) == 0) {
+      return(TRUE)
+    }
+    is_numeric <- function(col) is.numeric(col) || is.integer(col) || is.logical(col)
+    all(vapply(df, is_numeric, logical(1)))
+  }
+
+  baked_predictors <- NULL
+  baked_predictors_ready <- FALSE
+
+  get_baked_predictors <- function() {
+    if (baked_predictors_ready) {
+      return(baked_predictors)
+    }
+    baked_predictors_ready <<- TRUE
+    if (is.null(recipe)) {
+      baked_predictors <<- NULL
+      return(NULL)
+    }
+    baked <- tryCatch(
+      recipes::bake(recipe, new_data = train_data),
+      error = function(e) NULL
+    )
+    if (is.null(baked)) {
+      baked <- tryCatch({
+        prepped <- recipes::prep(recipe, training = train_data, retain = TRUE)
+        recipes::bake(prepped, new_data = NULL)
+      }, error = function(e) NULL)
+    }
+    if (!is.null(baked) && !is.null(label) && label %in% names(baked)) {
+      baked <- baked[, setdiff(names(baked), label), drop = FALSE]
+    }
+    baked_predictors <<- baked
+    baked
+  }
+
+  finalize_predictors <- function(raw_predictors) {
+    if (predictors_all_numeric(raw_predictors)) {
+      return(raw_predictors)
+    }
+    baked <- get_baked_predictors()
+    if (!is.null(baked) && predictors_all_numeric(baked)) {
+      return(baked)
+    }
+    mm <- tryCatch(
+      stats::model.matrix(~ . - 1, data = raw_predictors),
+      error = function(e) NULL
+    )
+    if (!is.null(mm)) {
+      return(as.data.frame(mm))
+    }
+    raw_predictors
+  }
+
   n_class <- length(levels(train_data[[label]]))
   if (n_class == 2 && "multinom_reg" %in% algorithms) {
     warning(
@@ -2354,9 +2409,10 @@ train_models <- function(train_data,
         if (nested_mode) {
           tune_params_template <- param_set
         } else {
+          raw_predictors <- train_data %>% dplyr::select(-dplyr::all_of(label))
           tune_params_model <- finalize(
             param_set,
-            x = train_data %>% dplyr::select(-dplyr::all_of(label))
+            x = finalize_predictors(raw_predictors)
           )
 
           if (!is.null(engine_tune_params)) {
