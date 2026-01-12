@@ -8,9 +8,56 @@
 #'
 #' @importFrom dplyr bind_rows group_by summarise
 #' @importFrom rsample analysis assessment
+fastml_guard_validate_indices <- function(indices, label) {
+  if (!is.atomic(indices) || length(dim(indices)) > 0) {
+    stop(sprintf("Guarded resampling requires '%s' to be a vector of indices.", label))
+  }
+  if (!is.numeric(indices)) {
+    stop(sprintf("Guarded resampling requires '%s' to be numeric indices.", label))
+  }
+  if (length(indices) == 0) {
+    stop(sprintf("Guarded resampling requires '%s' to contain at least one index.", label))
+  }
+  if (anyNA(indices)) {
+    stop(sprintf("Guarded resampling requires '%s' to contain no missing values.", label))
+  }
+  if (any(indices < 1)) {
+    stop(sprintf("Guarded resampling requires '%s' to contain positive indices.", label))
+  }
+  if (any(indices != floor(indices))) {
+    stop(sprintf("Guarded resampling requires '%s' to contain integer indices.", label))
+  }
+  as.integer(indices)
+}
+
+fastml_guard_extract_in_id <- function(split) {
+  if (!is.null(split$in_id)) {
+    return(fastml_guard_validate_indices(split$in_id, "in_id"))
+  }
+  candidates <- c("analysis_id", "analysis_ids", "analysis_index", "analysis_indices", "analysis")
+  for (candidate in candidates) {
+    value <- split[[candidate]]
+    if (is.null(value)) {
+      next
+    }
+    if (!is.atomic(value) || length(dim(value)) > 0 || !is.numeric(value)) {
+      next
+    }
+    return(fastml_guard_validate_indices(value, candidate))
+  }
+  NULL
+}
+
+fastml_guard_is_bootstrap_split <- function(split) {
+  inherits(split, "boot_split")
+}
+
 fastml_guard_detect_full_analysis <- function(split, total_rows) {
-  in_id <- split$in_id
+  in_id <- fastml_guard_extract_in_id(split)
   if (is.null(in_id)) {
+    stop("Guarded resampling requires split index information (e.g., `in_id`) to detect full-data leakage.")
+  }
+  if (fastml_guard_is_bootstrap_split(split)) {
     return(FALSE)
   }
   if (length(in_id) < total_rows) {
