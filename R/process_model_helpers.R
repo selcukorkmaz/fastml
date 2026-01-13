@@ -1277,9 +1277,11 @@ fastml_auc_estimator_from_truth <- function(truth, multiclass_auc) {
 fastml_configured_roc_auc <- function(multiclass_auc) {
   multiclass_auc <- fastml_normalize_multiclass_auc(multiclass_auc)
 
-  roc_fun <- function(data, truth, ...) {
-    truth_col <- data[[rlang::as_string(rlang::ensym(truth))]]
-    estimator <- fastml_auc_estimator_from_truth(truth_col, multiclass_auc)
+  roc_fun <- function(data, truth, ..., estimator = NULL) {
+    if (missing(estimator) || is.null(estimator) || length(estimator) == 0 || is.na(estimator[[1]])) {
+      truth_col <- data[[rlang::as_string(rlang::ensym(truth))]]
+      estimator <- fastml_auc_estimator_from_truth(truth_col, multiclass_auc)
+    }
     yardstick::roc_auc(data, truth = {{truth}}, ..., estimator = estimator)
   }
 

@@ -875,7 +875,7 @@ train_models <- function(train_data,
   }
 
   multiclass_auc <- fastml_normalize_multiclass_auc(multiclass_auc)
-  roc_auc_metric <- fastml_configured_roc_auc(multiclass_auc)
+  roc_auc <- fastml_configured_roc_auc(multiclass_auc)
 
   tuning_strategy <- match.arg(tuning_strategy, c("grid", "bayes", "none"))
 
@@ -2137,7 +2137,7 @@ train_models <- function(train_data,
         spec,
         precision,
         f_meas,
-        roc_auc_metric
+        roc_auc
       )
     }else{
 
@@ -2152,7 +2152,7 @@ train_models <- function(train_data,
         spec,
         precision,
         f_meas,
-        roc_auc_metric,
+        roc_auc,
         !!sym(metric)
       )
 
@@ -2664,7 +2664,7 @@ train_models <- function(train_data,
                 rename_with(~ sub("^\\.pred_p", ".pred_", .x), starts_with(".pred_p"))
 
               # Call the built-in roc_auc() with the renamed columns
-              roc_auc_metric(data, truth = {{truth}}, ...)
+                roc_auc(data, truth = {{truth}}, ...)
             }
 
             # Assign the same metadata as roc_auc() so metric ids stay consistent
@@ -2672,7 +2672,7 @@ train_models <- function(train_data,
             attr(roc_auc_h2o, "direction") <- attr(yardstick::roc_auc, "direction")
             attr(roc_auc_h2o, "metric_name") <- attr(yardstick::roc_auc, "metric_name")
 
-            my_metrics <- metric_set(accuracy, kap, sens, spec, precision, f_meas, roc_auc_h2o)
+            my_metrics <- metric_set(accuracy, kap, sens, spec, precision, f_meas, roc_auc = roc_auc_h2o)
 
             allow_par = FALSE
           }

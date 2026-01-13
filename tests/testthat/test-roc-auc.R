@@ -55,3 +55,21 @@ test_that("binary probability column resolver handles sanitized and fallback nam
   expect_identical(res_fallback$prob_col, ".prob1")
   expect_true(isTRUE(res_fallback$used_fallback))
 })
+
+test_that("configured roc_auc accepts explicit estimator", {
+  required <- c("yardstick")
+  lapply(required, skip_if_not_installed)
+
+  data(iris)
+  df <- iris[iris$Species != "setosa", ]
+  df$Species <- factor(df$Species)
+
+  set.seed(123)
+  df$.pred_versicolor <- runif(nrow(df))
+
+  roc_fun <- fastml:::fastml_configured_roc_auc("macro")
+
+  expect_silent(
+    roc_fun(df, truth = Species, .pred_versicolor, estimator = "binary")
+  )
+})
