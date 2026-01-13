@@ -1241,3 +1241,50 @@ fastml_resolve_binary_prob_column <- function(prob_cols, truth_levels, event_cla
 
   result
 }
+
+fastml_normalize_multiclass_auc <- function(multiclass_auc) {
+  if (is.null(multiclass_auc) || length(multiclass_auc) == 0 || is.na(multiclass_auc[[1]])) {
+    return("macro")
+  }
+
+  multiclass_auc <- tolower(as.character(multiclass_auc[[1]]))
+  allowed <- c("macro", "macro_weighted")
+  if (!multiclass_auc %in% allowed) {
+    stop(
+      sprintf(
+        "Invalid multiclass_auc '%s'. Choose one of: %s.",
+        multiclass_auc,
+        paste(allowed, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+
+  multiclass_auc
+}
+
+fastml_auc_estimator_from_truth <- function(truth, multiclass_auc) {
+  multiclass_auc <- fastml_normalize_multiclass_auc(multiclass_auc)
+  if (is.factor(truth)) {
+    n_levels <- length(levels(truth))
+  } else {
+    truth_vals <- truth[!is.na(truth)]
+    n_levels <- length(unique(truth_vals))
+  }
+  if (n_levels > 2) multiclass_auc else "binary"
+}
+
+fastml_configured_roc_auc <- function(multiclass_auc) {
+  multiclass_auc <- fastml_normalize_multiclass_auc(multiclass_auc)
+
+  roc_fun <- function(data, truth, ...) {
+    truth_col <- data[[rlang::as_string(rlang::ensym(truth))]]
+    estimator <- fastml_auc_estimator_from_truth(truth_col, multiclass_auc)
+    yardstick::roc_auc(data, truth = {{truth}}, ..., estimator = estimator)
+  }
+
+  class(roc_fun) <- class(yardstick::roc_auc)
+  attr(roc_fun, "direction") <- attr(yardstick::roc_auc, "direction")
+  attr(roc_fun, "metric_name") <- attr(yardstick::roc_auc, "metric_name")
+  roc_fun
+}

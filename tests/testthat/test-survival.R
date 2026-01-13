@@ -141,6 +141,9 @@ test_that("survival resampling results omit .estimator", {
   expect_true(is.list(resampling))
   expect_false(".estimator" %in% names(resampling$aggregated))
   expect_false(".estimator" %in% names(resampling$folds))
+  expect_true(all(c("n", "std_dev", "std_err") %in% names(resampling$aggregated)))
+  expect_true(is.numeric(resampling$aggregated$std_dev))
+  expect_true(is.numeric(resampling$aggregated$std_err))
 })
 
 test_that("penalized Cox survival model trains and evaluates", {

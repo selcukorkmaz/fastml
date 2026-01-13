@@ -17,6 +17,7 @@
 
 ## Improvements
 
+* Multiclass ROC AUC now defaults to macro averaging (tidymodels) and can be configured via `multiclass_auc` to use macro_weighted class-prevalence weighting.
 * Improved robustness of survival predictions, including risk scores, survival probabilities, quantiles, medians, and time estimates.
 * Enhanced survival summary outputs with clearer metric alignment and better handling of stratified and time-varying Cox models.
 * Improved extraction of predictions and summaries for parametric survival engines.

@@ -47,6 +47,10 @@
 #' @param outer_folds Positive integer giving the number of outer folds to use when
 #'   \code{resampling_method = "nested_cv"} and no custom \code{resamples} object is supplied.
 #' @param event_class A single string. Either "first" or "second" to specify which level of truth to consider as the "event". Default is "first".
+#' @param multiclass_auc For multiclass ROC AUC, the averaging method to use:
+#'   `"macro"` (default, tidymodels) or `"macro_weighted"`. Macro weights each
+#'   class equally, while macro_weighted weights by class prevalence and can
+#'   change model rankings on imbalanced data.
 #' @param exclude A character vector specifying the names of the columns to be excluded from the training process.
 #' @param recipe A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.
 #' @param tune_params A named list of tuning ranges for each algorithm and engine
@@ -138,6 +142,11 @@
 #' or nested CV). The holdout split is reserved for final performance
 #' estimation and is never used to choose the best model, mirroring
 #' \code{tidymodels::last_fit()} semantics.
+#'
+#' For multiclass ROC AUC, fastml defaults to macro averaging (tidymodels).
+#' Macro treats each class equally, while macro_weighted weights by class
+#' prevalence and can change model rankings on imbalanced data. Keep the same
+#' setting when comparing runs.
 #' @return An object of class \code{fastml} containing the best model, performance metrics, and other information.
 #' @examples
 #' \donttest{
@@ -214,7 +223,8 @@ fastml <- function(data = NULL,
                    bootstrap_samples = 500,
                    bootstrap_seed = NULL,
                    at_risk_threshold = 0.1,
-                   audit_mode = FALSE) {
+                   audit_mode = FALSE,
+                   multiclass_auc = "macro") {
 
   resampling_method_missing <- missing(resampling_method)
   audit_env <- fastml_init_audit_env(audit_mode)
@@ -681,6 +691,8 @@ fastml <- function(data = NULL,
     }
   }
 
+  multiclass_auc <- fastml_normalize_multiclass_auc(multiclass_auc)
+
   # Set default metric now that task has been resolved and validate it
   if (is.null(metric)) {
     metric <- if (task == "classification") {
@@ -1042,7 +1054,8 @@ fastml <- function(data = NULL,
     status_col = status_col,
     eval_times = eval_times,
     at_risk_threshold = at_risk_threshold,
-    audit_env = audit_env
+    audit_env = audit_env,
+    multiclass_auc = multiclass_auc
   )
 
   resampling_results <- attr(models, "guarded_resampling")
@@ -1078,7 +1091,8 @@ fastml <- function(data = NULL,
                                                bootstrap_samples = bootstrap_samples,
                                                bootstrap_seed = bootstrap_seed,
                                                at_risk_threshold = at_risk_threshold,
-                                               summaryFunction = summaryFunction)
+                                               summaryFunction = summaryFunction,
+                                               multiclass_auc = multiclass_auc)
   performance <- eval_output$performance
   predictions <- eval_output$predictions
 
@@ -1420,7 +1434,8 @@ fastml <- function(data = NULL,
         status_col = status_col,
         eval_times = eval_times,
         at_risk_threshold = at_risk_threshold,
-        audit_env = audit_env
+        audit_env = audit_env,
+        multiclass_auc = multiclass_auc
       )
 
 
@@ -1438,7 +1453,8 @@ fastml <- function(data = NULL,
         bootstrap_ci = bootstrap_ci,
         bootstrap_samples = bootstrap_samples,
         bootstrap_seed = bootstrap_seed,
-        at_risk_threshold = at_risk_threshold
+        at_risk_threshold = at_risk_threshold,
+        multiclass_auc = multiclass_auc
       )
 
 
@@ -1505,6 +1521,7 @@ fastml <- function(data = NULL,
     task = task,
     models = models,
     metric = metric,
+    multiclass_auc = multiclass_auc,
     selection = list(source = selection_source, metric = metric),
     positive_class = positive_class,
     event_class = event_class,

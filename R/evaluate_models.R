@@ -20,6 +20,10 @@
 #' @param task Type of task: "classification", "regression", or "survival".
 #' @param metric The performance metric to optimize (e.g., "accuracy", "rmse").
 #' @param event_class A single string. Either "first" or "second" to specify which level of truth to consider as the "event".
+#' @param multiclass_auc For multiclass ROC AUC, the averaging method to use:
+#'   `"macro"` (default, tidymodels) or `"macro_weighted"`. Macro weights each
+#'   class equally, while macro_weighted weights by class prevalence and can
+#'   change model rankings on imbalanced data.
 #' @importFrom dplyr filter bind_rows pull mutate select bind_cols
 #' @importFrom yardstick metric_set accuracy kap roc_auc sens spec precision f_meas rmse rsq mae
 #' @importFrom workflows pull_workflow_spec pull_workflow_preprocessor workflow add_model add_recipe
@@ -65,7 +69,8 @@ fastml_compute_holdout_results <- function(models,
                                            bootstrap_seed = 1234,
                                            at_risk_threshold = 0.1,
                                            precomputed_predictions = NULL,
-                                           summaryFunction = NULL) {
+                                           summaryFunction = NULL,
+                                           multiclass_auc = "macro") {
   # Load required packages
   required_pkgs <- c("yardstick", "parsnip", "tune", "workflows",
                      "dplyr", "rlang", "tibble")
@@ -132,7 +137,8 @@ fastml_compute_holdout_results <- function(models,
                                 bootstrap_samples = bootstrap_samples,
                                 bootstrap_seed = bootstrap_seed,
                                 at_risk_threshold = at_risk_threshold,
-                                precomputed_predictions = reused_preds)
+                                precomputed_predictions = reused_preds,
+                                multiclass_auc = multiclass_auc)
         if (!is.null(result)) {
           performance[[algo]][[eng]] <- result$performance
           predictions_list[[algo]][[eng]] <- result$predictions
@@ -168,7 +174,8 @@ fastml_compute_holdout_results <- function(models,
                               bootstrap_samples = bootstrap_samples,
                               bootstrap_seed = bootstrap_seed,
                               at_risk_threshold = at_risk_threshold,
-                              precomputed_predictions = reused_preds)
+                              precomputed_predictions = reused_preds,
+                              multiclass_auc = multiclass_auc)
 
 
 
@@ -211,7 +218,8 @@ evaluate_models <- function(models,
                             bootstrap_seed = 1234,
                             at_risk_threshold = 0.1,
                             precomputed_predictions = NULL,
-                            summaryFunction = NULL) {
+                            summaryFunction = NULL,
+                            multiclass_auc = "macro") {
   fastml_compute_holdout_results(
     models = models,
     train_data = train_data,
@@ -229,6 +237,7 @@ evaluate_models <- function(models,
     bootstrap_seed = bootstrap_seed,
     at_risk_threshold = at_risk_threshold,
     precomputed_predictions = precomputed_predictions,
-    summaryFunction = summaryFunction
+    summaryFunction = summaryFunction,
+    multiclass_auc = multiclass_auc
   )
 }

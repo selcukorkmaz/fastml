@@ -50,7 +50,8 @@ fastml(
   bootstrap_samples = 500,
   bootstrap_seed = NULL,
   at_risk_threshold = 0.1,
-  audit_mode = FALSE
+  audit_mode = FALSE,
+  multiclass_auc = "macro"
 )
 }
 \arguments{
@@ -213,6 +214,11 @@ subjects remain at risk.}
 preprocessing hooks and records potentially unsafe behaviour (such as global
 environment access or file I/O) while flagging the run as potentially
 unsafe.}
+
+\item{multiclass_auc}{For multiclass ROC AUC, the averaging method to use:
+`"macro"` (default, tidymodels) or `"macro_weighted"`. Macro weights each
+class equally, while macro_weighted weights by class prevalence and can
+change model rankings on imbalanced data.}
 }
 \value{
 An object of class \code{fastml} containing the best model, performance metrics, and other information.
@@ -232,6 +238,11 @@ Model selection is based exclusively on resampling metrics (cross-validation
 or nested CV). The holdout split is reserved for final performance
 estimation and is never used to choose the best model, mirroring
 \code{tidymodels::last_fit()} semantics.
+
+For multiclass ROC AUC, fastml defaults to macro averaging (tidymodels).
+Macro treats each class equally, while macro_weighted weights by class
+prevalence and can change model rankings on imbalanced data. Keep the same
+setting when comparing runs.
 }
 \examples{
 \donttest{

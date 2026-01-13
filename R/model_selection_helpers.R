@@ -170,12 +170,18 @@ fastml_aggregate_resample_metrics <- function(perf, task) {
     dplyr::summarise(
       dplyr::group_by(perf, .data$.metric),
       .estimate = mean(.data$.estimate, na.rm = TRUE),
+      n = sum(is.finite(.data$.estimate)),
+      std_dev = stats::sd(.data$.estimate, na.rm = TRUE),
+      std_err = ifelse(n > 0, std_dev / sqrt(n), NA_real_),
       .groups = "drop"
     )
   } else {
     dplyr::summarise(
       dplyr::group_by(perf, .data$.metric, .data$.estimator),
       .estimate = mean(.data$.estimate, na.rm = TRUE),
+      n = sum(is.finite(.data$.estimate)),
+      std_dev = stats::sd(.data$.estimate, na.rm = TRUE),
+      std_err = ifelse(n > 0, std_dev / sqrt(n), NA_real_),
       .groups = "drop"
     )
   }

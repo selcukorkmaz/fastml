@@ -30,11 +30,69 @@ fastml_guard_validate_indices <- function(indices, label) {
   as.integer(indices)
 }
 
-fastml_guard_extract_in_id <- function(split) {
-  if (!is.null(split$in_id)) {
-    return(fastml_guard_validate_indices(split$in_id, "in_id"))
+fastml_guard_index_candidates <- function() {
+  c("in_id", "analysis_id", "analysis_ids", "analysis_index", "analysis_indices", "analysis")
+}
+
+fastml_guard_split_index_candidates <- function(split) {
+  candidates <- fastml_guard_index_candidates()
+  valid <- character(0)
+  for (candidate in candidates) {
+    value <- split[[candidate]]
+    if (is.null(value)) {
+      next
+    }
+    if (!is.atomic(value) || length(dim(value)) > 0 || !is.numeric(value)) {
+      next
+    }
+    ok <- tryCatch({
+      fastml_guard_validate_indices(value, candidate)
+      TRUE
+    }, error = function(e) FALSE)
+    if (ok) {
+      valid <- c(valid, candidate)
+    }
   }
-  candidates <- c("analysis_id", "analysis_ids", "analysis_index", "analysis_indices", "analysis")
+  valid
+}
+
+fastml_guard_select_index_name <- function(splits) {
+  candidates <- fastml_guard_index_candidates()
+  valid_names <- lapply(splits, fastml_guard_split_index_candidates)
+  has_valid <- vapply(valid_names, length, integer(1)) > 0
+  if (!all(has_valid)) {
+    stop(
+      "Guarded resampling requires split index information (e.g., `in_id`) for every resample."
+    )
+  }
+  common <- Reduce(intersect, valid_names)
+  if (length(common) == 0) {
+    stop(
+      "Guarded resampling requires a consistent index field (e.g., `in_id`) across resamples."
+    )
+  }
+  for (candidate in candidates) {
+    if (candidate %in% common) {
+      return(candidate)
+    }
+  }
+  common[[1]]
+}
+
+fastml_guard_extract_in_id <- function(split, index_name = NULL) {
+  if (!is.null(index_name)) {
+    value <- split[[index_name]]
+    if (is.null(value)) {
+      stop(
+        sprintf(
+          "Guarded resampling requires '%s' index information for every resample.",
+          index_name
+        )
+      )
+    }
+    return(fastml_guard_validate_indices(value, index_name))
+  }
+  candidates <- fastml_guard_index_candidates()
   for (candidate in candidates) {
     value <- split[[candidate]]
     if (is.null(value)) {
@@ -52,12 +110,24 @@ fastml_guard_is_bootstrap_split <- function(split) {
   inherits(split, "boot_split")
 }
 
-fastml_guard_detect_full_analysis <- function(split, total_rows) {
-  in_id <- fastml_guard_extract_in_id(split)
-  if (is.null(in_id)) {
-    stop("Guarded resampling requires split index information (e.g., `in_id`) to detect full-data leakage.")
+fastml_guard_is_bootstrap_resamples <- function(resamples, plan = NULL) {
+  if (!is.null(plan)) {
+    method <- fastml_resample_method(plan)
+    if (!is.null(method)) {
+      method <- tolower(as.character(method))
+      if (!is.na(method) && method %in% c("boot", "bootstrap", "bootstraps")) {
+        return(TRUE)
+      }
+    }
   }
-  if (fastml_guard_is_bootstrap_split(split)) {
+  if (!is.null(resamples) && inherits(resamples, "bootstraps")) {
+    return(TRUE)
+  }
+  FALSE
+}
+
+fastml_guard_detect_full_analysis <- function(in_id, total_rows, is_bootstrap = FALSE) {
+  if (is_bootstrap) {
     return(FALSE)
   }
   if (length(in_id) < total_rows) {
@@ -82,7 +152,10 @@ fastml_guarded_resample_fit <- function(workflow_spec,
                                         time_col = NULL,
                                         status_col = NULL,
                                         eval_times = NULL,
-                                        at_risk_threshold = 0.1) {
+                                        at_risk_threshold = 0.1,
+                                        engine_args = list(),
+                                        summaryFunction = NULL,
+                                        multiclass_auc = "macro") {
   plan <- NULL
   if (fastml_is_resample_plan(resamples)) {
     plan <- fastml_resample_validate(resamples)
@@ -98,12 +171,18 @@ fastml_guarded_resample_fit <- function(workflow_spec,
     return(NULL)
   }
 
+  index_name <- fastml_guard_select_index_name(splits)
+  bootstrap_resamples <- fastml_guard_is_bootstrap_resamples(resamples, plan)
+
   fold_metrics <- vector("list", length(splits))
 
   for (i in seq_along(splits)) {
     split <- splits[[i]]
 
-    if (fastml_guard_detect_full_analysis(split, original_train_rows)) {
+    in_id <- fastml_guard_extract_in_id(split, index_name = index_name)
+    is_bootstrap_split <- bootstrap_resamples || fastml_guard_is_bootstrap_split(split)
+
+    if (fastml_guard_detect_full_analysis(in_id, original_train_rows, is_bootstrap_split)) {
       stop(
         paste(
           "Detected preprocessing on the full training set during resampling.",
@@ -115,7 +194,12 @@ fastml_guarded_resample_fit <- function(workflow_spec,
     analysis_data <- rsample::analysis(split)
     assessment_data <- rsample::assessment(split)
 
-    fold_fit <- parsnip::fit(workflow_spec, data = analysis_data)
+    fit_args <- list(object = workflow_spec, data = analysis_data)
+    if (!is.null(engine_args) && length(engine_args) > 0) {
+      fold_fit <- call_with_engine_params(parsnip::fit, fit_args, engine_args)
+    } else {
+      fold_fit <- parsnip::fit(workflow_spec, data = analysis_data)
+    }
 
     fold_result <- process_model(
       model_obj = fold_fit,
@@ -134,7 +218,9 @@ fastml_guarded_resample_fit <- function(workflow_spec,
       bootstrap_ci = FALSE,
       bootstrap_samples = 0,
       bootstrap_seed = NULL,
-      at_risk_threshold = at_risk_threshold
+      at_risk_threshold = at_risk_threshold,
+      summaryFunction = summaryFunction,
+      multiclass_auc = multiclass_auc
     )
 
     fold_metrics[[i]] <- fold_result$performance
@@ -154,14 +240,26 @@ fastml_guarded_resample_fit <- function(workflow_spec,
     fold_metrics_df <- fold_metrics_df[, setdiff(names(fold_metrics_df), ".estimator"), drop = FALSE]
     aggregated <- fold_metrics_df %>%
       dplyr::group_by(.data$.metric) %>%
-      dplyr::summarise(.estimate = mean(.data$.estimate, na.rm = TRUE), .groups = "drop")
+      dplyr::summarise(
+        .estimate = mean(.data$.estimate, na.rm = TRUE),
+        n = sum(is.finite(.data$.estimate)),
+        std_dev = stats::sd(.data$.estimate, na.rm = TRUE),
+        std_err = ifelse(n > 0, std_dev / sqrt(n), NA_real_),
+        .groups = "drop"
+      )
   } else {
     if (!".estimator" %in% names(fold_metrics_df)) {
       fold_metrics_df$.estimator <- NA_character_
     }
     aggregated <- fold_metrics_df %>%
       dplyr::group_by(.data$.metric, .data$.estimator) %>%
-      dplyr::summarise(.estimate = mean(.data$.estimate, na.rm = TRUE), .groups = "drop")
+      dplyr::summarise(
+        .estimate = mean(.data$.estimate, na.rm = TRUE),
+        n = sum(is.finite(.data$.estimate)),
+        std_dev = stats::sd(.data$.estimate, na.rm = TRUE),
+        std_err = ifelse(n > 0, std_dev / sqrt(n), NA_real_),
+        .groups = "drop"
+      )
   }
 
   result <- list(

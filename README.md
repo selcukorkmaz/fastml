@@ -35,6 +35,9 @@ In fastml, *“fast” refers to the rapid construction of statistically valid w
 - **Consistent performance evaluation**  
   Metrics such as Accuracy, ROC AUC, Sensitivity, Specificity, Precision, and F1 are computed without leakage.
 
+- **Multiclass ROC AUC averaging**  
+  Macro averaging (tidymodels default) weights each class equally. Set `multiclass_auc = "macro_weighted"` to weight by class prevalence; this can change model rankings on imbalanced data, so keep the choice consistent across runs.
+
 - **Visualization and comparison tools**  
   Built-in plots facilitate comparison across models while preserving statistical validity.
 

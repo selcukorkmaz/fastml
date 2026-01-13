@@ -21,7 +21,8 @@ fastml_compute_holdout_results(
   bootstrap_seed = 1234,
   at_risk_threshold = 0.1,
   precomputed_predictions = NULL,
-  summaryFunction = NULL
+  summaryFunction = NULL,
+  multiclass_auc = "macro"
 )
 }
 \arguments{
@@ -75,6 +76,11 @@ of recomputing. This is mainly used when combining results across engines.}
 
 \item{summaryFunction}{Optional custom classification metric function passed
 through to \code{process_model} for holdout evaluation.}
+
+\item{multiclass_auc}{For multiclass ROC AUC, the averaging method to use:
+`"macro"` (default, tidymodels) or `"macro_weighted"`. Macro weights each
+class equally, while macro_weighted weights by class prevalence and can
+change model rankings on imbalanced data.}
 }
 \value{
 A list with two elements:

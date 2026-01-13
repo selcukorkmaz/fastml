@@ -24,7 +24,8 @@ process_model(
   at_risk_threshold = 0.1,
   metrics = NULL,
   summaryFunction = NULL,
-  precomputed_predictions = NULL
+  precomputed_predictions = NULL,
+  multiclass_auc = "macro"
 )
 }
 \arguments{
@@ -86,6 +87,11 @@ maximum follow-up time used in survival metrics.}
 \item{precomputed_predictions}{Optional data frame or nested list of
 previously generated predictions (per algorithm/engine) to reuse instead
 of re-predicting; primarily used when combining results across engines.}
+
+\item{multiclass_auc}{For multiclass ROC AUC, the averaging method to use:
+`"macro"` (default, tidymodels) or `"macro_weighted"`. Macro weights each
+class equally, while macro_weighted weights by class prevalence and can
+change model rankings on imbalanced data.}
 }
 \value{
 A list with two elements:
@@ -106,6 +112,8 @@ probabilistic outputs when supported by the modeling engine.
 
 - For classification tasks, performance metrics include accuracy, kappa, sensitivity, specificity, precision,
   F1-score, and ROC AUC (if probabilities are available).
+
+- For multiclass ROC AUC, the estimator is controlled by `multiclass_auc`.
 
 - For regression tasks, RMSE, R-squared, and MAE are returned.
 

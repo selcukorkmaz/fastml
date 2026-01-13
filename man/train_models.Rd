@@ -38,7 +38,8 @@ train_models(
   status_col = NULL,
   eval_times = NULL,
   at_risk_threshold = 0.1,
-  audit_env = NULL
+  audit_env = NULL,
+  multiclass_auc = "macro"
 )
 }
 \arguments{
@@ -144,6 +145,11 @@ for survival metrics within guarded resampling.}
 custom preprocessing hooks are executed. Typically supplied by
 \code{fastml()} and should be left as \code{NULL} when calling
 \code{train_models()} directly.}
+
+\item{multiclass_auc}{For multiclass ROC AUC, the averaging method to use:
+`"macro"` (default, tidymodels) or `"macro_weighted"`. Macro weights each
+class equally, while macro_weighted weights by class prevalence and can
+change model rankings on imbalanced data.}
 }
 \value{
 A list of trained model objects.

@@ -13,6 +13,10 @@
 #' @param label The name of the outcome variable (as a character string).
 #' @param event_class For binary classification, specifies which class is considered the positive class:
 #'   `"first"` or `"second"`.
+#' @param multiclass_auc For multiclass ROC AUC, the averaging method to use:
+#'   `"macro"` (default, tidymodels) or `"macro_weighted"`. Macro weights each
+#'   class equally, while macro_weighted weights by class prevalence and can
+#'   change model rankings on imbalanced data.
 #' @param start_col Optional string. The name of the column specifying the
 #'   start time in counting process (e.g., `(start, stop, event)`) survival
 #'   data. Only used when \code{task = "survival"}.
@@ -58,6 +62,8 @@
 #' - For classification tasks, performance metrics include accuracy, kappa, sensitivity, specificity, precision,
 #'   F1-score, and ROC AUC (if probabilities are available).
 #'
+#' - For multiclass ROC AUC, the estimator is controlled by `multiclass_auc`.
+#'
 #' - For regression tasks, RMSE, R-squared, and MAE are returned.
 #' 
 #' - For models with missing prediction lengths, a helpful imputation error is thrown to guide data preprocessing.
@@ -85,7 +91,8 @@ process_model <- function(model_obj,
                           at_risk_threshold = 0.1,
                           metrics = NULL,
                           summaryFunction = NULL,
-                          precomputed_predictions = NULL) {
+                          precomputed_predictions = NULL,
+                          multiclass_auc = "macro") {
   # If the model object is a tuning result, finalize the workflow
   if (inherits(model_obj, "tune_results")) {
     best_params <- tryCatch({
@@ -249,6 +256,7 @@ process_model <- function(model_obj,
     observed_classes <- length(unique(data_metrics$truth))
 
     metric_name <- metric
+    multiclass_auc <- fastml_normalize_multiclass_auc(multiclass_auc)
     build_class_metrics <- function() {
       if (is.null(summaryFunction)) {
         return(yardstick::metric_set(
@@ -388,7 +396,7 @@ process_model <- function(model_obj,
         perf_boot
       }
     } else {
-      # Multiclass classification (using macro averaging)
+      # Multiclass classification (macro metrics; ROC AUC uses configured estimator)
       metrics_class <- build_class_metrics()
       perf_class <- safe_metrics_class(
         data_metrics,
@@ -401,7 +409,7 @@ process_model <- function(model_obj,
         perf_roc_auc <- yardstick::roc_auc(
           data_metrics,
           truth = truth,!!!rlang::syms(prob_cols),
-          estimator = "macro_weighted"
+          estimator = multiclass_auc
         )
         perf <- dplyr::bind_rows(perf_class, perf_roc_auc)
       } else {
@@ -426,7 +434,7 @@ process_model <- function(model_obj,
             suppressWarnings(yardstick::roc_auc(
               df,
               truth = truth,!!!rlang::syms(prob_cols),
-              estimator = "macro_weighted"
+              estimator = multiclass_auc
             )),
             error = function(e) NULL
           )

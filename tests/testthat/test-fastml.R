@@ -684,6 +684,9 @@ test_that("guarded folds avoid performance inflation", {
 
   expect_true(is.numeric(noise_accuracy))
   expect_lt(noise_accuracy, 0.8)
+  expect_true(all(c("n", "std_dev", "std_err") %in% names(guard_metrics)))
+  expect_true(is.numeric(guard_metrics$std_dev))
+  expect_true(is.numeric(guard_metrics$std_err))
   expect_false(any(c(".lower", ".upper", ".n_boot") %in% names(guard_folds)))
 })
 

@@ -570,7 +570,7 @@ get_default_tune_params <- function(algo, train_data, label, engine) {
 #'   }
 #'   If \code{model_obj} is already a fitted workflow, it is used directly.
 #'
-#'   For classification tasks, the function makes class predictions (and probability predictions if \code{engine} is not \code{"LiblineaR"}) and computes performance metrics using functions from the \code{yardstick} package. In binary classification, the positive class is determined based on the \code{event_class} argument and ROC AUC is computed accordingly. For multiclass classification, macro-averaged metrics and ROC AUC (using weighted estimates) are calculated.
+#'   For classification tasks, the function makes class predictions (and probability predictions if \code{engine} is not \code{"LiblineaR"}) and computes performance metrics using functions from the \code{yardstick} package. In binary classification, the positive class is determined based on the \code{event_class} argument and ROC AUC is computed accordingly. For multiclass classification, macro-averaged metrics are reported and ROC AUC uses the \code{multiclass_auc} estimator (default \code{"macro"}; \code{"macro_weighted"} weights by class prevalence).
 #'
 #'   For regression tasks, the function predicts outcomes and computes regression metrics (RMSE, R-squared, and MAE).
 #'
