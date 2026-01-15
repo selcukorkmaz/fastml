@@ -6,6 +6,12 @@
 \usage{
 predict_model.model_fit(x, newdata, type, ...)
 }
+\value{
+Returns the result of \code{predict()} for the underlying parsnip model. The
+output is typically a tibble with \code{.pred} or \code{.pred_*} columns (or
+another prediction object depending on \code{type}), matching the structure
+expected by \pkg{lime}.
+}
 \description{
 Shim for parsnip model objects so that lime's predict_model generic ignores
 unused arguments passed via `...`.

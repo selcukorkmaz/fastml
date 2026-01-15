@@ -56,10 +56,26 @@ Defaults to \code{"dalex"}.}
 for the chosen \code{method}.}
 }
 \value{
-For DALEX-based methods, prints variable importance, model profiles, and SHAP summaries.
-  Other methods return their respective explainer objects (e.g., LIME explanations, ALE plot,
-  surrogate tree, interaction strengths, modelStudio dashboard, fairmodels object, breakdown
-  object, or counterfactual results), usually invisibly after plotting or printing.
+Return value depends on \code{method}:
+\itemize{
+  \item \code{"dalex"}: a list with \code{variable_importance},
+  \code{model_profiles}, and \code{shap_values} (\pkg{DALEX} objects), returned
+  invisibly after printing plots.
+  \item \code{"lime"}: a \code{lime_explanation} data frame.
+  \item \code{"ice"}: a list with \code{data} (pdp partial data frame) and
+  \code{plot} (ggplot).
+  \item \code{"ale"}: an \code{iml::FeatureEffect} object.
+  \item \code{"surrogate"}: an \code{iml::TreeSurrogate} object.
+  \item \code{"interaction"}: an \code{iml::Interaction} object.
+  \item \code{"studio"}: a \pkg{modelStudio} object.
+  \item \code{"fairness"}: a \pkg{fairmodels} object (returned invisibly after
+  plotting).
+  \item \code{"breakdown"}: an \pkg{iBreakDown} object, or \code{NULL} for
+  survival tasks.
+  \item \code{"counterfactual"}: a list from
+  \code{\link{counterfactual_explain}}.
+}
+Most methods print/plot and return their objects invisibly.
 }
 \description{
 Provides model explainability across several backends. With \code{method = "dalex"} it:

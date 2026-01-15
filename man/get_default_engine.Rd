@@ -12,7 +12,9 @@ get_default_engine(algo, task = NULL)
 \item{task}{Optional task type (e.g., \code{"classification"}, \code{"regression"}, or \code{"survival"}). Used to determine defaults that depend on the task.}
 }
 \value{
-A character string containing the default engine name associated with the provided algorithm.
+A length-1 character string (class \code{character}) naming the default engine
+for the requested algorithm and task. The function errors if no default is
+defined.
 }
 \description{
 Returns the default engine corresponding to the specified algorithm.

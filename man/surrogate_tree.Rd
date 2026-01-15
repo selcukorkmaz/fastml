@@ -14,7 +14,9 @@ surrogate_tree(object, maxdepth = 3, ...)
 \item{...}{Additional arguments passed to `iml::TreeSurrogate`.}
 }
 \value{
-An `iml::TreeSurrogate` object.
+An \code{iml::TreeSurrogate} object (class \code{TreeSurrogate}) representing a
+surrogate decision tree that approximates the model. Returned invisibly after
+plotting.
 }
 \description{
 Builds an interpretable tree approximating the behaviour of the underlying

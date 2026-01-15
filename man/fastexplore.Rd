@@ -99,8 +99,27 @@ histograms/boxplots/density plots by label.}
 simpler missingness heatmap is used.}
 }
 \value{
-A list of summaries (tables/tibbles) and plot objects (ggplot/plotly),
-  plus any saved file paths when `save_results`/`render_report` are enabled.
+A list with structured EDA outputs:
+\describe{
+  \item{data_overview}{List of tibbles summarizing dimensions, types, unique
+  values, an optional skimr summary, and a data head.}
+  \item{summary_stats}{Numeric summaries (tibble), or \code{NULL} when no numeric
+  columns exist.}
+  \item{freq_tables}{List of frequency tables for factor/character columns.}
+  \item{missing_data}{Tibble of missing counts and percentages.}
+  \item{duplicated_rows}{Scalar count of duplicated rows.}
+  \item{duplicated_examples}{Data frame sample of duplicates (optional).}
+  \item{class_imbalance}{Table of label frequencies when \code{label} is supplied.}
+  \item{correlation_matrix}{Correlation matrix for numeric columns.}
+  \item{high_corr_pairs}{Tibble of highly correlated pairs (optional).}
+  \item{outlier_summary}{Vector or list describing detected outliers.}
+  \item{normality_tests}{List of normality test results (optional).}
+  \item{plots}{List of ggplot/plotly objects (histograms, boxplots, heatmap,
+  scatterplots, pairwise matrix, missingness, normality, etc.).}
+  \item{saved_paths}{List of paths created when \code{save_results} or
+  \code{render_report} is enabled.}
+}
+All elements are returned in a plain R list (class \code{list}).
 }
 \description{
 `fastexplore()` is an optional, lightweight exploratory data analysis (EDA)

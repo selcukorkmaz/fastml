@@ -24,8 +24,9 @@ compute risk scores.}
 \item{...}{Additional arguments passed to specific methods.}
 }
 \value{
-A numeric vector of risk scores, where higher values indicate
-greater predicted risk.
+A numeric vector (class \code{numeric}) of linear predictors/risk scores with
+length \code{nrow(newdata)}. Higher values indicate greater predicted risk;
+entries may be \code{NA} when a model does not support risk scoring.
 }
 \description{
 Provides a consistent interface for computing linear predictors (risk scores)

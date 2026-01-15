@@ -38,7 +38,8 @@ time-specific Brier scores to display for survival models. When \code{NULL}
 \item{...}{Additional arguments.}
 }
 \value{
-Prints summary of fastml models.
+Invisibly returns the input \code{fastml} object after printing the summary.
+Called primarily for its side effects.
 }
 \description{
 Summarizes the results of machine learning models trained using the `fastml` package.

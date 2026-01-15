@@ -12,7 +12,9 @@ get_best_workflows(models, best_model_name)
 \item{best_model_name}{A named character vector where the names represent algorithm names and the values represent the chosen best engine for each algorithm.}
 }
 \value{
-A named list of workflows corresponding to the best engine for each algorithm. Each list element is named in the format \code{"algorithm (engine)"}.
+A named list (class \code{list}) of workflow objects corresponding to the best
+engine for each algorithm. Elements are named \code{"algorithm (engine)"} and
+may be \code{NULL} when a matching workflow is not found.
 }
 \description{
 Extracts the best workflows from a nested list of model workflows based on the provided best model names.

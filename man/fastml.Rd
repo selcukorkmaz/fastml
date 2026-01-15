@@ -221,7 +221,10 @@ class equally, while macro_weighted weights by class prevalence and can
 change model rankings on imbalanced data.}
 }
 \value{
-An object of class \code{fastml} containing the best model, performance metrics, and other information.
+An object of class \code{fastml} (a list) containing the fitted model workflows,
+selected best model(s), performance metrics, holdout predictions, preprocessing
+recipe, and training metadata. This object is used by \code{predict},
+\code{plot}, and \code{summary}.
 }
 \description{
 Trains and evaluates multiple classification or regression models automatically detecting the task based on the target variable type.

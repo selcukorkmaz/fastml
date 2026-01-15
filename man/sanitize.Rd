@@ -11,8 +11,10 @@ sanitize(x)
 }
 \value{
 \itemize{
-  \item If \code{x} is a data frame: returns a data frame with cleaned column names.
-  \item If \code{x} is a character vector: returns a character vector with cleaned elements.
+  \item If \code{x} is a data frame: returns a data frame (class
+  \code{data.frame}) with cleaned column names.
+  \item If \code{x} is a character vector: returns a character vector (class
+  \code{character}) with cleaned elements.
 }
 }
 \description{

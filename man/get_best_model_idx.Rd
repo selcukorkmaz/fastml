@@ -14,7 +14,9 @@ get_best_model_idx(df, metric, group_cols = c("Model", "Engine"))
 \item{group_cols}{A character vector of column names used for grouping. Defaults to \code{c("Model", "Engine")}.}
 }
 \value{
-A numeric vector of row indices in \code{df} corresponding to groups whose maximum metric equals the overall best metric value.
+An integer vector of row indices in \code{df} identifying the group(s) whose
+best metric value matches the overall optimum. Use these indices to subset the
+performance table for the selected best models.
 }
 \description{
 Identifies and returns the indices of rows in a data frame where the specified metric reaches the overall maximum within groups defined by one or more columns.

@@ -42,8 +42,16 @@ Required for survival tasks when requesting survival curves.}
 \item{...}{Additional arguments (currently unused).}
 }
 \value{
-A vector of predictions, or a named list of predictions (if multiple models are used).
-        If `postprocess_fn` is supplied, its output will be returned instead.
+Output depends on \code{type} and the number of models:
+\itemize{
+  \item Single model: \code{"class"} returns a class vector, \code{"prob"} a
+  probability tibble/data frame, \code{"numeric"} a numeric vector,
+  \code{"survival"} a numeric matrix (rows = observations, cols = times), and
+  \code{"risk"} a numeric vector of linear predictors.
+  \item Multiple models: a named list of the same structures, with class
+  \code{fastml_prediction}.
+}
+If \code{postprocess_fn} is supplied, its output is returned instead.
 }
 \description{
 Generates predictions from a trained `fastml` object on new data.

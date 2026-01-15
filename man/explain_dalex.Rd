@@ -34,7 +34,17 @@ explain_dalex(
 }}
 }
 \value{
-Invisibly returns a list with variable importance, optional model profiles and SHAP values.
+Invisibly returns a list with:
+\describe{
+  \item{variable_importance}{A \pkg{DALEX} \code{model_parts} object (or a named
+  list of them when multiple explainers are used) describing permutation-based
+  feature importance.}
+  \item{model_profiles}{A \pkg{DALEX} \code{model_profile} object (or list) when
+  \code{features} are supplied; otherwise \code{NULL}.}
+  \item{shap_values}{A \pkg{DALEX} \code{predict_parts} object (or list) with
+  SHAP contributions for the sampled observations.}
+}
+These objects can be plotted or inspected to interpret the fitted model.
 }
 \description{
 Creates a DALEX explainer and computes permutation based variable importance,

@@ -96,9 +96,13 @@ change model rankings on imbalanced data.}
 \value{
 A list with two elements:
 \describe{
-  \item{performance}{A tibble with computed performance metrics.}
-  \item{predictions}{A tibble with predicted values and corresponding truth values, and probabilities (if applicable).}
+  \item{performance}{A tibble of holdout metrics, including \code{.metric},
+  \code{.estimate}, and optional confidence interval columns.}
+  \item{predictions}{A tibble with observed outcomes and predictions (class,
+  numeric, survival, and/or probability columns depending on \code{task}).}
 }
+The return value is a plain list (class \code{list}) used by
+\code{fastml_compute_holdout_results}.
 }
 \description{
 This function processes a fitted model or a tuning result, finalizes the model if tuning was used,

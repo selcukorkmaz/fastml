@@ -152,7 +152,10 @@ class equally, while macro_weighted weights by class prevalence and can
 change model rankings on imbalanced data.}
 }
 \value{
-A list of trained model objects.
+A named list (class \code{list}) of trained model objects. The top level is
+keyed by algorithm name and may contain nested engine lists. Elements are
+typically \pkg{workflows} objects, \pkg{tune} results, or native survival
+objects used later by \code{fastml()}.
 }
 \description{
 Trains specified machine learning algorithms on the preprocessed training data.

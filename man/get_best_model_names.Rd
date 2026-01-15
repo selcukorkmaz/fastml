@@ -11,7 +11,8 @@ get_best_model_names(models)
 Each workflow should be compatible with \code{tune::extract_fit_parsnip}.}
 }
 \value{
-A named character vector. The names of the vector correspond to the algorithm names, and the values represent the chosen best engine name for that algorithm.
+A named character vector (class \code{character}) mapping algorithm names to the
+selected best engine name for each algorithm.
 }
 \description{
 Extracts and returns the best engine names from a named list of model workflows.

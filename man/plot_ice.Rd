@@ -14,7 +14,12 @@ plot_ice(object, features, ...)
 \item{...}{Additional arguments passed to `pdp::partial`.}
 }
 \value{
-A list with two elements: `data` (the ICE data frame) and `plot` (the ggplot object).
+A list (class \code{list}) with two elements:
+\describe{
+  \item{data}{A \code{pdp::partial} data frame containing ICE curves.}
+  \item{plot}{A ggplot object rendering the ICE curves.}
+}
+Returned invisibly after plotting.
 }
 \description{
 Generates Individual Conditional Expectation (ICE) plots for selected features

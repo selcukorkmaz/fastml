@@ -22,7 +22,8 @@ get_default_params(algo, task, num_predictors = NULL, engine = NULL)
 \item{engine}{An optional character string specifying the engine to use. If not provided, a default engine is chosen where applicable.}
 }
 \value{
-A list of default parameter settings for the specified algorithm. If the algorithm is not recognized, the function returns \code{NULL}.
+A named list (class \code{list}) of default parameter settings for the specified
+algorithm, or \code{NULL} when no defaults are defined.
 }
 \description{
 Returns a list of default tuning parameters for the specified algorithm based on the task type, number of predictors, and engine.

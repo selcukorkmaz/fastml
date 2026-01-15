@@ -10,7 +10,9 @@ flatten_and_rename_models(models)
 \item{models}{A nested list of models. The outer list should have names. If an inner element is a named list, the names will be combined with the outer name in the format \code{"outer_name (inner_name)"}.}
 }
 \value{
-A flattened list with each element renamed according to its original outer and inner list names.
+A named list (class \code{list}) containing the flattened model objects. Names
+combine outer and inner list names in the format \code{"outer (inner)"} so the
+returned elements can be referenced unambiguously.
 }
 \description{
 Flattens a nested list of models and renames the elements by combining the outer and inner list names.

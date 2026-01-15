@@ -10,7 +10,9 @@ get_engine_names(models)
 \item{models}{A list where each element is a list of model workflows. Each workflow is expected to contain a fitted model that can be processed with \code{tune::extract_fit_parsnip}.}
 }
 \value{
-A list of character vectors. Each vector contains the unique engine names extracted from the corresponding element of \code{models}.
+A list (class \code{list}) of character vectors. Each element contains the
+unique engine names extracted from the corresponding entry in \code{models},
+keyed by algorithm name.
 }
 \description{
 Extracts and returns a list of unique engine names from a list of model workflows.

@@ -10,7 +10,8 @@ get_model_engine_names(models)
 \item{models}{A nested list of model workflows. Each inner list should contain model objects from which a fitted model can be extracted using \code{tune::extract_fit_parsnip}.}
 }
 \value{
-A named character vector where the names correspond to algorithm names (e.g., \code{"rand_forest"}, \code{"logistic_reg"}) and the values correspond to the associated engine names (e.g., \code{"ranger"}, \code{"glm"}).
+A named character vector (class \code{character}) mapping algorithm names (e.g.,
+\code{"rand_forest"}) to the associated engine names (e.g., \code{"ranger"}).
 }
 \description{
 Extracts and returns a named vector mapping algorithm names to engine names from a nested list of model workflows.

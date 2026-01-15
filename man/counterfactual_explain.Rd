@@ -35,9 +35,16 @@ resulting profiles for classification tasks.}
 \item{...}{Additional arguments passed to `DALEX::predict_profile`.}
 }
 \value{
-A list (returned invisibly) containing the DALEX profile, filtered
-  lines/points when `positive_class` is supplied, and the plotted object if
-  rendering succeeds.
+A list (returned invisibly) with:
+\describe{
+  \item{counterfactuals}{A \code{ceteris_paribus_explainer} object (data frame)
+  from \pkg{DALEX}/\pkg{ingredients} containing the what-if profiles for each
+  numeric feature.}
+  \item{profile}{Alias of \code{counterfactuals}.}
+  \item{plot}{A ggplot object of the profile, or \code{NULL} if plotting failed.}
+}
+The profiles describe how the model prediction changes as each numeric feature
+is varied around the supplied observation.
 }
 \description{
 Uses DALEX ceteris-paribus profiles (`predict_profile`) to compute

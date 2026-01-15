@@ -18,7 +18,9 @@ explain_lime(object, new_observation, n_features = 5, n_labels = 1, ...)
 \item{...}{Additional arguments passed to `lime::explain`.}
 }
 \value{
-An object produced by `lime::explain`.
+A data frame of class \code{lime_explanation} produced by
+\code{lime::explain}, describing feature contributions for the supplied
+observation(s). Returned invisibly after plotting.
 }
 \description{
 Creates a `lime` explainer using the processed training data stored in the

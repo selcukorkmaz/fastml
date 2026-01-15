@@ -16,7 +16,8 @@ get_default_tune_params(algo, train_data, label, engine)
 \item{engine}{A character string specifying the engine to be used for the algorithm. Different engines may have different tuning parameter ranges.}
 }
 \value{
-A list of tuning parameter ranges for the specified algorithm. If no tuning parameters are defined for the given algorithm, the function returns \code{NULL}.
+A named list (class \code{list}) of tuning parameter ranges for the specified
+algorithm, or \code{NULL} when no tuning defaults are available.
 }
 \description{
 Returns a list of default tuning parameter ranges for a specified algorithm based on the provided training data, outcome label, and engine.

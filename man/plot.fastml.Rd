@@ -29,6 +29,11 @@ generating certain plots (e.g., ROC curves). Defaults to \code{"best"}.}
 
 \item{...}{Additional arguments (currently unused).}
 }
+\value{
+Invisibly returns the input \code{fastml} object after drawing the requested
+plots. The value is returned for chaining; plots are rendered to the active
+graphics device.
+}
 \description{
 \code{plot.fastml} produces visual diagnostics for a trained \code{fastml} object.
 }
