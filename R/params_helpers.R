@@ -541,6 +541,80 @@ get_default_tune_params <- function(algo, train_data, label, engine) {
          NULL)
 }
 
+#' Get Default Parameters with Transparency Warnings
+#'
+#' Wrapper around \code{get_default_params} that optionally warns when fastml's
+#' default parameters differ from parsnip/engine defaults.
+#'
+#' @param algo Algorithm name.
+#' @param task Task type.
+#' @param num_predictors Number of predictors (optional).
+#' @param engine Engine name (optional).
+#' @param warn_param_defaults Logical; if TRUE, warn about parameter differences.
+#' @param verbose Logical; if TRUE, print parameter selections.
+#'
+#' @return A list of default parameters.
+#'
+#' @keywords internal
+#' @export
+get_default_params_with_warnings <- function(algo, task, num_predictors = NULL,
+                                             engine = NULL, warn_param_defaults = TRUE,
+                                             verbose = FALSE) {
+  fastml_params <- get_default_params(algo, task, num_predictors, engine)
+
+  if (is.null(fastml_params)) {
+    return(fastml_params)
+  }
+
+  if (warn_param_defaults || verbose) {
+    parsnip_params <- get_parsnip_default_params(algo, engine, task)
+
+    if (!is.null(parsnip_params)) {
+      differences <- list()
+      common_params <- intersect(names(fastml_params), names(parsnip_params))
+
+      for (param in common_params) {
+        fastml_val <- fastml_params[[param]]
+        parsnip_val <- parsnip_params[[param]]
+
+        # Skip NULL comparisons
+        if (is.null(fastml_val) && is.null(parsnip_val)) next
+
+        # Check if different
+        if (is.null(fastml_val) != is.null(parsnip_val) ||
+            (!is.null(fastml_val) && !isTRUE(all.equal(fastml_val, parsnip_val)))) {
+          differences[[param]] <- list(fastml = fastml_val, parsnip = parsnip_val)
+        }
+      }
+
+      if (length(differences) > 0) {
+        diff_msgs <- vapply(names(differences), function(p) {
+          d <- differences[[p]]
+          f_str <- if (is.null(d$fastml)) "NULL" else as.character(d$fastml)
+          p_str <- if (is.null(d$parsnip)) "engine-default" else as.character(d$parsnip)
+          sprintf("%s=%s (parsnip: %s)", p, f_str, p_str)
+        }, character(1))
+
+        msg <- sprintf("[%s/%s] fastml parameter defaults: %s",
+                       algo, engine, paste(diff_msgs, collapse = ", "))
+
+        if (verbose) {
+          message(msg)
+        } else if (warn_param_defaults) {
+          # Only warn once per algo/engine combination
+          warn_key <- paste0("params_", algo, "_", engine)
+          if (!exists(warn_key, envir = .fastml_warned_defaults)) {
+            warning(msg, "\nUse tune_params to override or engine_params for fixed values.", call. = FALSE)
+            assign(warn_key, TRUE, envir = .fastml_warned_defaults)
+          }
+        }
+      }
+    }
+  }
+
+  fastml_params
+}
+
 #' Process Model and Compute Performance Metrics
 #'
 #' Finalizes a tuning result or utilizes an already fitted workflow to generate predictions on test data and compute performance metrics.

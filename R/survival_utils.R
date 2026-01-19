@@ -24,13 +24,15 @@
 #'   `recoded`, a logical flag indicating whether a non-standard encoding was
 #'   detected.
 fastml_normalize_survival_status <- function(status_vec, reference_length = NULL) {
-
   if (is.null(reference_length)) {
     reference_length <- length(status_vec)
   }
 
   if (is.null(status_vec)) {
-    return(list(status = rep(0, reference_length), recoded = FALSE))
+    stop(
+      "Survival status column is missing. Provide a 0/1 event indicator (0=censored, 1=event).",
+      call. = FALSE
+    )
   }
 
   status_raw <- status_vec
@@ -39,39 +41,18 @@ fastml_normalize_survival_status <- function(status_vec, reference_length = NULL
     status_raw <- status_raw[[1]]
   }
 
-  was_recode <- FALSE
-
-  if (is.factor(status_raw)) {
-    status_raw <- as.character(status_raw)
-    was_recode <- TRUE
+  if (is.factor(status_raw) || is.character(status_raw)) {
+    stop(
+      paste(
+        "Survival status must be coded as 0/1 (0=censored, 1=event) or logical.",
+        "Please recode the status column explicitly before modeling."
+      ),
+      call. = FALSE
+    )
   }
 
-  if (is.character(status_raw)) {
-    numeric_candidate <- suppressWarnings(as.numeric(status_raw))
-    if (!all(is.na(numeric_candidate[!is.na(status_raw)]))) {
-      status_num <- numeric_candidate
-      was_recode <- TRUE
-    } else {
-      unique_vals <- unique(status_raw[!is.na(status_raw)])
-      if (length(unique_vals) == 0) {
-        status_num <- rep(NA_real_, length(status_raw))
-      } else {
-        lower_vals <- tolower(unique_vals)
-        event_keywords <- c("event", "dead", "death", "fail", "failed", "failure",
-                            "yes", "true", "deceased")
-        keyword_idx <- which(lower_vals %in% event_keywords)
-        if (length(keyword_idx) == 0) {
-          event_label <- unique_vals[length(unique_vals)]
-        } else {
-          event_label <- unique_vals[keyword_idx[length(keyword_idx)]]
-        }
-        status_num <- ifelse(is.na(status_raw), NA_real_,
-                             ifelse(tolower(status_raw) == tolower(event_label), 1, 0))
-      }
-      return(list(status = rep_len(ifelse(is.na(status_num), 0, status_num),
-                                   reference_length),
-                  recoded = TRUE))
-    }
+  if (is.logical(status_raw)) {
+    status_num <- as.integer(status_raw)
   } else {
     status_num <- as.numeric(status_raw)
   }
@@ -80,29 +61,47 @@ fastml_normalize_survival_status <- function(status_vec, reference_length = NULL
     status_num <- rep_len(status_num, reference_length)
   }
 
+  if (anyNA(status_num)) {
+    stop(
+      "Survival status contains missing values. Remove rows with missing status before modeling.",
+      call. = FALSE
+    )
+  }
+
   finite_vals <- sort(unique(status_num[is.finite(status_num)]))
   if (length(finite_vals) == 0) {
-    return(list(status = rep(0, reference_length), recoded = FALSE))
+    stop("Survival status is empty after cleaning. Provide a 0/1 event indicator.", call. = FALSE)
   }
 
-  recoded_flag <- was_recode || !all(finite_vals %in% c(0, 1))
-
-  status_out <- rep(0, reference_length)
-
-  if (length(finite_vals) == 1) {
-    if (finite_vals > 0) {
-      status_out[!is.na(status_num)] <- 1
-    }
-    return(list(status = status_out, recoded = recoded_flag))
+  if (!all(finite_vals %in% c(0, 1))) {
+    stop(
+      paste(
+        "Survival status must be coded as 0/1 (0=censored, 1=event) or logical.",
+        "Please recode the status column explicitly before modeling."
+      ),
+      call. = FALSE
+    )
   }
 
-  if (any(finite_vals == 0)) {
-    threshold <- 0
-  } else {
-    threshold <- finite_vals[1]
+  list(status = as.integer(status_num), recoded = FALSE)
+}
+
+fastml_normalize_survival_convention <- function(convention) {
+  if (is.null(convention) || length(convention) == 0 || is.na(convention[[1]])) {
+    return("fastml")
   }
 
-  status_out[!is.na(status_num) & status_num > threshold] <- 1
-
-  list(status = status_out, recoded = recoded_flag)
+  convention <- tolower(as.character(convention[[1]]))
+  allowed <- c("fastml", "tidymodels")
+  if (!convention %in% allowed) {
+    stop(
+      sprintf(
+        "Invalid survival_metric_convention '%s'. Choose one of: %s.",
+        convention,
+        paste(allowed, collapse = ", ")
+      ),
+      call. = FALSE
+    )
+  }
+  convention
 }

@@ -5,7 +5,7 @@
 **fastml** is an R package for training, evaluating, and comparing machine learning models with a guarded resampling workflow.  
 Rather than introducing new learning algorithms, fastml focuses on **reducing leakage risk** by keeping preprocessing, model fitting, and evaluation aligned within supported resampling paths.
 
-In fastml, *“fast” refers to the rapid construction of statistically valid workflows*, not to computational shortcuts. By eliminating entire classes of user-induced errors—most notably preprocessing leakage—fastml allows practitioners to obtain reliable performance estimates with minimal configuration.
+In fastml, *fast* refers to the rapid construction of statistically valid workflows, not to computational shortcuts. By eliminating entire classes of user-induced errors - most notably preprocessing leakage - fastml allows practitioners to obtain reliable performance estimates with minimal configuration.
 
 ## Core Principles
 
@@ -105,9 +105,9 @@ plot(fit, type = "calibration")
 
 Hyperparameter tuning is supported via:
 
-- `grid` — regular grid search
+- `grid` - regular grid search
 
-- `bayes` — Bayesian optimization
+- `bayes` - Bayesian optimization
 
 ```r
 fastml(
@@ -164,7 +164,7 @@ It summarizes distributions, missingness, correlations, and basic structure with
 fastexplore(iris, label = "Species")
 ```
 
-This function is decoupled from fastml’s guarded resampling core and does not influence model evaluation unless its outputs are explicitly used in later modeling calls.
+This function is decoupled from fastml's guarded resampling core and does not influence model evaluation unless its outputs are explicitly used in later modeling calls.
 
 ## Scope
 

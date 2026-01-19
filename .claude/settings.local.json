@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(Rscript:*)",
+      "Bash(find:*)",
+      "Bash(grep:*)",
+      "Bash(where:*)",
+      "Bash(where Rscript)"
+    ]
+  }
+}

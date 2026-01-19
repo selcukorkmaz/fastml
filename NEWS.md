@@ -24,6 +24,8 @@
 * Strengthened recipe validation and sandboxing to harden preprocessing isolation and reduce user-induced leakage.
 * Improved handling of novel and missing categorical levels during prediction.
 * Integrated resampling metadata more tightly into training workflows and summaries.
+* Added `survival_metric_convention` to align survival evaluation defaults with tidymodels conventions when desired.
+* Parallel tuning now uses explicit RNG seeding to keep results stable across core counts.
 
 ## Bug fixes
 

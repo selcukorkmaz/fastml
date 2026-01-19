@@ -20,6 +20,7 @@ fastml_compute_holdout_results(
   bootstrap_samples = 500,
   bootstrap_seed = 1234,
   at_risk_threshold = 0.1,
+  survival_metric_convention = "fastml",
   precomputed_predictions = NULL,
   summaryFunction = NULL,
   multiclass_auc = "macro"
@@ -70,6 +71,13 @@ in metric estimation.}
 risk to define \eqn{t_{max}} when computing survival metrics such as the
 integrated Brier score.}
 
+\item{survival_metric_convention}{Character string specifying which survival
+metric conventions to follow. `"fastml"` (default) uses fastml's internal
+defaults for evaluation horizons and t_max. `"tidymodels"` uses
+`eval_times` as the explicit evaluation grid and applies yardstick-style
+Brier/IBS normalization; when `eval_times` is `NULL`, time-dependent Brier
+metrics are omitted.}
+
 \item{precomputed_predictions}{Optional data frame or nested list of
 previously generated predictions (per algorithm/engine) to reuse instead
 of recomputing. This is mainly used when combining results across engines.}
@@ -85,15 +93,9 @@ change model rankings on imbalanced data.}
 \value{
 A list with two elements:
   \describe{
-    \item{performance}{A named list (possibly nested by engine) of tibbles with
-    holdout metrics. Each tibble contains \code{.metric} and
-    \code{.estimate}, plus confidence interval columns when requested.}
-    \item{predictions}{A named list (possibly nested by engine) of data frames
-    containing the observed outcomes and corresponding predictions (class,
-    numeric, survival, or probability columns as available).}
+    \item{performance}{A named list of performance metric tibbles for each model.}
+    \item{predictions}{A named list of data frames with columns including truth, predictions, and probabilities per model.}
   }
-The returned object is a plain list (class \code{list}) that mirrors the model
-structure passed in \code{models}.
 }
 \description{
 Evaluates the trained models on the test data and computes performance metrics.

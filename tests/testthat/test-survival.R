@@ -17,6 +17,7 @@ test_that("xgboost AFT survival model trains and evaluates", {
   skip_if_not_installed("xgboost")
 
   data(heart, package = "survival")
+  heart$event <- ifelse(heart$event == 1, 1, 0)
   set.seed(123)
 
   res <- suppressWarnings(
@@ -48,6 +49,7 @@ test_that("xgboost AFT survival model trains and evaluates", {
 
 test_that("cox_ph survival model trains and evaluates", {
   data(cancer, package = "survival")
+  cancer$status <- ifelse(cancer$status == 2, 1, 0)
 
   res <- suppressWarnings(
     fastml(
@@ -122,6 +124,7 @@ test_that("cox_ph survival model trains and evaluates", {
 
 test_that("survival resampling results omit .estimator", {
   data(cancer, package = "survival")
+  cancer$status <- ifelse(cancer$status == 2, 1, 0)
 
   res <- suppressWarnings(
     fastml(
@@ -152,6 +155,7 @@ test_that("penalized Cox survival model trains and evaluates", {
   skip_if_not_installed("glmnet")
 
   data(cancer, package = "survival")
+  cancer$status <- ifelse(cancer$status == 2, 1, 0)
 
   # Suppress expected warnings about status recoding and NA removal
   suppressWarnings({
@@ -191,6 +195,7 @@ test_that("penalized Cox survival model trains and evaluates", {
 
 test_that("stratified Cox summary reports strata without coefficients", {
   data(cancer, package = "survival")
+  cancer$status <- ifelse(cancer$status == 2, 1, 0)
   cancer$strata_inst <- factor(cancer$inst)
   set.seed(123)
   res <- suppressWarnings(
@@ -234,6 +239,7 @@ test_that("stratified Cox summary reports strata without coefficients", {
 
 test_that("survreg survival model returns Brier scores", {
   data(cancer, package = "survival")
+  cancer$status <- ifelse(cancer$status == 2, 1, 0)
   res <- suppressWarnings(
     fastml(
       data = cancer,
@@ -264,6 +270,7 @@ test_that("parametric_surv flexsurv integration returns survival metrics", {
 
   suppressWarnings(data(lung, package = "survival"))
   lung_surv <- subset(lung, select = c(time, status, age, sex, ph.ecog))
+  lung_surv$status <- ifelse(lung_surv$status == 2, 1, 0)
   lung_surv <- stats::na.omit(lung_surv)
   lung_surv$sex <- factor(lung_surv$sex, levels = 1:2, labels = c("male", "female"))
 
@@ -305,6 +312,7 @@ test_that("parametric_surv flexsurv integration returns survival metrics", {
 
   suppressWarnings(data(lung, package = "survival"))
   lung_surv <- subset(lung, select = c(time, status, age, sex, ph.ecog))
+  lung_surv$status <- ifelse(lung_surv$status == 2, 1, 0)
   lung_surv <- stats::na.omit(lung_surv)
   lung_surv$sex <- factor(lung_surv$sex, levels = 1:2, labels = c("male", "female"))
 
@@ -347,6 +355,7 @@ test_that("piecewise_exp flexsurv generates default knots when none supplied", {
 
   lung <- survival::lung
   lung_surv <- subset(lung, select = c(time, status, age, sex, ph.ecog))
+  lung_surv$status <- ifelse(lung_surv$status == 2, 1, 0)
   lung_surv <- stats::na.omit(lung_surv)
   lung_surv$sex <- factor(lung_surv$sex, levels = 1:2, labels = c("male", "female"))
 
@@ -379,6 +388,7 @@ test_that("survival random forest with aorsf engine trains when available", {
   skip_if_not_installed("censored")
 
   data(cancer, package = "survival")
+  cancer$status <- ifelse(cancer$status == 2, 1, 0)
 
   set.seed(123)
   res <- suppressWarnings(

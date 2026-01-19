@@ -45,6 +45,12 @@
 #' @param at_risk_threshold Numeric value between 0 and 1 defining the minimum
 #'   proportion of subjects required to remain at risk when determining the
 #'   maximum follow-up time used in survival metrics.
+#' @param survival_metric_convention Character string specifying which survival
+#'   metric conventions to follow. `"fastml"` (default) uses fastml's internal
+#'   defaults for evaluation horizons and t_max. `"tidymodels"` uses
+#'   `eval_times_user` as the explicit evaluation grid and applies
+#'   yardstick-style Brier/IBS normalization; when `eval_times_user` is `NULL`,
+#'   time-dependent Brier metrics are omitted.
 #' @param precomputed_predictions Optional data frame or nested list of
 #'   previously generated predictions (per algorithm/engine) to reuse instead
 #'   of re-predicting; primarily used when combining results across engines.
@@ -89,6 +95,7 @@ process_model <- function(model_obj,
                           bootstrap_samples = 500,
                           bootstrap_seed = 1234,
                           at_risk_threshold = 0.1,
+                          survival_metric_convention = "fastml",
                           metrics = NULL,
                           summaryFunction = NULL,
                           precomputed_predictions = NULL,
@@ -448,6 +455,7 @@ process_model <- function(model_obj,
 
     perf <- add_bootstrap_ci(perf, data_metrics, compute_boot_perf)
   } else if (task == "survival") {
+    survival_metric_convention <- fastml_normalize_survival_convention(survival_metric_convention)
     status_warning_emitted <- FALSE
     normalize_status <- function(status_vec, reference_length) {
       res <- fastml_normalize_survival_status(status_vec, reference_length)
@@ -957,85 +965,122 @@ process_model <- function(model_obj,
 
     t0 <- stats::median(train_times, na.rm = TRUE)
     threshold <- min(max(at_risk_threshold, 0.01), 0.5)
-    tau_max <- compute_tau_limit(obs_time, threshold)
-    if (!is.finite(tau_max) || tau_max <= 0) {
-      tau_max <- suppressWarnings(max(obs_time[is.finite(obs_time)], na.rm = TRUE))
-    }
-    if (!is.finite(tau_max) || tau_max <= 0) {
-      tau_max <- NA_real_
-    }
 
-    digits_round <- determine_round_digits(obs_time)
-    if (is.null(eval_times_user)) {
-      eval_horizons <- unique(round(c(
-        stats::median(obs_time, na.rm = TRUE),
-        as.numeric(
-          stats::quantile(obs_time, 0.75, na.rm = TRUE, names = FALSE)
+    if (identical(survival_metric_convention, "tidymodels")) {
+      eval_horizons <- if (is.null(eval_times_user)) {
+        numeric(0)
+      } else {
+        sort(unique(as.numeric(eval_times_user)))
+      }
+      eval_horizons <- eval_horizons[is.finite(eval_horizons) &
+                                       eval_horizons >= 0]
+      if (length(eval_horizons) == 0) {
+        warning(
+          "No valid eval_times supplied; time-dependent Brier metrics will be omitted.",
+          call. = FALSE
         )
-      ), digits_round))
-      eval_horizons <- eval_horizons[is.finite(eval_horizons) &
-                                       eval_horizons > 0]
+      }
+      brier_times <- eval_horizons
+      brier_metric_names <- if (length(brier_times) > 0) {
+        paste0("brier_t", seq_along(brier_times))
+      } else {
+        character(0)
+      }
+      brier_time_map <- if (length(brier_times) > 0) {
+        stats::setNames(brier_times, brier_metric_names)
+      } else {
+        numeric(0)
+      }
+      eval_times <- brier_times
+      tau_max <- if (length(eval_times) > 0) {
+        max(eval_times)
+      } else {
+        suppressWarnings(max(obs_time[is.finite(obs_time)], na.rm = TRUE))
+      }
+      if (!is.finite(tau_max) || tau_max <= 0) {
+        tau_max <- NA_real_
+      }
     } else {
-      eval_horizons <- sort(unique(as.numeric(eval_times_user)))
-      eval_horizons <- eval_horizons[is.finite(eval_horizons) &
-                                       eval_horizons > 0]
-    }
-    if (length(eval_horizons) > 0 && is.finite(tau_max)) {
-      too_late <- eval_horizons > tau_max
-      if (any(too_late)) {
-        eval_horizons <- eval_horizons[!too_late]
-        if (length(eval_horizons) == 0) {
-          warning(
-            "All requested eval_times exceed t_max; horizon-specific Brier scores will be omitted."
+      tau_max <- compute_tau_limit(obs_time, threshold)
+      if (!is.finite(tau_max) || tau_max <= 0) {
+        tau_max <- suppressWarnings(max(obs_time[is.finite(obs_time)], na.rm = TRUE))
+      }
+      if (!is.finite(tau_max) || tau_max <= 0) {
+        tau_max <- NA_real_
+      }
+
+      digits_round <- determine_round_digits(obs_time)
+      if (is.null(eval_times_user)) {
+        eval_horizons <- unique(round(c(
+          stats::median(obs_time, na.rm = TRUE),
+          as.numeric(
+            stats::quantile(obs_time, 0.75, na.rm = TRUE, names = FALSE)
           )
-        } else {
-          warning(
-            "Some requested eval_times exceed t_max and were removed for Brier score computation."
-          )
+        ), digits_round))
+        eval_horizons <- eval_horizons[is.finite(eval_horizons) &
+                                         eval_horizons > 0]
+      } else {
+        eval_horizons <- sort(unique(as.numeric(eval_times_user)))
+        eval_horizons <- eval_horizons[is.finite(eval_horizons) &
+                                         eval_horizons > 0]
+      }
+      if (length(eval_horizons) > 0 && is.finite(tau_max)) {
+        too_late <- eval_horizons > tau_max
+        if (any(too_late)) {
+          eval_horizons <- eval_horizons[!too_late]
+          if (length(eval_horizons) == 0) {
+            warning(
+              "All requested eval_times exceed t_max; horizon-specific Brier scores will be omitted."
+            )
+          } else {
+            warning(
+              "Some requested eval_times exceed t_max and were removed for Brier score computation."
+            )
+          }
         }
       }
-    }
-    brier_times <- eval_horizons
-    brier_metric_names <- if (length(brier_times) > 0) {
-      paste0("brier_t", seq_along(brier_times))
-    } else{
-      character(0)
-    }
-    brier_time_map <- if (length(brier_times) > 0) {
-      stats::setNames(brier_times, brier_metric_names)
-    } else{
-      numeric(0)
-    }
-
-    combined_times <- c(train_times, obs_time)
-    combined_times <- combined_times[is.finite(combined_times) &
-                                       combined_times > 0]
-    if (length(combined_times) > 0) {
-      eval_times <- sort(unique(combined_times))
-      if (length(eval_times) > 200) {
-        probs <- seq(0, 1, length.out = 200)
-        eval_times <- sort(unique(as.numeric(
-          stats::quantile(
-            eval_times,
-            probs = probs,
-            na.rm = TRUE,
-            type = 1
-          )
-        )))
+      brier_times <- eval_horizons
+      brier_metric_names <- if (length(brier_times) > 0) {
+        paste0("brier_t", seq_along(brier_times))
+      } else {
+        character(0)
       }
-    } else {
-      eval_times <- numeric(0)
-    }
-    special_points <- c(brier_times, tau_max, t0)
-    special_points <- special_points[is.finite(special_points) &
-                                       special_points > 0]
-    eval_times <- sort(unique(c(eval_times, special_points)))
-    if (is.finite(tau_max)) {
-      eval_times <- eval_times[eval_times <= tau_max + 1e-08]
-    }
-    if (length(eval_times) == 0 &&
-        is.finite(tau_max) && tau_max > 0) {
-      eval_times <- tau_max
+      brier_time_map <- if (length(brier_times) > 0) {
+        stats::setNames(brier_times, brier_metric_names)
+      } else {
+        numeric(0)
+      }
+
+      combined_times <- c(train_times, obs_time)
+      combined_times <- combined_times[is.finite(combined_times) &
+                                         combined_times > 0]
+      if (length(combined_times) > 0) {
+        eval_times <- sort(unique(combined_times))
+        if (length(eval_times) > 200) {
+          probs <- seq(0, 1, length.out = 200)
+          eval_times <- sort(unique(as.numeric(
+            stats::quantile(
+              eval_times,
+              probs = probs,
+              na.rm = TRUE,
+              type = 1
+            )
+          )))
+        }
+      } else {
+        eval_times <- numeric(0)
+      }
+      special_points <- c(brier_times, tau_max, t0)
+      special_points <- special_points[is.finite(special_points) &
+                                         special_points > 0]
+      eval_times <- sort(unique(c(eval_times, special_points)))
+      if (is.finite(tau_max)) {
+        eval_times <- eval_times[eval_times <= tau_max + 1e-08]
+      }
+      if (length(eval_times) == 0 &&
+          is.finite(tau_max) && tau_max > 0) {
+        eval_times <- tau_max
+      }
     }
 
     censor_eval_test <- create_censor_eval(obs_time, status_event)
@@ -1431,6 +1476,12 @@ process_model <- function(model_obj,
     }
 
     risk_group <- assign_risk_group(risk)
+    ibrier_normalize <- if (identical(survival_metric_convention, "tidymodels")) {
+      "n"
+    } else {
+      "non_missing"
+    }
+    ibrier_include_zero <- !identical(survival_metric_convention, "tidymodels")
 
     ibs_curve_full <- rep(NA_real_, length(eval_times))
     ibs_point <- NA_real_
@@ -1446,9 +1497,15 @@ process_model <- function(model_obj,
                                      obs_time,
                                      status_event,
                                      tau_max,
-                                     censor_eval_test)
+                                     censor_eval_test,
+                                     normalize_by = ibrier_normalize,
+                                     include_zero = ibrier_include_zero)
       ibs_point <- ibs_res_full$ibs
       ibs_curve_full <- ibs_res_full$curve
+      if (identical(survival_metric_convention, "tidymodels") &&
+          length(eval_times) < 2) {
+        ibs_point <- NA_real_
+      }
       brier_time_values <- map_brier_values(ibs_curve_full, eval_times, brier_times)
       rmst_diff <- compute_rmst_difference(
         obs_time,
@@ -1584,9 +1641,15 @@ process_model <- function(model_obj,
                                       obs_sub,
                                       status_sub,
                                       tau_max,
-                                      censor_eval_test)
+                                      censor_eval_test,
+                                      normalize_by = ibrier_normalize,
+                                      include_zero = ibrier_include_zero)
         ibs_sub <- clamp01(ibs_sub_res$ibs)
         curve_sub <- ibs_sub_res$curve
+        if (identical(survival_metric_convention, "tidymodels") &&
+            length(eval_times) < 2) {
+          ibs_sub <- NA_real_
+        }
       }
       brier_sub <- map_brier_values(curve_sub, eval_times, brier_times)
       if (length(brier_sub) > 0) {
@@ -1682,6 +1745,7 @@ process_model <- function(model_obj,
     attr(perf, "brier_times") <- brier_time_map
     attr(perf, "t_max") <- tau_max
     attr(perf, "at_risk_threshold") <- threshold
+    attr(perf, "survival_metric_convention") <- survival_metric_convention
     attr(data_metrics, "eval_times") <- if (limited_metrics)
       numeric(0)
     else
@@ -1694,6 +1758,7 @@ process_model <- function(model_obj,
       attr(data_metrics, "brier_times") <- brier_time_map
     }
     attr(data_metrics, "t_max") <- tau_max
+    attr(data_metrics, "survival_metric_convention") <- survival_metric_convention
 
   } else {
     # Regression task

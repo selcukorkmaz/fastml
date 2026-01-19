@@ -1068,6 +1068,11 @@ convert_survival_predictions <- function(pred_obj, eval_times, n_obs) {
 #' @param tau The time horizon \eqn{\tau} for integration.
 #' @param censor_eval_fn A function (from \code{create_censor_eval}) that
 #'   evaluates the censoring survival function \eqn{G(t)}.
+#' @param normalize_by Character string specifying how to normalize Brier
+#'   scores. Use \code{"non_missing"} (default) to divide by the number of
+#'   non-missing contributions or \code{"n"} to divide by the total sample size.
+#' @param include_zero Logical; if \code{TRUE}, integrates from time 0 with a
+#'   Brier score of 0 when the evaluation grid starts after 0.
 #'
 #' @return A list with \code{ibs} (the scalar IBS value) and \code{curve} (a
 #'   numeric vector of Brier scores at \code{eval_times}).
@@ -1080,7 +1085,11 @@ compute_ibrier <- function(eval_times,
                            time_vec,
                            status_vec,
                            tau,
-                           censor_eval_fn) {
+                           censor_eval_fn,
+                           normalize_by = c("non_missing", "n"),
+                           include_zero = TRUE) {
+  normalize_by <- match.arg(normalize_by)
+  include_zero <- isTRUE(include_zero)
   n <- length(time_vec)
   m <- length(eval_times)
   if (n == 0 ||
@@ -1144,7 +1153,9 @@ compute_ibrier <- function(eval_times,
   weighted[!is.finite(weighted)] <- NA_real_
   denom_counts <- colSums(!is.na(weighted))
   bs_t <- colSums(weighted, na.rm = TRUE)
-  if (length(denom_counts) == length(bs_t)) {
+  if (normalize_by == "n") {
+    bs_t <- bs_t / n
+  } else if (length(denom_counts) == length(bs_t)) {
     valid_cols <- denom_counts > 0
     bs_t[valid_cols] <- bs_t[valid_cols] / denom_counts[valid_cols]
     bs_t[!valid_cols] <- NA_real_
@@ -1165,8 +1176,16 @@ compute_ibrier <- function(eval_times,
   if (length(valid_bs) >= 2) {
     times_valid <- eval_times[valid_bs]
     bs_valid <- bs_t[valid_bs]
-    times_aug <- c(0, times_valid)
-    bs_aug <- c(0, bs_valid)
+    ord <- order(times_valid)
+    times_valid <- times_valid[ord]
+    bs_valid <- bs_valid[ord]
+    if (include_zero && length(times_valid) > 0 && times_valid[1] > 0) {
+      times_aug <- c(0, times_valid)
+      bs_aug <- c(0, bs_valid)
+    } else {
+      times_aug <- times_valid
+      bs_aug <- bs_valid
+    }
     area <- sum(diff(times_aug) * (head(bs_aug, -1) + tail(bs_aug, -1)) / 2)
     tau <- max(times_valid)
     ibs <- if (tau > 0)

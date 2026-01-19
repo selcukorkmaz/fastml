@@ -10,8 +10,7 @@ load_model(filepath)
 \item{filepath}{A string specifying the file path to load the model from.}
 }
 \value{
-A \code{fastml} object loaded from disk (class \code{fastml}), ready for
-prediction, plotting, or summarization.
+An object of class \code{fastml}.
 }
 \description{
 Loads a trained model object from a file.

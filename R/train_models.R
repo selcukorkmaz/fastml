@@ -123,6 +123,47 @@ make_grouped_cv <- function(data, group_cols, v = 5, strata = NULL, repeats = 1)
   resamples
 }
 
+fastml_tuning_seed <- function(seed, offset = 0L) {
+  if (is.null(seed) || length(seed) == 0 || is.na(seed[[1]])) {
+    return(NULL)
+  }
+  base_seed <- as.integer(seed[[1]])
+  if (!is.finite(base_seed)) {
+    return(NULL)
+  }
+  offset <- as.integer(offset[[1]])
+  if (!is.finite(offset)) {
+    offset <- 0L
+  }
+  seed_out <- base_seed + offset
+  seed_out <- abs(seed_out %% .Machine$integer.max)
+  if (!is.finite(seed_out) || seed_out == 0L) {
+    seed_out <- abs(base_seed)
+  }
+  seed_out
+}
+
+fastml_with_seed <- function(seed, fn) {
+  if (is.null(seed) || length(seed) == 0 || is.na(seed[[1]])) {
+    return(fn())
+  }
+  seed <- as.integer(seed[[1]])
+  if (!is.finite(seed)) {
+    return(fn())
+  }
+  has_seed <- exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)
+  old_seed <- if (has_seed) get(".Random.seed", envir = .GlobalEnv, inherits = FALSE) else NULL
+  on.exit({
+    if (has_seed) {
+      assign(".Random.seed", old_seed, envir = .GlobalEnv)
+    } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
+      rm(".Random.seed", envir = .GlobalEnv)
+    }
+  }, add = TRUE)
+  set.seed(seed)
+  fn()
+}
+
 make_blocked_cv <- function(data, block_col, block_size) {
   if (is.null(block_col) || length(block_col) != 1) {
     stop("'block_col' must be provided when using blocked resampling.")
@@ -484,6 +525,12 @@ fastml_run_nested_cv <- function(workflow_spec,
       next
     }
 
+    tuning_seed <- fastml_tuning_seed(seed, offset = i)
+    ctrl_bayes_current <- ctrl_bayes
+    if (!is.null(tuning_seed) && inherits(ctrl_bayes_current, "control_bayes")) {
+      ctrl_bayes_current$seed <- tuning_seed
+    }
+
     inner_resamples <- inner_list[[i]]
     if (do_tuning && (is.null(inner_resamples) || !inherits(inner_resamples, "rset"))) {
       stop("Inner resamples must be an 'rset' object when tuning is enabled.")
@@ -511,7 +558,7 @@ fastml_run_nested_cv <- function(workflow_spec,
       grid_current <- NULL
       if (!is.null(params_current) && nrow(params_current) > 0) {
         if (tuning_strategy == "grid" && !adaptive) {
-          grid_current <- grid_regular(params_current, levels = 3)
+          grid_current <- grid_regular(params_current, levels = grid_levels)
         }
       }
 
@@ -527,13 +574,17 @@ fastml_run_nested_cv <- function(workflow_spec,
       if (tuning_strategy == "bayes") {
         tuning_args$param_info <- params_current
         tuning_args$iter <- tuning_iterations
-        tuning_args$control <- ctrl_bayes
-        model_tuned <- do.call(tune_bayes, tuning_args)
+        tuning_args$control <- ctrl_bayes_current
+        model_tuned <- fastml_with_seed(tuning_seed, function() {
+          do.call(tune_bayes, tuning_args)
+        })
       } else if (adaptive) {
         tuning_args$param_info <- params_current
         tuning_args$grid <- if (is.null(grid_current)) 20 else grid_current
         tuning_args$control <- ctrl_race
-        model_tuned <- do.call(tune_race_anova, tuning_args)
+        model_tuned <- fastml_with_seed(tuning_seed, function() {
+          do.call(tune_race_anova, tuning_args)
+        })
       } else {
         grid_arg <- if (!is.null(grid_current)) {
           grid_current
@@ -542,7 +593,9 @@ fastml_run_nested_cv <- function(workflow_spec,
         }
         tuning_args$grid <- grid_arg
         tuning_args$control <- ctrl_grid
-        model_tuned <- do.call(tune::tune_grid, tuning_args)
+        model_tuned <- fastml_with_seed(tuning_seed, function() {
+          do.call(tune::tune_grid, tuning_args)
+        })
       }
 
       inner_results[[i]] <- model_tuned
@@ -587,6 +640,7 @@ fastml_run_nested_cv <- function(workflow_spec,
             bootstrap_samples = 1,
             bootstrap_seed = seed,
             at_risk_threshold = at_risk_threshold,
+            survival_metric_convention = survival_metric_convention,
             multiclass_auc = multiclass_auc
           )
         }, error = function(e) {
@@ -795,9 +849,21 @@ fastml_collect_tune_resample_summary <- function(tune_results, best_params, task
 #' @param tuning_iterations Number of iterations for Bayesian tuning. Ignored
 #'   when \code{tuning_strategy} is not \code{"bayes"}; validation occurs only
 #'   for the Bayesian strategy.
+#' @param tuning_complexity Character string specifying tuning complexity preset.
+#'   One of "quick", "balanced", "thorough", or "exhaustive". Controls both
+#'   grid density and parameter range width.
+#' @param grid_levels Integer specifying number of levels per parameter for
+#'   grid search. Higher values create denser grids but increase computation
+#'   exponentially (grid size = levels^n_params).
 #' @param early_stopping Logical for early stopping in Bayesian tuning.
 #' @param adaptive Logical indicating whether to use adaptive/racing methods.
 #' @param algorithm_engines A named list specifying the engine to use for each algorithm.
+#' @param use_parsnip_defaults Logical. If \code{TRUE}, use parsnip's default engines
+#'   instead of fastml's optimized defaults. Default is \code{FALSE}.
+#' @param warn_engine_defaults Logical. If \code{TRUE} (default), warn when fastml's
+#'   default engine differs from parsnip's default.
+#' @param verbose Logical. If \code{TRUE}, print informational messages about
+#'   engine selection and parameter overrides.
 #' @param event_class Character string identifying the positive class when computing
 #'   classification metrics ("first" or "second").
 #' @param multiclass_auc For multiclass ROC AUC, the averaging method to use:
@@ -811,6 +877,12 @@ fastml_collect_tune_resample_summary <- function(tune_results, best_params, task
 #' @param eval_times Optional numeric vector of time horizons for survival metrics.
 #' @param at_risk_threshold Numeric cutoff used to determine the evaluation window
 #'   for survival metrics within guarded resampling.
+#' @param survival_metric_convention Character string specifying which survival
+#'   metric conventions to follow. `"fastml"` (default) uses fastml's internal
+#'   defaults for evaluation horizons and t_max. `"tidymodels"` uses
+#'   `eval_times` as the explicit evaluation grid and applies yardstick-style
+#'   Brier/IBS normalization; when `eval_times` is `NULL`, time-dependent Brier
+#'   metrics are omitted.
 #' @param audit_env Internal environment that tracks security audit findings when
 #'   custom preprocessing hooks are executed. Typically supplied by
 #'   \code{fastml()} and should be left as \code{NULL} when calling
@@ -856,17 +928,24 @@ train_models <- function(train_data,
                          use_default_tuning = FALSE,
                          tuning_strategy = "grid",
                          tuning_iterations = 10,
+                         tuning_complexity = "balanced",
+                         grid_levels = 3L,
                          early_stopping = FALSE,
                          adaptive = FALSE,
                          algorithm_engines = NULL,
+                         use_parsnip_defaults = FALSE,
+                         warn_engine_defaults = TRUE,
+                         verbose = FALSE,
                          event_class = "first",
                          start_col = NULL,
                          time_col = NULL,
                          status_col = NULL,
                          eval_times = NULL,
                          at_risk_threshold = 0.1,
+                         survival_metric_convention = "fastml",
                          audit_env = NULL,
                          multiclass_auc = "macro") {
+  survival_metric_convention <- fastml_normalize_survival_convention(survival_metric_convention)
 
   set.seed(seed)
 
@@ -1183,12 +1262,38 @@ train_models <- function(train_data,
     time_col <- if (length(label_cols) == 3) label_cols[2] else label_cols[1]
     status_col <- label_cols[length(label_cols)]
 
-    get_engine <- function(algo, default_engine) {
+    get_engine <- function(algo, fastml_default_engine) {
+      # If user explicitly specified engine, use it without warning
       if (!is.null(algorithm_engines) && !is.null(algorithm_engines[[algo]])) {
+        if (verbose) {
+          message(sprintf("[%s] Using user-specified engine: '%s'", algo, algorithm_engines[[algo]]))
+        }
         return(algorithm_engines[[algo]])
-      } else {
-        return(default_engine)
       }
+
+      # Determine which default to use
+      if (use_parsnip_defaults) {
+        parsnip_default <- get_parsnip_default_engine(algo, task)
+        if (!is.null(parsnip_default)) {
+          if (verbose) {
+            message(sprintf("[%s] Using parsnip default engine: '%s'", algo, parsnip_default))
+          }
+          return(parsnip_default)
+        }
+        # Fall back to fastml default if no parsnip default exists
+        if (verbose) {
+          message(sprintf("[%s] No parsnip default found, using fastml default: '%s'", algo, fastml_default_engine))
+        }
+        return(fastml_default_engine)
+      }
+
+      # Using fastml default - warn if it differs from parsnip
+      if (warn_engine_defaults) {
+        warn_default_override(algo, task, fastml_default_engine, verbose = verbose)
+      } else if (verbose) {
+        message(sprintf("[%s] Using fastml default engine: '%s'", algo, fastml_default_engine))
+      }
+      return(fastml_default_engine)
     }
 
     rec_prep_cache <- NULL
@@ -1412,7 +1517,12 @@ train_models <- function(train_data,
             next
           }
 
-          time_vec[time_vec <= 0 | !is.finite(time_vec)] <- min(time_vec[time_vec > 0 & is.finite(time_vec)])
+          if (any(!is.finite(time_vec) | time_vec <= 0)) {
+            stop(
+              "XGBoost AFT requires strictly positive, finite survival times. Remove or correct invalid times before fitting.",
+              call. = FALSE
+            )
+          }
           log_time <- log(time_vec)
           lower_bounds <- log_time
           upper_bounds <- log_time
@@ -1550,6 +1660,15 @@ train_models <- function(train_data,
         if (!requireNamespace("survival", quietly = TRUE)) {
           stop("The 'survival' package is required for stratified Cox. Please install it.")
         }
+        # Native-only model: warn if resampling was requested
+        if (prefer_parsnip) {
+          warning(
+            "Stratified Cox uses native survival::coxph() which does not support ",
+            "tidymodels resampling. Preprocessing will be applied to full training data. ",
+            "Cross-validation metrics will not be available for this model.",
+            call. = FALSE
+          )
+        }
         strata_cols <- names(train_data)[grepl("^strata", names(train_data))]
         if (length(strata_cols) == 0) {
           warning("No columns starting with 'strata' were found; skipping stratified Cox.")
@@ -1653,6 +1772,15 @@ train_models <- function(train_data,
         if (!requireNamespace("survival", quietly = TRUE)) {
           stop("The 'survival' package is required for time-varying Cox. Please install it.")
         }
+        # Native-only model: warn if resampling was requested
+        if (prefer_parsnip) {
+          warning(
+            "Time-varying Cox uses native survival::coxph() which does not support ",
+            "tidymodels resampling. Preprocessing will be applied to full training data. ",
+            "Cross-validation metrics will not be available for this model.",
+            call. = FALSE
+          )
+        }
         prep_dat <- get_prepped_data()
         baked_train <- prep_dat$data
         rec_prep <- prep_dat$recipe
@@ -1670,21 +1798,8 @@ train_models <- function(train_data,
         if (!requireNamespace("survival", quietly = TRUE)) {
           stop("The 'survival' package is required for survreg. Please install it.")
         }
-        prep_dat <- get_prepped_data()
-        baked_train <- prep_dat$data
-        rec_prep <- prep_dat$recipe
-        fit <- call_with_engine_params(
-          survival::survreg,
-          list(
-            formula = as.formula(paste(response_col, "~ .")),
-            data = baked_train,
-            dist = "weibull"
-          ),
-          engine_args
-        )
-        spec <- create_native_spec("survreg", engine, fit, rec_prep,
-                                   extras = list(distribution = "weibull"))
         if (prefer_parsnip) {
+          # Use parsnip workflow - preprocessing handled per fold during resampling
           dist_val <- "weibull"
           if (!is.null(engine_args$dist)) {
             dist_val <- engine_args$dist
@@ -1694,11 +1809,36 @@ train_models <- function(train_data,
             parsnip::set_mode("censored regression")
           spec <- do.call(parsnip::set_engine, c(list(survreg_spec, engine = engine), engine_args))
           spec_is_parsnip <- TRUE
+        } else {
+          # Native fit - no resampling, so prepping on full data is valid
+          prep_dat <- get_prepped_data()
+          baked_train <- prep_dat$data
+          rec_prep <- prep_dat$recipe
+          fit <- call_with_engine_params(
+            survival::survreg,
+            list(
+              formula = as.formula(paste(response_col, "~ .")),
+              data = baked_train,
+              dist = "weibull"
+            ),
+            engine_args
+          )
+          spec <- create_native_spec("survreg", engine, fit, rec_prep,
+                                     extras = list(distribution = "weibull"))
         }
       } else if (algo == "parametric_surv") {
         if (!requireNamespace("flexsurv", quietly = TRUE)) {
           warning("Package 'flexsurv' not installed; skipping parametric_surv.")
           next
+        }
+        # Native-only model: warn if resampling was requested
+        if (prefer_parsnip) {
+          warning(
+            "Parametric survival (flexsurv) does not have a tidymodels interface. ",
+            "Preprocessing will be applied to full training data. ",
+            "Cross-validation metrics will not be available for this model.",
+            call. = FALSE
+          )
         }
         prep_dat <- get_prepped_data()
         baked_train <- prep_dat$data
@@ -1761,6 +1901,15 @@ train_models <- function(train_data,
         if (!requireNamespace("flexsurv", quietly = TRUE)) {
           warning("Package 'flexsurv' not installed; skipping piecewise_exp.")
           next
+        }
+        # Native-only model: warn if resampling was requested
+        if (prefer_parsnip) {
+          warning(
+            "Piecewise exponential (flexsurv) does not have a tidymodels interface. ",
+            "Preprocessing will be applied to full training data. ",
+            "Cross-validation metrics will not be available for this model.",
+            call. = FALSE
+          )
         }
 
         prep_dat <- get_prepped_data()
@@ -1854,6 +2003,15 @@ train_models <- function(train_data,
         if (!requireNamespace("rstpm2", quietly = TRUE)) {
           warning("Package 'rstpm2' not installed; skipping royston_parmar.")
           next
+        }
+        # Native-only model: warn if resampling was requested
+        if (prefer_parsnip) {
+          warning(
+            "Royston-Parmar (rstpm2) does not have a tidymodels interface. ",
+            "Preprocessing will be applied to full training data. ",
+            "Cross-validation metrics will not be available for this model.",
+            call. = FALSE
+          )
         }
         prep_dat <- get_prepped_data()
         baked_train <- as.data.frame(prep_dat$data)
@@ -2005,9 +2163,9 @@ train_models <- function(train_data,
           }
           if (nrow(param_set) > 0) {
             if (tuning_strategy == "grid" && !adaptive) {
-              tune_grid_values <- grid_regular(param_set, levels = 3)
+              tune_grid_values <- grid_regular(param_set, levels = grid_levels)
             } else {
-              tune_grid_values <- grid_regular(param_set, levels = 3)
+              tune_grid_values <- grid_regular(param_set, levels = grid_levels)
             }
           } else {
             perform_tuning <- FALSE
@@ -2050,6 +2208,7 @@ train_models <- function(train_data,
               status_col = status_col,
               eval_times = eval_times,
               at_risk_threshold = at_risk_threshold,
+              survival_metric_convention = survival_metric_convention,
               engine_args = fit_engine_args,
               summaryFunction = summaryFunction,
               multiclass_auc = multiclass_auc
@@ -2096,6 +2255,7 @@ train_models <- function(train_data,
             status_col = status_col,
             eval_times = eval_times,
             at_risk_threshold = at_risk_threshold,
+            survival_metric_convention = survival_metric_convention,
             engine_args = fit_engine_args,
             summaryFunction = summaryFunction,
             multiclass_auc = multiclass_auc
@@ -2398,12 +2558,38 @@ train_models <- function(train_data,
   nested_details <- list()
 
   # A helper function to choose the engine for an algorithm
-  get_engine <- function(algo, default_engine) {
+  get_engine <- function(algo, fastml_default_engine) {
+    # If user explicitly specified engine, use it without warning
     if (!is.null(algorithm_engines) && !is.null(algorithm_engines[[algo]])) {
+      if (verbose) {
+        message(sprintf("[%s] Using user-specified engine: '%s'", algo, algorithm_engines[[algo]]))
+      }
       return(algorithm_engines[[algo]])
-    } else {
-      return(default_engine)
     }
+
+    # Determine which default to use
+    if (use_parsnip_defaults) {
+      parsnip_default <- get_parsnip_default_engine(algo, task)
+      if (!is.null(parsnip_default)) {
+        if (verbose) {
+          message(sprintf("[%s] Using parsnip default engine: '%s'", algo, parsnip_default))
+        }
+        return(parsnip_default)
+      }
+      # Fall back to fastml default if no parsnip default exists
+      if (verbose) {
+        message(sprintf("[%s] No parsnip default found, using fastml default: '%s'", algo, fastml_default_engine))
+      }
+      return(fastml_default_engine)
+    }
+
+    # Using fastml default - warn if it differs from parsnip
+    if (warn_engine_defaults) {
+      warn_default_override(algo, task, fastml_default_engine, verbose = verbose)
+    } else if (verbose) {
+      message(sprintf("[%s] Using fastml default engine: '%s'", algo, fastml_default_engine))
+    }
+    return(fastml_default_engine)
   }
 
   update_params <- function(params_model, new_params) {
@@ -2471,6 +2657,12 @@ train_models <- function(train_data,
     all(vapply(df, is_numeric, logical(1)))
   }
 
+  # NOTE: baked_predictors cache is used ONLY for tuning parameter finalization
+
+  # (e.g., determining mtry range based on post-preprocessing column count).
+  # This is a known limitation of dials::finalize() which needs the predictor
+  # structure before model training. The actual model training uses workflows
+  # which handle per-fold preprocessing correctly during resampling.
   baked_predictors <- NULL
   baked_predictors_ready <- FALSE
 
@@ -2519,6 +2711,23 @@ train_models <- function(train_data,
   }
 
   n_class <- length(levels(train_data[[label]]))
+
+  # Validate that there are at least 2 classes for classification
+  if (n_class < 2) {
+    # Check actual unique values in case factor levels are misleading
+    actual_classes <- length(unique(na.omit(train_data[[label]])))
+    if (actual_classes < 2) {
+      stop(
+        sprintf(
+          "Classification requires at least 2 classes, but the outcome '%s' has only %d unique value(s). ",
+          label, actual_classes
+        ),
+        "Check your data for class imbalance or filtering issues.",
+        call. = FALSE
+      )
+    }
+  }
+
   if (n_class == 2 && "multinom_reg" %in% algorithms) {
     warning(
       sprintf(
@@ -2531,7 +2740,8 @@ train_models <- function(train_data,
     algorithms <- algorithms[!duplicated(algorithms)]
   }
 
-  for (algo in algorithms) {
+  for (algo_index in seq_along(algorithms)) {
+    algo <- algorithms[[algo_index]]
     set.seed(seed)
 
     # Assume that get_engine() now may return multiple engine names.
@@ -2545,7 +2755,9 @@ train_models <- function(train_data,
     models[[algo]] <- list()
 
     # Loop over each engine provided
-    for (engine in engines) {
+    for (engine_index in seq_along(engines)) {
+      engine <- engines[[engine_index]]
+      tuning_seed_base <- fastml_tuning_seed(seed, offset = algo_index * 100L + engine_index)
       engine_args <- resolve_engine_params(engine_params, algo, engine)
 
       # Get default parameters for this engine
@@ -2638,7 +2850,7 @@ train_models <- function(train_data,
           }
 
           if (nrow(tune_params_model) > 0 && tuning_strategy == "grid" && !adaptive) {
-            tune_grid_values <- grid_regular(tune_params_model, levels = 3)
+            tune_grid_values <- grid_regular(tune_params_model, levels = grid_levels)
           }
         }
       }
@@ -2689,11 +2901,19 @@ train_models <- function(train_data,
         }
 
         ctrl_grid <- control_grid(save_pred = TRUE, allow_par = allow_par)
-        ctrl_bayes <- control_bayes(save_pred = TRUE)
+        ctrl_bayes <- if (!is.null(tuning_seed_base)) {
+          control_bayes(save_pred = TRUE, seed = tuning_seed_base)
+        } else {
+          control_bayes(save_pred = TRUE)
+        }
         ctrl_race <- control_race(save_pred = TRUE)
 
         if (early_stopping && tuning_strategy == "bayes") {
-          ctrl_bayes <- control_bayes(save_pred = TRUE, no_improve = 5)
+          ctrl_bayes <- if (!is.null(tuning_seed_base)) {
+            control_bayes(save_pred = TRUE, no_improve = 5, seed = tuning_seed_base)
+          } else {
+            control_bayes(save_pred = TRUE, no_improve = 5)
+          }
         }
 
         if (nested_mode) {
@@ -2724,7 +2944,7 @@ train_models <- function(train_data,
             status_col = status_col,
             eval_times = eval_times,
             at_risk_threshold = at_risk_threshold,
-            seed = seed,
+            seed = tuning_seed_base,
             update_params_fn = update_params,
             multiclass_auc = multiclass_auc
           )
@@ -2745,54 +2965,62 @@ train_models <- function(train_data,
 
           # Select tuning function based on strategy
           if (tuning_strategy == "bayes") {
-            model_tuned <- do.call(
-              tune_bayes,
-              c(list(
-                object = workflow_spec,
-                resamples = resamples,
-                param_info = tune_params_model,
-                iter = tuning_iterations,
-                metrics = if(!is.null(my_metrics)) my_metrics else metrics,
-                control = ctrl_bayes
-              ), engine_args)
-            )
+            model_tuned <- fastml_with_seed(tuning_seed_base, function() {
+              do.call(
+                tune_bayes,
+                c(list(
+                  object = workflow_spec,
+                  resamples = resamples,
+                  param_info = tune_params_model,
+                  iter = tuning_iterations,
+                  metrics = if(!is.null(my_metrics)) my_metrics else metrics,
+                  control = ctrl_bayes
+                ), engine_args)
+              )
+            })
           } else if (adaptive) {
-            model_tuned <- do.call(
-              tune_race_anova,
-              c(list(
-                object = workflow_spec,
-                resamples = resamples,
-                param_info = tune_params_model,
-                grid = if (is.null(tune_grid_values)) 20 else tune_grid_values,
-                metrics = if(!is.null(my_metrics)) my_metrics else metrics,
-                control = ctrl_race
-              ), engine_args)
-            )
+            model_tuned <- fastml_with_seed(tuning_seed_base, function() {
+              do.call(
+                tune_race_anova,
+                c(list(
+                  object = workflow_spec,
+                  resamples = resamples,
+                  param_info = tune_params_model,
+                  grid = if (is.null(tune_grid_values)) 20 else tune_grid_values,
+                  metrics = if(!is.null(my_metrics)) my_metrics else metrics,
+                  control = ctrl_race
+                ), engine_args)
+              )
+            })
           } else if (tuning_strategy == "grid") {
             if (is.null(tune_grid_values)) {
-              tune_grid_values <- grid_regular(tune_params_model, levels = 3)
+              tune_grid_values <- grid_regular(tune_params_model, levels = grid_levels)
             }
-            model_tuned <- do.call(
-              tune::tune_grid,
-              c(list(
-                object = workflow_spec,
-                resamples = resamples,
-                grid = tune_grid_values,
-                metrics = if(!is.null(my_metrics)) my_metrics else metrics,
-                control = ctrl_grid
-              ), engine_args)
-            )
+            model_tuned <- fastml_with_seed(tuning_seed_base, function() {
+              do.call(
+                tune::tune_grid,
+                c(list(
+                  object = workflow_spec,
+                  resamples = resamples,
+                  grid = tune_grid_values,
+                  metrics = if(!is.null(my_metrics)) my_metrics else metrics,
+                  control = ctrl_grid
+                ), engine_args)
+              )
+            })
           } else {
-            model_tuned <- do.call(
-              tune::tune_grid,
-              c(list(
-                object = workflow_spec,
-                resamples = resamples,
-                grid = if (is.null(tune_grid_values)) 5 else tune_grid_values,
-                metrics = if(!is.null(my_metrics)) my_metrics else metrics,
-                control = ctrl_grid
-              ), engine_args)
-            )
+            model_tuned <- fastml_with_seed(tuning_seed_base, function() {
+              do.call(
+                tune::tune_grid,
+                c(list(
+                  object = workflow_spec,
+                  resamples = resamples,
+                  grid = if (is.null(tune_grid_values)) 5 else tune_grid_values,
+                  metrics = if(!is.null(my_metrics)) my_metrics else metrics,
+                  control = ctrl_grid
+                ), engine_args)
+              )
+            })
           }
 
           best_params <- select_best(model_tuned, metric = metric)
@@ -2812,6 +3040,7 @@ train_models <- function(train_data,
               status_col = status_col,
               eval_times = eval_times,
               at_risk_threshold = at_risk_threshold,
+              survival_metric_convention = survival_metric_convention,
               engine_args = engine_args,
               summaryFunction = summaryFunction,
               multiclass_auc = multiclass_auc
@@ -2855,6 +3084,7 @@ train_models <- function(train_data,
               status_col = status_col,
               eval_times = eval_times,
               at_risk_threshold = at_risk_threshold,
+              survival_metric_convention = survival_metric_convention,
               summaryFunction = summaryFunction,
               multiclass_auc = multiclass_auc
             )

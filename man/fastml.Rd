@@ -29,6 +29,8 @@ fastml(
   engine_params = list(),
   metric = NULL,
   algorithm_engines = NULL,
+  use_parsnip_defaults = FALSE,
+  warn_engine_defaults = TRUE,
   n_cores = 1,
   stratify = TRUE,
   impute_method = "error",
@@ -40,12 +42,15 @@ fastml(
   use_default_tuning = FALSE,
   tuning_strategy = "grid",
   tuning_iterations = 10,
+  tuning_complexity = "balanced",
+  grid_levels = NULL,
   early_stopping = FALSE,
   adaptive = FALSE,
   learning_curve = FALSE,
   seed = 123,
   verbose = FALSE,
   eval_times = NULL,
+  survival_metric_convention = "fastml",
   bootstrap_ci = TRUE,
   bootstrap_samples = 500,
   bootstrap_seed = NULL,
@@ -133,6 +138,17 @@ hyperparameters to explore during tuning. Default is an empty list.}
 
 \item{algorithm_engines}{A named list specifying the engine to use for each algorithm.}
 
+\item{use_parsnip_defaults}{Logical. If \code{TRUE}, fastml uses parsnip's default
+engines instead of fastml's optimized defaults. This provides compatibility with
+standard tidymodels behavior. If \code{FALSE} (default), fastml uses its own
+curated engine defaults which may differ from parsnip. When engines differ,
+a warning is issued unless \code{algorithm_engines} explicitly specifies the engine.
+Use \code{print_default_differences()} to see all differences.}
+
+\item{warn_engine_defaults}{Logical. If \code{TRUE} (default), warns when fastml's
+default engine differs from parsnip's default. Set to \code{FALSE} to suppress
+these warnings. Warnings are only shown once per algorithm per session.}
+
 \item{n_cores}{An integer specifying the number of CPU cores to use for parallel processing. Default is \code{1}.}
 
 \item{stratify}{Logical indicating whether to use stratified sampling when splitting the data. Only applied to random holdout splitting. Default is \code{TRUE} for classification and \code{FALSE} for regression.}
@@ -181,6 +197,32 @@ they will be ignored with a warning.}
 \code{tuning_strategy} is not \code{"bayes"}. Validation of this argument only
 occurs for the Bayesian strategy. Default is \code{10}.}
 
+\item{tuning_complexity}{Character string specifying a tuning complexity preset
+that controls grid density and parameter range width. One of:
+\describe{
+  \item{\code{"quick"}}{Minimal tuning (2 levels/param, ~32 combinations for 5 params).
+    Best for: prototyping, debugging, time-constrained scenarios.}
+  \item{\code{"balanced"}}{Standard tuning (3 levels/param, ~243 combinations).
+    Best for: most production use cases. This is the default.}
+  \item{\code{"thorough"}}{Comprehensive tuning (5 levels/param, ~3,125 combinations).
+    Best for: final model selection, publications.}
+  \item{\code{"exhaustive"}}{Maximum coverage (7 levels/param, ~16,807 combinations).
+    Best for: research, competitions. Consider Bayesian tuning instead.}
+}
+See \code{\link{print_tuning_presets}} for detailed comparison.
+Ignored if \code{grid_levels} is explicitly set.}
+
+\item{grid_levels}{Integer specifying the number of levels per parameter for
+grid search. Higher values create denser grids but increase computation time
+exponentially (grid size = levels^n_params). Typical values:
+\itemize{
+  \item 2: Very fast, minimal coverage
+  \item 3: Balanced (default via \code{tuning_complexity = "balanced"})
+  \item 5: Thorough coverage
+  \item 7+: Exhaustive (consider Bayesian tuning instead)
+}
+If \code{NULL} (default), determined by \code{tuning_complexity}.}
+
 \item{early_stopping}{Logical indicating whether to use early stopping in Bayesian tuning methods (if supported). Default is \code{FALSE}.}
 
 \item{adaptive}{Logical indicating whether to use adaptive/racing methods for tuning. Default is \code{FALSE}.}
@@ -195,6 +237,13 @@ and evaluation process.}
 \item{eval_times}{Optional numeric vector of evaluation horizons for survival
 models. When \code{NULL}, defaults to the median and 75th percentile of the
 observed follow-up times (rounded to the dataset's time unit).}
+
+\item{survival_metric_convention}{Character string specifying which survival
+metric conventions to follow. `"fastml"` (default) uses fastml's internal
+defaults for evaluation horizons and t_max. `"tidymodels"` uses
+`eval_times` as the explicit evaluation grid and applies yardstick-style
+Brier/IBS normalization; when `eval_times` is `NULL`, time-dependent Brier
+metrics are omitted.}
 
 \item{bootstrap_ci}{Logical indicating whether bootstrap confidence intervals
 should be computed for performance metrics. Applies to all task types.}
@@ -221,10 +270,7 @@ class equally, while macro_weighted weights by class prevalence and can
 change model rankings on imbalanced data.}
 }
 \value{
-An object of class \code{fastml} (a list) containing the fitted model workflows,
-selected best model(s), performance metrics, holdout predictions, preprocessing
-recipe, and training metadata. This object is used by \code{predict},
-\code{plot}, and \code{summary}.
+An object of class \code{fastml} containing the best model, performance metrics, and other information.
 }
 \description{
 Trains and evaluates multiple classification or regression models automatically detecting the task based on the target variable type.
@@ -246,6 +292,33 @@ For multiclass ROC AUC, fastml defaults to macro averaging (tidymodels).
 Macro treats each class equally, while macro_weighted weights by class
 prevalence and can change model rankings on imbalanced data. Keep the same
 setting when comparing runs.
+
+## Tuning: Speed vs Robustness Trade-offs
+
+Hyperparameter tuning involves a fundamental trade-off between computational
+cost and the likelihood of finding optimal hyperparameters. fastml provides
+presets via \code{tuning_complexity} to make this trade-off explicit:
+
+\tabular{lllll}{
+  \strong{Level} \tab \strong{Grid Size*} \tab \strong{Time} \tab \strong{Quality} \tab \strong{Use Case} \cr
+  quick \tab ~32 \tab ~1x \tab Low \tab Prototyping, debugging \cr
+  balanced \tab ~243 \tab ~10x \tab Medium \tab Most production use \cr
+  thorough \tab ~3,125 \tab ~100x \tab High \tab Final models, papers \cr
+  exhaustive \tab ~16,807 \tab ~1000x \tab Very High \tab Research, competitions \cr
+}
+*Grid size shown for 5 tunable parameters (levels^5)
+
+**Recommendations:**
+\itemize{
+  \item Start with \code{tuning_complexity = "quick"} during development
+  \item Use \code{"balanced"} (default) for most production pipelines
+  \item Switch to \code{"thorough"} for final model selection
+  \item Consider \code{tuning_strategy = "bayes"} instead of exhaustive grid search
+  \item Enable \code{adaptive = TRUE} for early stopping of poor configurations
+}
+
+Use \code{\link{print_tuning_presets}} to see all presets and
+\code{\link{estimate_tuning_time}} to estimate runtime before starting.
 }
 \examples{
 \donttest{

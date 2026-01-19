@@ -12,9 +12,7 @@ interaction_strength(object, ...)
 \item{...}{Additional arguments passed to `iml::Interaction`.}
 }
 \value{
-An \code{iml::Interaction} object (class \code{Interaction}) containing
-estimated interaction strengths between features. Returned invisibly after
-plotting.
+An `iml::Interaction` object.
 }
 \description{
 Uses the `iml` package to quantify the strength of feature interactions.

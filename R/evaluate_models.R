@@ -42,6 +42,12 @@
 #' @param at_risk_threshold Minimum proportion of subjects that must remain at
 #'   risk to define \eqn{t_{max}} when computing survival metrics such as the
 #'   integrated Brier score.
+#' @param survival_metric_convention Character string specifying which survival
+#'   metric conventions to follow. `"fastml"` (default) uses fastml's internal
+#'   defaults for evaluation horizons and t_max. `"tidymodels"` uses
+#'   `eval_times` as the explicit evaluation grid and applies yardstick-style
+#'   Brier/IBS normalization; when `eval_times` is `NULL`, time-dependent Brier
+#'   metrics are omitted.
 #' @param precomputed_predictions Optional data frame or nested list of
 #'   previously generated predictions (per algorithm/engine) to reuse instead
 #'   of recomputing. This is mainly used when combining results across engines.
@@ -68,9 +74,11 @@ fastml_compute_holdout_results <- function(models,
                                            bootstrap_samples = 500,
                                            bootstrap_seed = 1234,
                                            at_risk_threshold = 0.1,
+                                           survival_metric_convention = "fastml",
                                            precomputed_predictions = NULL,
                                            summaryFunction = NULL,
                                            multiclass_auc = "macro") {
+  survival_metric_convention <- fastml_normalize_survival_convention(survival_metric_convention)
   # Load required packages
   required_pkgs <- c("yardstick", "parsnip", "tune", "workflows",
                      "dplyr", "rlang", "tibble")
@@ -137,6 +145,7 @@ fastml_compute_holdout_results <- function(models,
                                 bootstrap_samples = bootstrap_samples,
                                 bootstrap_seed = bootstrap_seed,
                                 at_risk_threshold = at_risk_threshold,
+                                survival_metric_convention = survival_metric_convention,
                                 precomputed_predictions = reused_preds,
                                 multiclass_auc = multiclass_auc)
         if (!is.null(result)) {
@@ -174,6 +183,7 @@ fastml_compute_holdout_results <- function(models,
                               bootstrap_samples = bootstrap_samples,
                               bootstrap_seed = bootstrap_seed,
                               at_risk_threshold = at_risk_threshold,
+                              survival_metric_convention = survival_metric_convention,
                               precomputed_predictions = reused_preds,
                               multiclass_auc = multiclass_auc)
 
@@ -217,6 +227,7 @@ evaluate_models <- function(models,
                             bootstrap_samples = 500,
                             bootstrap_seed = 1234,
                             at_risk_threshold = 0.1,
+                            survival_metric_convention = "fastml",
                             precomputed_predictions = NULL,
                             summaryFunction = NULL,
                             multiclass_auc = "macro") {
@@ -236,6 +247,7 @@ evaluate_models <- function(models,
     bootstrap_samples = bootstrap_samples,
     bootstrap_seed = bootstrap_seed,
     at_risk_threshold = at_risk_threshold,
+    survival_metric_convention = survival_metric_convention,
     precomputed_predictions = precomputed_predictions,
     summaryFunction = summaryFunction,
     multiclass_auc = multiclass_auc

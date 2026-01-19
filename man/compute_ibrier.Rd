@@ -4,7 +4,16 @@
 \alias{compute_ibrier}
 \title{Compute Integrated Brier Score and Curve}
 \usage{
-compute_ibrier(eval_times, surv_mat, time_vec, status_vec, tau, censor_eval_fn)
+compute_ibrier(
+  eval_times,
+  surv_mat,
+  time_vec,
+  status_vec,
+  tau,
+  censor_eval_fn,
+  normalize_by = c("non_missing", "n"),
+  include_zero = TRUE
+)
 }
 \arguments{
 \item{eval_times}{Numeric vector of evaluation time points.}
@@ -20,6 +29,13 @@ compute_ibrier(eval_times, surv_mat, time_vec, status_vec, tau, censor_eval_fn)
 
 \item{censor_eval_fn}{A function (from \code{create_censor_eval}) that
 evaluates the censoring survival function \eqn{G(t)}.}
+
+\item{normalize_by}{Character string specifying how to normalize Brier
+scores. Use \code{"non_missing"} (default) to divide by the number of
+non-missing contributions or \code{"n"} to divide by the total sample size.}
+
+\item{include_zero}{Logical; if \code{TRUE}, integrates from time 0 with a
+Brier score of 0 when the evaluation grid starts after 0.}
 }
 \value{
 A list with \code{ibs} (the scalar IBS value) and \code{curve} (a

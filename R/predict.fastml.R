@@ -178,8 +178,12 @@ predict.fastml <- function(object, newdata,
     wf <- to_predict[[nm]]
     if (verbose) message("Predicting with: ", nm)
 
-    # Workflows need raw data (they bake internally). Native objects need baked data.
-    new_data_for_predict <- if (inherits(wf, "workflow")) newdata else new_proc
+    # Workflows and native survival models expect raw data; native handlers bake internally.
+    new_data_for_predict <- if (inherits(wf, "fastml_native_survival") || inherits(wf, "workflow")) {
+      newdata
+    } else {
+      new_proc
+    }
 
     if (object$task == "survival") {
       if (identical(predict_type, "survival")) {

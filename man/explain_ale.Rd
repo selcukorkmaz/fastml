@@ -14,9 +14,7 @@ explain_ale(object, feature, ...)
 \item{...}{Additional arguments passed to `iml::FeatureEffect`.}
 }
 \value{
-An \code{iml::FeatureEffect} object (class \code{FeatureEffect}) containing
-accumulated local effect estimates for the requested feature. Returned
-invisibly after plotting.
+An `iml` object containing ALE results.
 }
 \description{
 Uses the `iml` package to calculate ALE for the specified feature.

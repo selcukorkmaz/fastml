@@ -153,9 +153,11 @@ fastml_guarded_resample_fit <- function(workflow_spec,
                                         status_col = NULL,
                                         eval_times = NULL,
                                         at_risk_threshold = 0.1,
+                                        survival_metric_convention = "fastml",
                                         engine_args = list(),
                                         summaryFunction = NULL,
                                         multiclass_auc = "macro") {
+  survival_metric_convention <- fastml_normalize_survival_convention(survival_metric_convention)
   plan <- NULL
   if (fastml_is_resample_plan(resamples)) {
     plan <- fastml_resample_validate(resamples)
@@ -219,6 +221,7 @@ fastml_guarded_resample_fit <- function(workflow_spec,
       bootstrap_samples = 0,
       bootstrap_seed = NULL,
       at_risk_threshold = at_risk_threshold,
+      survival_metric_convention = survival_metric_convention,
       summaryFunction = summaryFunction,
       multiclass_auc = multiclass_auc
     )

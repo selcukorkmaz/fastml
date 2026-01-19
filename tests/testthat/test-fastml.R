@@ -8,6 +8,7 @@ iris$Species <- factor(iris$Species)
 
 
 data(cancer)
+cancer$status <- ifelse(cancer$status == 2, 1, 0)
 test_that("fastml errors when data contains NAs and impute_method = 'error'", {
   expect_error(
     fastml(

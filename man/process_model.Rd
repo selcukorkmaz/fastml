@@ -22,6 +22,7 @@ process_model(
   bootstrap_samples = 500,
   bootstrap_seed = 1234,
   at_risk_threshold = 0.1,
+  survival_metric_convention = "fastml",
   metrics = NULL,
   summaryFunction = NULL,
   precomputed_predictions = NULL,
@@ -79,6 +80,13 @@ resampling to make interval estimates reproducible.}
 proportion of subjects required to remain at risk when determining the
 maximum follow-up time used in survival metrics.}
 
+\item{survival_metric_convention}{Character string specifying which survival
+metric conventions to follow. `"fastml"` (default) uses fastml's internal
+defaults for evaluation horizons and t_max. `"tidymodels"` uses
+`eval_times_user` as the explicit evaluation grid and applies
+yardstick-style Brier/IBS normalization; when `eval_times_user` is `NULL`,
+time-dependent Brier metrics are omitted.}
+
 \item{metrics}{Optional yardstick metric set (e.g., `yardstick::metric_set(yardstick::rmse)`) used for computing regression performance.}
 
 \item{summaryFunction}{Optional custom classification metric function passed to
@@ -96,13 +104,9 @@ change model rankings on imbalanced data.}
 \value{
 A list with two elements:
 \describe{
-  \item{performance}{A tibble of holdout metrics, including \code{.metric},
-  \code{.estimate}, and optional confidence interval columns.}
-  \item{predictions}{A tibble with observed outcomes and predictions (class,
-  numeric, survival, and/or probability columns depending on \code{task}).}
+  \item{performance}{A tibble with computed performance metrics.}
+  \item{predictions}{A tibble with predicted values and corresponding truth values, and probabilities (if applicable).}
 }
-The return value is a plain list (class \code{list}) used by
-\code{fastml_compute_holdout_results}.
 }
 \description{
 This function processes a fitted model or a tuning result, finalizes the model if tuning was used,

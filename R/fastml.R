@@ -66,6 +66,15 @@
 #'   hyperparameters to explore during tuning. Default is an empty list.
 #' @param metric The performance metric to optimize during training.
 #' @param algorithm_engines A named list specifying the engine to use for each algorithm.
+#' @param use_parsnip_defaults Logical. If \code{TRUE}, fastml uses parsnip's default
+#'   engines instead of fastml's optimized defaults. This provides compatibility with
+#'   standard tidymodels behavior. If \code{FALSE} (default), fastml uses its own
+#'   curated engine defaults which may differ from parsnip. When engines differ,
+#'   a warning is issued unless \code{algorithm_engines} explicitly specifies the engine.
+#'   Use \code{print_default_differences()} to see all differences.
+#' @param warn_engine_defaults Logical. If \code{TRUE} (default), warns when fastml's
+#'   default engine differs from parsnip's default. Set to \code{FALSE} to suppress
+#'   these warnings. Warnings are only shown once per algorithm per session.
 #' @param n_cores An integer specifying the number of CPU cores to use for parallel processing. Default is \code{1}.
 #' @param stratify Logical indicating whether to use stratified sampling when splitting the data. Only applied to random holdout splitting. Default is \code{TRUE} for classification and \code{FALSE} for regression.
 #' @param impute_method Method for handling missing values. Options include:
@@ -103,6 +112,30 @@
 #' @param tuning_iterations Number of iterations for Bayesian tuning. Ignored when
 #'   \code{tuning_strategy} is not \code{"bayes"}. Validation of this argument only
 #'   occurs for the Bayesian strategy. Default is \code{10}.
+#' @param tuning_complexity Character string specifying a tuning complexity preset
+#'   that controls grid density and parameter range width. One of:
+#'   \describe{
+#'     \item{\code{"quick"}}{Minimal tuning (2 levels/param, ~32 combinations for 5 params).
+#'       Best for: prototyping, debugging, time-constrained scenarios.}
+#'     \item{\code{"balanced"}}{Standard tuning (3 levels/param, ~243 combinations).
+#'       Best for: most production use cases. This is the default.}
+#'     \item{\code{"thorough"}}{Comprehensive tuning (5 levels/param, ~3,125 combinations).
+#'       Best for: final model selection, publications.}
+#'     \item{\code{"exhaustive"}}{Maximum coverage (7 levels/param, ~16,807 combinations).
+#'       Best for: research, competitions. Consider Bayesian tuning instead.}
+#'   }
+#'   See \code{\link{print_tuning_presets}} for detailed comparison.
+#'   Ignored if \code{grid_levels} is explicitly set.
+#' @param grid_levels Integer specifying the number of levels per parameter for
+#'   grid search. Higher values create denser grids but increase computation time
+#'   exponentially (grid size = levels^n_params). Typical values:
+#'   \itemize{
+#'     \item 2: Very fast, minimal coverage
+#'     \item 3: Balanced (default via \code{tuning_complexity = "balanced"})
+#'     \item 5: Thorough coverage
+#'     \item 7+: Exhaustive (consider Bayesian tuning instead)
+#'   }
+#'   If \code{NULL} (default), determined by \code{tuning_complexity}.
 #' @param early_stopping Logical indicating whether to use early stopping in Bayesian tuning methods (if supported). Default is \code{FALSE}.
 #' @param adaptive Logical indicating whether to use adaptive/racing methods for tuning. Default is \code{FALSE}.
 #' @param learning_curve Logical. If TRUE, generate learning curves (performance vs. training size).
@@ -112,6 +145,12 @@
 #' @param eval_times Optional numeric vector of evaluation horizons for survival
 #'   models. When \code{NULL}, defaults to the median and 75th percentile of the
 #'   observed follow-up times (rounded to the dataset's time unit).
+#' @param survival_metric_convention Character string specifying which survival
+#'   metric conventions to follow. `"fastml"` (default) uses fastml's internal
+#'   defaults for evaluation horizons and t_max. `"tidymodels"` uses
+#'   `eval_times` as the explicit evaluation grid and applies yardstick-style
+#'   Brier/IBS normalization; when `eval_times` is `NULL`, time-dependent Brier
+#'   metrics are omitted.
 #' @param bootstrap_ci Logical indicating whether bootstrap confidence intervals
 #'   should be computed for performance metrics. Applies to all task types.
 #' @param bootstrap_samples Integer giving the number of bootstrap resamples to
@@ -147,6 +186,33 @@
 #' Macro treats each class equally, while macro_weighted weights by class
 #' prevalence and can change model rankings on imbalanced data. Keep the same
 #' setting when comparing runs.
+#'
+#' ## Tuning: Speed vs Robustness Trade-offs
+#'
+#' Hyperparameter tuning involves a fundamental trade-off between computational
+#' cost and the likelihood of finding optimal hyperparameters. fastml provides
+#' presets via \code{tuning_complexity} to make this trade-off explicit:
+#'
+#' \tabular{lllll}{
+#'   \strong{Level} \tab \strong{Grid Size*} \tab \strong{Time} \tab \strong{Quality} \tab \strong{Use Case} \cr
+#'   quick \tab ~32 \tab ~1x \tab Low \tab Prototyping, debugging \cr
+#'   balanced \tab ~243 \tab ~10x \tab Medium \tab Most production use \cr
+#'   thorough \tab ~3,125 \tab ~100x \tab High \tab Final models, papers \cr
+#'   exhaustive \tab ~16,807 \tab ~1000x \tab Very High \tab Research, competitions \cr
+#' }
+#' *Grid size shown for 5 tunable parameters (levels^5)
+#'
+#' **Recommendations:**
+#' \itemize{
+#'   \item Start with \code{tuning_complexity = "quick"} during development
+#'   \item Use \code{"balanced"} (default) for most production pipelines
+#'   \item Switch to \code{"thorough"} for final model selection
+#'   \item Consider \code{tuning_strategy = "bayes"} instead of exhaustive grid search
+#'   \item Enable \code{adaptive = TRUE} for early stopping of poor configurations
+#' }
+#'
+#' Use \code{\link{print_tuning_presets}} to see all presets and
+#' \code{\link{estimate_tuning_time}} to estimate runtime before starting.
 #' @return An object of class \code{fastml} containing the best model, performance metrics, and other information.
 #' @examples
 #' \donttest{
@@ -202,6 +268,8 @@ fastml <- function(data = NULL,
                    engine_params = list(),
                    metric = NULL,
                    algorithm_engines = NULL,
+                   use_parsnip_defaults = FALSE,
+                   warn_engine_defaults = TRUE,
                    n_cores = 1,
                    stratify = TRUE,
                    impute_method = "error",
@@ -213,12 +281,15 @@ fastml <- function(data = NULL,
                    use_default_tuning = FALSE,
                    tuning_strategy = "grid",
                    tuning_iterations = 10,
+                   tuning_complexity = "balanced",
+                   grid_levels = NULL,
                    early_stopping = FALSE,
                    adaptive = FALSE,
                    learning_curve = FALSE,
                    seed = 123,
                    verbose = FALSE,
                    eval_times = NULL,
+                   survival_metric_convention = "fastml",
                    bootstrap_ci = TRUE,
                    bootstrap_samples = 500,
                    bootstrap_seed = NULL,
@@ -233,6 +304,33 @@ fastml <- function(data = NULL,
 
   task <- match.arg(task, c("auto", "classification", "regression", "survival"))
   tuning_strategy <- match.arg(tuning_strategy, c("grid", "bayes", "none"))
+  tuning_complexity <- match.arg(tuning_complexity, c("balanced", "quick", "thorough", "exhaustive"))
+
+  # Resolve grid_levels from tuning_complexity if not explicitly set
+  if (is.null(grid_levels)) {
+    tuning_config <- get_tuning_complexity(tuning_complexity)
+    grid_levels <- tuning_config$grid_levels
+    # Also update tuning_iterations for Bayesian if using complexity preset
+    if (tuning_strategy == "bayes" && missing(tuning_iterations)) {
+      tuning_iterations <- tuning_config$bayes_iterations
+    }
+    if (verbose) {
+      message(sprintf("Using '%s' tuning complexity: %d grid levels, %d Bayesian iterations",
+                      tuning_complexity, grid_levels, tuning_config$bayes_iterations))
+    }
+  } else {
+    # Validate user-provided grid_levels
+    if (!is.numeric(grid_levels) || length(grid_levels) != 1 ||
+        grid_levels < 2 || grid_levels != as.integer(grid_levels)) {
+      stop("'grid_levels' must be an integer >= 2.", call. = FALSE)
+    }
+    grid_levels <- as.integer(grid_levels)
+    if (verbose) {
+      message(sprintf("Using custom grid_levels: %d", grid_levels))
+    }
+  }
+
+  survival_metric_convention <- fastml_normalize_survival_convention(survival_metric_convention)
   if (is.null(resampling_method)) {
     resampling_method <- "none"
   } else {
@@ -566,6 +664,28 @@ fastml <- function(data = NULL,
     if (!is.null(impute_method) && impute_method == "error" && anyNA(data)) {
       stop("Data contains NAs and 'impute_method = \"error\"'. Handle missing values first.")
     }
+
+    integer_cols <- names(data)[vapply(data, is.integer, logical(1))]
+    label_cols <- if (task == "survival") label else label
+    integer_predictors <- setdiff(integer_cols, label_cols)
+    if (length(integer_predictors) > 0) {
+      low_cardinality <- integer_predictors[vapply(
+        data[integer_predictors],
+        function(col) length(unique(col[!is.na(col)])) <= 10,
+        logical(1)
+      )]
+      if (length(low_cardinality) > 0) {
+        warning(
+          paste(
+            "Integer predictors are treated as numeric.",
+            "If any of these are categorical codes, convert them to factor before calling fastml:",
+            paste(low_cardinality, collapse = ", ")
+          ),
+          call. = FALSE
+        )
+      }
+    }
+
     data <- data %>%
       dplyr::mutate(
         dplyr::across(where(is.character), as.factor),
@@ -590,6 +710,15 @@ fastml <- function(data = NULL,
   if (task == "survival") {
     if (!(length(label) %in% c(2, 3))) {
       stop("For survival tasks, 'label' must contain the time/status columns present in the data (length 2 or 3).")
+    }
+    if (length(label) == 3) {
+      stop(
+        paste(
+          "Start/stop (left-truncated) survival data are not supported for evaluation in fastml.",
+          "Provide right-censored inputs as c(time, status) or evaluate externally."
+        ),
+        call. = FALSE
+      )
     }
     outcome_cols_check <- if (length(label) == 2) label else label[1:3]
     drop_missing_outcomes <- function(df, which_set) {
@@ -1045,15 +1174,21 @@ fastml <- function(data = NULL,
     use_default_tuning = use_default_tuning,
     tuning_strategy = tuning_strategy,
     tuning_iterations = tuning_iterations,
+    tuning_complexity = tuning_complexity,
+    grid_levels = grid_levels,
     early_stopping = early_stopping,
     adaptive = adaptive,
     algorithm_engines = algorithm_engines,
+    use_parsnip_defaults = use_parsnip_defaults,
+    warn_engine_defaults = warn_engine_defaults,
+    verbose = verbose,
     event_class = event_class,
     start_col = start_col,
     time_col = time_col,
     status_col = status_col,
     eval_times = eval_times,
     at_risk_threshold = at_risk_threshold,
+    survival_metric_convention = survival_metric_convention,
     audit_env = audit_env,
     multiclass_auc = multiclass_auc
   )
@@ -1091,6 +1226,7 @@ fastml <- function(data = NULL,
                                                bootstrap_samples = bootstrap_samples,
                                                bootstrap_seed = bootstrap_seed,
                                                at_risk_threshold = at_risk_threshold,
+                                               survival_metric_convention = survival_metric_convention,
                                                summaryFunction = summaryFunction,
                                                multiclass_auc = multiclass_auc)
   performance <- eval_output$performance
@@ -1425,15 +1561,21 @@ fastml <- function(data = NULL,
         use_default_tuning = use_default_tuning,
         tuning_strategy = tuning_strategy,
         tuning_iterations = tuning_iterations,
+        tuning_complexity = tuning_complexity,
+        grid_levels = grid_levels,
         early_stopping = early_stopping,
         adaptive = adaptive,
         algorithm_engines = algorithm_engines,
+        use_parsnip_defaults = use_parsnip_defaults,
+        warn_engine_defaults = warn_engine_defaults,
+        verbose = verbose,
         event_class = event_class,
         start_col = start_col,
         time_col = time_col,
         status_col = status_col,
         eval_times = eval_times,
         at_risk_threshold = at_risk_threshold,
+        survival_metric_convention = survival_metric_convention,
         audit_env = audit_env,
         multiclass_auc = multiclass_auc
       )
@@ -1454,6 +1596,7 @@ fastml <- function(data = NULL,
         bootstrap_samples = bootstrap_samples,
         bootstrap_seed = bootstrap_seed,
         at_risk_threshold = at_risk_threshold,
+        survival_metric_convention = survival_metric_convention,
         multiclass_auc = multiclass_auc
       )
 
@@ -1532,6 +1675,7 @@ fastml <- function(data = NULL,
     ),
     survival_brier_times = survival_brier_times,
     survival_t_max = survival_t_max,
+    survival_metric_convention = survival_metric_convention,
     metric_bootstrap = list(enabled = bootstrap_ci, samples = bootstrap_samples, seed = bootstrap_seed),
     resampling_results = resampling_results,
     resampling_plan = resampling_plan,

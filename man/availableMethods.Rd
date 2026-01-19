@@ -15,9 +15,7 @@ availableMethods(type = c("classification", "regression", "survival"), ...)
 \item{...}{Additional arguments (currently not used).}
 }
 \value{
-A character vector (class \code{character}) of algorithm identifiers supported
-for the requested task type. These names can be supplied to
-\code{fastml(..., algorithms = ...)}.
+A character vector containing the names of the available algorithms for the specified task type.
 }
 \description{
 Returns a character vector of algorithm names available for classification,

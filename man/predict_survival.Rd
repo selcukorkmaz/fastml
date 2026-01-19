@@ -25,9 +25,7 @@ predict_survival(fit, newdata, times, ...)
 \item{...}{Additional arguments passed to methods.}
 }
 \value{
-A numeric matrix (class \code{matrix}) with one row per observation and one
-column per requested time. Each entry is a survival probability in \eqn{[0,1]}
-aligned to the supplied \code{times} vector.
+A numeric matrix with one row per observation and one column per time.
 }
 \description{
 Predict survival probabilities from a survival model
