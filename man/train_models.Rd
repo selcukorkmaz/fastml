@@ -38,6 +38,7 @@ train_models(
   warn_engine_defaults = TRUE,
   verbose = FALSE,
   event_class = "first",
+  class_threshold = "auto",
   start_col = NULL,
   time_col = NULL,
   status_col = NULL,
@@ -105,7 +106,9 @@ Use this to control options like \code{ties = "breslow"} for Cox models or
 \code{importance = "impurity"} for ranger. Unlike \code{tune_params}, these
 values are not tuned over a grid.}
 
-\item{metric}{The performance metric to optimize.}
+\item{metric}{The performance metric to optimize. For classification, options
+include \code{"accuracy"}, \code{"roc_auc"}, \code{"logloss"},
+\code{"brier_score"}, and \code{"ece"} (plus other class metrics).}
 
 \item{summaryFunction}{A custom summary function for model evaluation. Default is \code{NULL}.}
 
@@ -151,6 +154,11 @@ engine selection and parameter overrides.}
 
 \item{event_class}{Character string identifying the positive class when computing
 classification metrics ("first" or "second").}
+
+\item{class_threshold}{For binary classification, controls how class probabilities
+are converted into hard class predictions during evaluation. Numeric values in
+(0, 1) set a fixed threshold. The default `"auto"` tunes a threshold on the
+training data to maximize F1; use `"model"` to keep the model's default threshold.}
 
 \item{start_col}{Optional name of the survival start time column passed through
 to downstream evaluation helpers.}

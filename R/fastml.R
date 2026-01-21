@@ -46,7 +46,11 @@
 #'   successive resamples when \code{resampling_method = "rolling_origin"}.
 #' @param outer_folds Positive integer giving the number of outer folds to use when
 #'   \code{resampling_method = "nested_cv"} and no custom \code{resamples} object is supplied.
-#' @param event_class A single string. Either "first" or "second" to specify which level of truth to consider as the "event". Default is "first".
+#' @param event_class A single string. Either "first" or "second" to specify which
+#'   level of the binary outcome factor to treat as the positive class (the "event").
+#'   For binary classification, "first" treats the first factor level as the positive
+#'   class, "second" treats the second level as positive. Use
+#'   \code{levels(your_data$outcome)} to check level order before training. Default is "first".
 #' @param multiclass_auc For multiclass ROC AUC, the averaging method to use:
 #'   `"macro"` (default, tidymodels) or `"macro_weighted"`. Macro weights each
 #'   class equally, while macro_weighted weights by class prevalence and can
@@ -64,7 +68,14 @@
 #'   \code{list(rand_forest = list(ranger = list(importance = "impurity")))}).
 #'   These arguments are distinct from \code{tune_params}, which define ranges of
 #'   hyperparameters to explore during tuning. Default is an empty list.
-#' @param metric The performance metric to optimize during training.
+#' @param metric The performance metric to optimize during training. For
+#'   classification, options include \code{"accuracy"}, \code{"roc_auc"},
+#'   \code{"logloss"}, \code{"brier_score"}, and \code{"ece"} (plus other class metrics).
+#' @param class_threshold For binary classification, controls how class probabilities
+#'   are converted into hard class predictions during holdout evaluation. Numeric
+#'   values in (0, 1) set a fixed threshold. The default \code{"auto"} tunes a
+#'   threshold on the training data to maximize F1; use \code{"model"} to keep
+#'   the model's default threshold.
 #' @param algorithm_engines A named list specifying the engine to use for each algorithm.
 #' @param use_parsnip_defaults Logical. If \code{TRUE}, fastml uses parsnip's default
 #'   engines instead of fastml's optimized defaults. This provides compatibility with
@@ -213,6 +224,29 @@
 #'
 #' Use \code{\link{print_tuning_presets}} to see all presets and
 #' \code{\link{estimate_tuning_time}} to estimate runtime before starting.
+#'
+#' @section Factor Level Warning:
+#' For binary classification, the interpretation of metrics like sensitivity, specificity,
+#' and ROC AUC depends on which factor level is treated as the "positive" class (the event
+#' of interest). The \code{event_class} parameter controls this:
+#' \itemize{
+#'   \item \code{"first"} (default): The first factor level is treated as positive
+#'   \item \code{"second"}: The second factor level is treated as positive
+#' }
+#'
+#' \strong{Important:} Recipe preprocessing steps like \code{step_other()} or
+#' \code{step_unknown()} can modify factor levels, potentially changing which level
+#' is "first" or "second". Always verify factor levels after preprocessing.
+#'
+#' To ensure consistent behavior, explicitly set factor levels before calling fastml:
+#' \preformatted{
+#' # Ensure "positive" is the second level (event_class = "second")
+#' data$outcome <- factor(data$outcome, levels = c("negative", "positive"))
+#'
+#' # Or ensure "positive" is the first level (event_class = "first")
+#' data$outcome <- factor(data$outcome, levels = c("positive", "negative"))
+#' }
+#'
 #' @return An object of class \code{fastml} containing the best model, performance metrics, and other information.
 #' @examples
 #' \donttest{
@@ -267,6 +301,7 @@ fastml <- function(data = NULL,
                    tune_params = NULL,
                    engine_params = list(),
                    metric = NULL,
+                   class_threshold = "auto",
                    algorithm_engines = NULL,
                    use_parsnip_defaults = FALSE,
                    warn_engine_defaults = TRUE,
@@ -825,7 +860,7 @@ fastml <- function(data = NULL,
   # Set default metric now that task has been resolved and validate it
   if (is.null(metric)) {
     metric <- if (task == "classification") {
-      "accuracy"
+      "roc_auc"
     } else if (task == "regression") {
       "rmse"
     } else {
@@ -833,7 +868,7 @@ fastml <- function(data = NULL,
     }
   }
 
-  allowed_metrics_classification <- c("accuracy", "kap", "sens", "spec", "precision", "f_meas", "roc_auc")
+  allowed_metrics_classification <- c("accuracy", "kap", "sens", "spec", "precision", "f_meas", "roc_auc", "logloss", "brier_score", "ece")
   allowed_metrics_regression <- c("rmse", "rsq", "mae")
   allowed_metrics_survival <- c("c_index", "uno_c", "ibs", "rmst_diff")
 
@@ -1183,6 +1218,7 @@ fastml <- function(data = NULL,
     warn_engine_defaults = warn_engine_defaults,
     verbose = verbose,
     event_class = event_class,
+    class_threshold = class_threshold,
     start_col = start_col,
     time_col = time_col,
     status_col = status_col,
@@ -1221,6 +1257,7 @@ fastml <- function(data = NULL,
                                                task,
                                                metric,
                                                event_class,
+                                               class_threshold = class_threshold,
                                                eval_times = eval_times,
                                                bootstrap_ci = bootstrap_ci,
                                                bootstrap_samples = bootstrap_samples,
@@ -1370,7 +1407,7 @@ fastml <- function(data = NULL,
   selection_source <- if (is.null(selection_bundle$source)) "none" else selection_bundle$source
 
   # Select best model strictly from resampling metrics (CV or nested CV).
-  lower_is_better_metrics <- c("rmse", "mae", "ibs", "logloss", "mse", "brier_score")
+  lower_is_better_metrics <- c("rmse", "mae", "ibs", "logloss", "mse", "brier_score", "ece")
   extract_metric_values <- function(metric_name) {
     sapply(selection_performance, function(x) {
       if (is.data.frame(x)) {
@@ -1434,7 +1471,7 @@ fastml <- function(data = NULL,
       })))
 
       fallback_priority <- if (task == "classification") {
-        c("roc_auc", "accuracy", "kap", "sens", "spec", "precision", "f_meas")
+        c("logloss", "brier_score", "ece", "roc_auc", "accuracy", "kap", "sens", "spec", "precision", "f_meas")
       } else if (task == "regression") {
         c("rmse", "mae", "rsq")
       } else {
@@ -1591,6 +1628,7 @@ fastml <- function(data = NULL,
         task,
         metric,
         event_class,
+        class_threshold = class_threshold,
         eval_times = eval_times,
         bootstrap_ci = bootstrap_ci,
         bootstrap_samples = bootstrap_samples,
@@ -1664,6 +1702,7 @@ fastml <- function(data = NULL,
     task = task,
     models = models,
     metric = metric,
+    class_threshold = class_threshold,
     multiclass_auc = multiclass_auc,
     selection = list(source = selection_source, metric = metric),
     positive_class = positive_class,

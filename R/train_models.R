@@ -482,6 +482,7 @@ fastml_run_nested_cv <- function(workflow_spec,
                                  my_metrics,
                                  do_tuning,
                                  event_class,
+                                 class_threshold,
                                  start_col,
                                  time_col,
                                  status_col,
@@ -515,7 +516,7 @@ fastml_run_nested_cv <- function(workflow_spec,
   lower_is_better <- if (!is.na(metric_direction) && !is.null(metric_direction)) {
     identical(metric_direction, "minimize")
   } else {
-    metric %in% c("rmse", "mae", "ibs", "logloss", "mse", "brier_score") ||
+    metric %in% c("rmse", "mae", "ibs", "logloss", "mse", "brier_score", "ece") ||
       grepl("brier", metric, fixed = TRUE)
   }
 
@@ -628,6 +629,7 @@ fastml_run_nested_cv <- function(workflow_spec,
             test_data = outer_assess,
             label = label,
             event_class = event_class,
+            class_threshold = class_threshold,
             start_col = start_col,
             time_col = time_col,
             status_col = status_col,
@@ -650,7 +652,10 @@ fastml_run_nested_cv <- function(workflow_spec,
 
       if (!is.null(eval_result) && !is.null(eval_result$performance)) {
         outer_metrics[[i]] <- eval_result$performance %>%
-          dplyr::mutate(outer_id = outer_ids[[i]])
+          dplyr::mutate(
+            outer_id = outer_ids[[i]],
+            .n = nrow(outer_assess)
+          )
       }
     }
   }
@@ -719,6 +724,54 @@ fastml_filter_tune_metrics <- function(metrics_tbl, best_params) {
   }
 
   dplyr::semi_join(metrics_tbl, best_params, by = param_cols)
+}
+
+fastml_attach_fold_sizes <- function(res_summary, resamples, task) {
+  if (is.null(res_summary) || !is.list(res_summary)) {
+    return(res_summary)
+  }
+  folds_tbl <- res_summary$folds
+  if (is.null(folds_tbl) || !is.data.frame(folds_tbl) || nrow(folds_tbl) == 0) {
+    return(res_summary)
+  }
+  if (".n" %in% names(folds_tbl)) {
+    res_summary$aggregated <- fastml_aggregate_resample_metrics(folds_tbl, task)
+    return(res_summary)
+  }
+
+  splits <- resamples
+  if (fastml_is_resample_plan(splits)) {
+    splits <- fastml_resample_splits(splits)
+  }
+  if (is.null(splits) || !inherits(splits, "rset")) {
+    return(res_summary)
+  }
+  split_list <- splits$splits
+  if (length(split_list) == 0) {
+    return(res_summary)
+  }
+
+  fold_sizes <- vapply(split_list, function(split) {
+    assess <- tryCatch(rsample::assessment(split), error = function(e) NULL)
+    if (is.null(assess)) {
+      return(NA_real_)
+    }
+    nrow(assess)
+  }, numeric(1))
+  size_tbl <- tibble::tibble(
+    fold = as.character(seq_along(fold_sizes)),
+    .n = as.numeric(fold_sizes)
+  )
+
+  if (!"fold" %in% names(folds_tbl)) {
+    folds_tbl$fold <- as.character(seq_len(nrow(folds_tbl)))
+  } else {
+    folds_tbl$fold <- as.character(folds_tbl$fold)
+  }
+  folds_tbl <- dplyr::left_join(folds_tbl, size_tbl, by = "fold")
+  res_summary$folds <- folds_tbl
+  res_summary$aggregated <- fastml_aggregate_resample_metrics(folds_tbl, task)
+  res_summary
 }
 
 fastml_collect_tune_resample_summary <- function(tune_results, best_params, task) {
@@ -835,7 +888,9 @@ fastml_collect_tune_resample_summary <- function(tune_results, best_params, task
 #'   Use this to control options like \code{ties = "breslow"} for Cox models or
 #'   \code{importance = "impurity"} for ranger. Unlike \code{tune_params}, these
 #'   values are not tuned over a grid.
-#' @param metric The performance metric to optimize.
+#' @param metric The performance metric to optimize. For classification, options
+#'   include \code{"accuracy"}, \code{"roc_auc"}, \code{"logloss"},
+#'   \code{"brier_score"}, and \code{"ece"} (plus other class metrics).
 #' @param summaryFunction A custom summary function for model evaluation. Default is \code{NULL}.
 #' @param seed An integer value specifying the random seed for reproducibility.
 #' @param recipe A recipe object for preprocessing.
@@ -866,6 +921,10 @@ fastml_collect_tune_resample_summary <- function(tune_results, best_params, task
 #'   engine selection and parameter overrides.
 #' @param event_class Character string identifying the positive class when computing
 #'   classification metrics ("first" or "second").
+#' @param class_threshold For binary classification, controls how class probabilities
+#'   are converted into hard class predictions during evaluation. Numeric values in
+#'   (0, 1) set a fixed threshold. The default `"auto"` tunes a threshold on the
+#'   training data to maximize F1; use `"model"` to keep the model's default threshold.
 #' @param multiclass_auc For multiclass ROC AUC, the averaging method to use:
 #'   `"macro"` (default, tidymodels) or `"macro_weighted"`. Macro weights each
 #'   class equally, while macro_weighted weights by class prevalence and can
@@ -937,6 +996,7 @@ train_models <- function(train_data,
                          warn_engine_defaults = TRUE,
                          verbose = FALSE,
                          event_class = "first",
+                         class_threshold = "auto",
                          start_col = NULL,
                          time_col = NULL,
                          status_col = NULL,
@@ -954,7 +1014,14 @@ train_models <- function(train_data,
   }
 
   multiclass_auc <- fastml_normalize_multiclass_auc(multiclass_auc)
-  roc_auc <- fastml_configured_roc_auc(multiclass_auc)
+  roc_auc <- fastml_configured_roc_auc(multiclass_auc, event_class = event_class)
+  sens_metric <- fastml_wrap_event_level_metric(sens, event_class)
+  spec_metric <- fastml_wrap_event_level_metric(spec, event_class)
+  precision_metric <- fastml_wrap_event_level_metric(precision, event_class)
+  f_meas_metric <- fastml_wrap_event_level_metric(f_meas, event_class)
+  logloss_metric <- fastml_configured_logloss(event_class = event_class)
+  brier_metric <- fastml_configured_brier_score(event_class = event_class)
+  ece_metric <- fastml_configured_ece(event_class = event_class)
 
   tuning_strategy <- match.arg(tuning_strategy, c("grid", "bayes", "none"))
 
@@ -1015,6 +1082,7 @@ train_models <- function(train_data,
 
   if (task == "survival") {
     models <- list()
+    failed_models <- list()
 
     update_params_surv <- function(params_model, new_params) {
       for (param_name in names(new_params)) {
@@ -2058,6 +2126,11 @@ train_models <- function(train_data,
           fit_obj
         }, error = function(e) e)
         if (inherits(fit, "error")) {
+          failed_models[[length(failed_models) + 1]] <- list(
+            algorithm = algo,
+            engine = engine,
+            reason = fit$message
+          )
           warning(sprintf("royston_parmar training failed: %s", fit$message))
           next
         }
@@ -2184,7 +2257,7 @@ train_models <- function(train_data,
         lower_is_better <- if (!is.na(metric_direction) && !is.null(metric_direction)) {
           identical(metric_direction, "minimize")
         } else {
-          metric %in% c("rmse", "mae", "ibs", "logloss", "mse", "brier_score") ||
+          metric %in% c("rmse", "mae", "ibs", "logloss", "mse", "brier_score", "ece") ||
             grepl("brier", metric, fixed = TRUE)
         }
 
@@ -2202,6 +2275,7 @@ train_models <- function(train_data,
               label = label,
               metric = metric,
               event_class = event_class,
+              class_threshold = class_threshold,
               engine = engine,
               start_col = start_col,
               time_col = time_col,
@@ -2212,6 +2286,11 @@ train_models <- function(train_data,
               engine_args = fit_engine_args,
               summaryFunction = summaryFunction,
               multiclass_auc = multiclass_auc
+            )
+            res_summary <- fastml_attach_fold_sizes(
+              res_summary,
+              if (!is.null(resample_plan)) resample_plan else resamples,
+              task
             )
             if (is.null(res_summary) || is.null(res_summary$aggregated)) {
               next
@@ -2249,6 +2328,7 @@ train_models <- function(train_data,
             label = label,
             metric = metric,
             event_class = event_class,
+            class_threshold = class_threshold,
             engine = engine,
             start_col = start_col,
             time_col = time_col,
@@ -2259,6 +2339,11 @@ train_models <- function(train_data,
             engine_args = fit_engine_args,
             summaryFunction = summaryFunction,
             multiclass_auc = multiclass_auc
+          )
+          res_summary_best <- fastml_attach_fold_sizes(
+            res_summary_best,
+            if (!is.null(resample_plan)) resample_plan else resamples,
+            task
           )
         }
 
@@ -2287,17 +2372,32 @@ train_models <- function(train_data,
       attr(models, "resampling_plan") <- resample_plan
     }
 
+    # Report failed models prominently
+    if (length(failed_models) > 0) {
+      message("\n", paste(rep("=", 60), collapse = ""))
+      message(sprintf("WARNING: %d model(s) failed to train:", length(failed_models)))
+      message(paste(rep("-", 60), collapse = ""))
+      for (fm in failed_models) {
+        message(sprintf("  - %s (%s): %s", fm$algorithm, fm$engine, fm$reason))
+      }
+      message(paste(rep("=", 60), collapse = ""), "\n")
+      attr(models, "failed_models") <- failed_models
+    }
+
     return(models)
   } else if (task == "classification") {
     if(is.null(summaryFunction)){
       metrics <- metric_set(
         accuracy,
         kap,
-        sens,
-        spec,
-        precision,
-        f_meas,
-        roc_auc
+        sens_metric,
+        spec_metric,
+        precision_metric,
+        f_meas_metric,
+        roc_auc,
+        logloss = logloss_metric,
+        brier_score = brier_metric,
+        ece = ece_metric
       )
     }else{
 
@@ -2308,11 +2408,14 @@ train_models <- function(train_data,
       metrics <- metric_set(
         accuracy,
         kap,
-        sens,
-        spec,
-        precision,
-        f_meas,
+        sens_metric,
+        spec_metric,
+        precision_metric,
+        f_meas_metric,
         roc_auc,
+        logloss = logloss_metric,
+        brier_score = brier_metric,
+        ece = ece_metric,
         !!sym(metric)
       )
 
@@ -2324,7 +2427,7 @@ train_models <- function(train_data,
 
   # Ensure the requested metric is available in the current metric set
   metric_ids <- if (task == "classification") {
-    base_ids <- c("accuracy", "kap", "sens", "spec", "precision", "f_meas", "roc_auc")
+    base_ids <- c("accuracy", "kap", "sens", "spec", "precision", "f_meas", "roc_auc", "logloss", "brier_score", "ece")
     if (!is.null(summaryFunction)) {
       base_ids <- c(base_ids, metric)
     }
@@ -2547,6 +2650,7 @@ train_models <- function(train_data,
   }
 
   models <- list()
+  failed_models <- list()
   resampling_summaries <- list()
   resample_method_meta <- if (!is.null(resample_plan)) {
     fastml_resample_method(resample_plan) %||% resampling_method
@@ -2884,14 +2988,25 @@ train_models <- function(train_data,
             attr(roc_auc_h2o, "direction") <- attr(yardstick::roc_auc, "direction")
             attr(roc_auc_h2o, "metric_name") <- attr(yardstick::roc_auc, "metric_name")
 
-            my_metrics <- metric_set(accuracy, kap, sens, spec, precision, f_meas, roc_auc = roc_auc_h2o)
+            my_metrics <- metric_set(
+              accuracy,
+              kap,
+              sens_metric,
+              spec_metric,
+              precision_metric,
+              f_meas_metric,
+              roc_auc = roc_auc_h2o,
+              logloss = logloss_metric,
+              brier_score = brier_metric,
+              ece = ece_metric
+            )
 
             allow_par = FALSE
           }
 
           else if(engine == "LiblineaR"){
 
-            my_metrics <- metric_set(accuracy, kap, sens, spec, precision, f_meas)
+            my_metrics <- metric_set(accuracy, kap, sens_metric, spec_metric, precision_metric, f_meas_metric)
             allow_par = TRUE
 
           }else{
@@ -2939,6 +3054,7 @@ train_models <- function(train_data,
             my_metrics = my_metrics,
             do_tuning = do_tuning,
             event_class = event_class,
+            class_threshold = class_threshold,
             start_col = start_col,
             time_col = time_col,
             status_col = status_col,
@@ -3034,6 +3150,7 @@ train_models <- function(train_data,
               label = label,
               metric = metric,
               event_class = event_class,
+              class_threshold = class_threshold,
               engine = engine,
               start_col = start_col,
               time_col = time_col,
@@ -3044,6 +3161,11 @@ train_models <- function(train_data,
               engine_args = engine_args,
               summaryFunction = summaryFunction,
               multiclass_auc = multiclass_auc
+            )
+            res_summary <- fastml_attach_fold_sizes(
+              res_summary,
+              if (!is.null(resample_plan)) resample_plan else resamples,
+              task
             )
             if (!is.null(res_summary)) {
               if (is.null(resampling_summaries[[algo]])) {
@@ -3074,11 +3196,12 @@ train_models <- function(train_data,
               workflow_spec = final_workflow,
               resamples = if (!is.null(resample_plan)) resample_plan else resamples,
               original_train_rows = nrow(train_data),
-              task = task,
-              label = label,
-              metric = metric,
-              event_class = event_class,
-              engine = engine,
+            task = task,
+            label = label,
+            metric = metric,
+            event_class = event_class,
+            class_threshold = class_threshold,
+            engine = engine,
               start_col = start_col,
               time_col = time_col,
               status_col = status_col,
@@ -3087,6 +3210,11 @@ train_models <- function(train_data,
               survival_metric_convention = survival_metric_convention,
               summaryFunction = summaryFunction,
               multiclass_auc = multiclass_auc
+            )
+            res_summary <- fastml_attach_fold_sizes(
+              res_summary,
+              if (!is.null(resample_plan)) resample_plan else resamples,
+              task
             )
             if (!is.null(res_summary)) {
               if (is.null(resampling_summaries[[algo]])) {
@@ -3101,6 +3229,11 @@ train_models <- function(train_data,
         # Save the fitted model in the nested list under the current engine
         models[[algo]][[engine]] <- model
       }, error = function(e) {
+        failed_models[[length(failed_models) + 1]] <<- list(
+          algorithm = algo,
+          engine = engine,
+          reason = e$message
+        )
         warning(paste("Training failed for algorithm:", algo, "with engine:", engine,
                       "\nError message:", e$message))
       })
@@ -3128,6 +3261,18 @@ train_models <- function(train_data,
 
   if (!is.null(resample_plan)) {
     attr(models, "resampling_plan") <- resample_plan
+  }
+
+  # Report failed models prominently
+  if (length(failed_models) > 0) {
+    message("\n", paste(rep("=", 60), collapse = ""))
+    message(sprintf("WARNING: %d model(s) failed to train:", length(failed_models)))
+    message(paste(rep("-", 60), collapse = ""))
+    for (fm in failed_models) {
+      message(sprintf("  - %s (%s): %s", fm$algorithm, fm$engine, fm$reason))
+    }
+    message(paste(rep("=", 60), collapse = ""), "\n")
+    attr(models, "failed_models") <- failed_models
   }
 
   return(models)

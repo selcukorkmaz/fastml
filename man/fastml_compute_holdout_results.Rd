@@ -15,6 +15,7 @@ fastml_compute_holdout_results(
   task,
   metric = NULL,
   event_class,
+  class_threshold = "auto",
   eval_times = NULL,
   bootstrap_ci = TRUE,
   bootstrap_samples = 500,
@@ -54,6 +55,11 @@ status (e.g., 0 for censored, 1 for event). Only used when
 \item{metric}{The performance metric to optimize (e.g., "accuracy", "rmse").}
 
 \item{event_class}{A single string. Either "first" or "second" to specify which level of truth to consider as the "event".}
+
+\item{class_threshold}{For binary classification, controls how class probabilities
+are converted into hard class predictions. Numeric values in (0, 1) set a fixed
+threshold. The default `"auto"` tunes a threshold on the training data to maximize
+F1; use `"model"` to keep the model's default threshold.}
 
 \item{eval_times}{Optional numeric vector of evaluation horizons for survival
 metrics. Passed through to \code{process_model}.}

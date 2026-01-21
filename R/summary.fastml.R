@@ -166,7 +166,7 @@ summary.fastml <- function(object,
   }
 
   if (task == "classification") {
-    desired_metrics <- c("accuracy", "f_meas", "kap", "precision", "sens", "spec", "roc_auc")
+    desired_metrics <- c("accuracy", "f_meas", "kap", "precision", "sens", "spec", "roc_auc", "logloss", "brier_score", "ece")
   } else if (task == "regression") {
     desired_metrics <- c("rmse", "rsq", "mae")
   } else if (task == "survival") {
@@ -581,7 +581,7 @@ summary.fastml <- function(object,
 
   # Sort direction: lower-better metrics vs higher-better metrics
   brier_cols <- grep("^brier_t", colnames(performance_wide), value = TRUE)
-  ascending_metrics <- unique(c("rmse", "mae", "ibs", "logloss", "mse", brier_cols))
+  ascending_metrics <- unique(c("rmse", "mae", "ibs", "logloss", "brier_score", "ece", "mse", brier_cols))
   if (main_metric %in% colnames(performance_wide)) {
     if (main_metric %in% ascending_metrics) {
       order_idx <- order(performance_wide[[main_metric]], na.last = TRUE)
@@ -608,6 +608,9 @@ summary.fastml <- function(object,
     roc_auc = "ROC AUC",
     sens = "Sensitivity",
     spec = "Specificity",
+    logloss = "Logloss",
+    brier_score = "Brier Score",
+    ece = "ECE",
     rsq = "R-squared",
     mae = "MAE",
     rmse = "RMSE",

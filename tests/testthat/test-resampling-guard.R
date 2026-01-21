@@ -24,19 +24,23 @@ test_that("guarded resampling errors when split indices are missing", {
   resamples <- rsample::vfold_cv(train_split, v = 3)
   resamples$splits[[1]]$in_id <- NULL
 
+  # The error is now caught, reported as a warning, and tracked in failed_models
+  # The final error is "No models were successfully trained"
   expect_error(
-    fastml(
-      train_data = train_split,
-      test_data = test_split,
-      label = "Species",
-      algorithms = "logistic_reg",
-      resamples = resamples,
-      resampling_method = "cv",
-      folds = 3,
-      seed = 202
+    expect_warning(
+      fastml(
+        train_data = train_split,
+        test_data = test_split,
+        label = "Species",
+        algorithms = "logistic_reg",
+        resamples = resamples,
+        resampling_method = "cv",
+        folds = 3,
+        seed = 202
+      ),
+      "split index information"
     ),
-    "split index information",
-    fixed = TRUE
+    "No models were successfully trained"
   )
 })
 
@@ -55,18 +59,22 @@ test_that("guarded resampling requires consistent index fields", {
   resamples$splits[[1]]$analysis_id <- resamples$splits[[1]]$in_id
   resamples$splits[[1]]$in_id <- NULL
 
+  # The error is now caught, reported as a warning, and tracked in failed_models
+  # The final error is "No models were successfully trained"
   expect_error(
-    fastml(
-      train_data = train_split,
-      test_data = test_split,
-      label = "Species",
-      algorithms = "logistic_reg",
-      resamples = resamples,
-      resampling_method = "cv",
-      folds = 3,
-      seed = 303
+    expect_warning(
+      fastml(
+        train_data = train_split,
+        test_data = test_split,
+        label = "Species",
+        algorithms = "logistic_reg",
+        resamples = resamples,
+        resampling_method = "cv",
+        folds = 3,
+        seed = 303
+      ),
+      "consistent index field"
     ),
-    "consistent index field",
-    fixed = TRUE
+    "No models were successfully trained"
   )
 })

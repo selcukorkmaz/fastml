@@ -5,7 +5,13 @@
       "Bash(find:*)",
       "Bash(grep:*)",
       "Bash(where:*)",
-      "Bash(where Rscript)"
+      "Bash(where Rscript)",
+      "Bash(wc:*)",
+      "Bash(\"/c/Program Files/R/R-4.5.1/bin/Rscript.exe\" -e \"devtools::document\\(\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" -e \"devtools::document\\(\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" -e \"devtools::test\\(filter = ''resampling|defaults-registry''\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" -e \"devtools::test\\(filter = ''resampling''\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" -e \"devtools::test\\(\\)\")"
     ]
   }
 }

@@ -1205,7 +1205,261 @@ fastml_normalize_class_name <- function(x) {
   tolower(trimws(as.character(x)))
 }
 
-fastml_resolve_binary_prob_column <- function(prob_cols, truth_levels, event_class) {
+fastml_truth_levels <- function(truth_vec) {
+  if (is.factor(truth_vec)) {
+    levels(truth_vec)
+  } else {
+    unique(as.character(truth_vec))
+  }
+}
+
+fastml_prob_cols_from_dots <- function(data, dots) {
+  if (length(dots) == 0) {
+    return(grep("^\\.pred", names(data), value = TRUE))
+  }
+  cols <- vapply(dots, rlang::as_name, character(1))
+  cols <- cols[cols %in% names(data)]
+  if (length(cols) == 0) {
+    cols <- grep("^\\.pred", names(data), value = TRUE)
+  }
+  cols
+}
+
+fastml_prepare_prob_matrix <- function(data, prob_cols) {
+  prob_cols <- intersect(as.character(prob_cols), names(data))
+  if (length(prob_cols) == 0) {
+    return(NULL)
+  }
+  num_cols <- prob_cols[vapply(data[prob_cols], is.numeric, logical(1))]
+  if (length(num_cols) == 0) {
+    return(NULL)
+  }
+  list(mat = as.matrix(data[num_cols]), cols = num_cols)
+}
+
+fastml_align_prob_matrix <- function(prob_mat, prob_cols, truth_levels) {
+  if (is.null(prob_mat) || length(prob_cols) == 0 || length(truth_levels) == 0) {
+    return(NULL)
+  }
+  prob_labels <- sub("^\\.pred_p", "", sub("^\\.pred_", "", prob_cols))
+  prob_norm <- fastml_normalize_class_name(make.names(prob_labels))
+  truth_norm <- fastml_normalize_class_name(make.names(truth_levels))
+  match_idx <- match(truth_norm, prob_norm)
+  if (any(is.na(match_idx))) {
+    return(NULL)
+  }
+  list(mat = prob_mat[, match_idx, drop = FALSE], cols = prob_cols[match_idx])
+}
+
+fastml_binary_logloss <- function(truth_vec, prob_vec, positive_class) {
+  if (is.null(positive_class) || length(prob_vec) == 0) {
+    return(NA_real_)
+  }
+  y <- as.character(truth_vec) == as.character(positive_class)
+  valid <- is.finite(prob_vec) & !is.na(y)
+  if (!any(valid)) {
+    return(NA_real_)
+  }
+  p <- prob_vec[valid]
+  y <- as.numeric(y[valid])
+  eps <- 1e-15
+  p <- pmin(pmax(p, eps), 1 - eps)
+  -mean(y * log(p) + (1 - y) * log(1 - p))
+}
+
+fastml_binary_brier <- function(truth_vec, prob_vec, positive_class) {
+  if (is.null(positive_class) || length(prob_vec) == 0) {
+    return(NA_real_)
+  }
+  y <- as.character(truth_vec) == as.character(positive_class)
+  valid <- is.finite(prob_vec) & !is.na(y)
+  if (!any(valid)) {
+    return(NA_real_)
+  }
+  p <- prob_vec[valid]
+  y <- as.numeric(y[valid])
+  mean((p - y)^2)
+}
+
+fastml_binary_ece <- function(truth_vec, prob_vec, positive_class, n_bins = 10) {
+  if (is.null(positive_class) || length(prob_vec) == 0) {
+    return(NA_real_)
+  }
+  n_bins <- as.integer(n_bins)
+  if (!is.finite(n_bins) || n_bins < 1) {
+    n_bins <- 10L
+  }
+  y <- as.character(truth_vec) == as.character(positive_class)
+  valid <- is.finite(prob_vec) & !is.na(y)
+  if (!any(valid)) {
+    return(NA_real_)
+  }
+  p <- pmin(pmax(prob_vec[valid], 0), 1)
+  y <- as.numeric(y[valid])
+  bins <- cut(p,
+              breaks = seq(0, 1, length.out = n_bins + 1L),
+              include.lowest = TRUE,
+              labels = FALSE)
+  n <- length(p)
+  ece <- 0
+  for (b in seq_len(n_bins)) {
+    idx <- which(bins == b)
+    if (length(idx) == 0) {
+      next
+    }
+    conf <- mean(p[idx])
+    acc <- mean(y[idx])
+    ece <- ece + abs(acc - conf) * (length(idx) / n)
+  }
+  ece
+}
+
+fastml_multiclass_logloss <- function(truth_vec, prob_mat, truth_levels) {
+  n <- length(truth_vec)
+  if (is.null(prob_mat) || n == 0 || nrow(prob_mat) != n) {
+    return(NA_real_)
+  }
+  idx <- match(as.character(truth_vec), truth_levels)
+  p_true <- prob_mat[cbind(seq_len(n), idx)]
+  valid <- !is.na(idx) & is.finite(p_true)
+  if (!any(valid)) {
+    return(NA_real_)
+  }
+  eps <- 1e-15
+  p_true <- pmin(pmax(p_true, eps), 1 - eps)
+  -mean(log(p_true[valid]))
+}
+
+fastml_multiclass_brier <- function(truth_vec, prob_mat, truth_levels) {
+  n <- length(truth_vec)
+  if (is.null(prob_mat) || n == 0 || nrow(prob_mat) != n) {
+    return(NA_real_)
+  }
+  idx <- match(as.character(truth_vec), truth_levels)
+  sum_sq <- rowSums(prob_mat^2)
+  p_true <- prob_mat[cbind(seq_len(n), idx)]
+  valid <- !is.na(idx) & is.finite(p_true) & is.finite(sum_sq)
+  if (!any(valid)) {
+    return(NA_real_)
+  }
+  mean(sum_sq[valid] - 2 * p_true[valid] + 1)
+}
+
+fastml_multiclass_ece <- function(truth_vec, prob_mat, truth_levels, n_bins = 10) {
+  n <- length(truth_vec)
+  if (is.null(prob_mat) || n == 0 || nrow(prob_mat) != n) {
+    return(NA_real_)
+  }
+  n_bins <- as.integer(n_bins)
+  if (!is.finite(n_bins) || n_bins < 1) {
+    n_bins <- 10L
+  }
+  prob_mat <- pmin(pmax(prob_mat, 0), 1)
+  row_has_finite <- apply(prob_mat, 1, function(x) any(is.finite(x)))
+  safe_mat <- prob_mat
+  safe_mat[!is.finite(safe_mat)] <- -Inf
+  max_idx <- max.col(safe_mat, ties.method = "first")
+  conf <- prob_mat[cbind(seq_len(n), max_idx)]
+  conf[!row_has_finite] <- NA_real_
+  pred_class <- truth_levels[max_idx]
+  correct <- as.character(truth_vec) == as.character(pred_class)
+  valid <- is.finite(conf) & !is.na(correct)
+  if (!any(valid)) {
+    return(NA_real_)
+  }
+  conf <- conf[valid]
+  correct <- as.numeric(correct[valid])
+  bins <- cut(conf,
+              breaks = seq(0, 1, length.out = n_bins + 1L),
+              include.lowest = TRUE,
+              labels = FALSE)
+  n_valid <- length(conf)
+  ece <- 0
+  for (b in seq_len(n_bins)) {
+    idx <- which(bins == b)
+    if (length(idx) == 0) {
+      next
+    }
+    conf_mean <- mean(conf[idx])
+    acc_mean <- mean(correct[idx])
+    ece <- ece + abs(acc_mean - conf_mean) * (length(idx) / n_valid)
+  }
+  ece
+}
+
+fastml_class_calibration_metrics <- function(truth_vec, prob_mat, prob_cols, event_class) {
+  truth_levels <- fastml_truth_levels(truth_vec)
+  n_classes <- length(truth_levels)
+  if (n_classes < 2 || is.null(prob_mat) || length(prob_cols) == 0) {
+    return(list(logloss = NA_real_,
+                brier_score = NA_real_,
+                ece = NA_real_,
+                estimator = NA_character_))
+  }
+  if (n_classes == 2) {
+    if (is.null(event_class) || !event_class %in% c("first", "second")) {
+      event_class <- "first"
+    }
+    prob_meta <- fastml_resolve_binary_prob_column(prob_cols, truth_levels, event_class)
+    if (is.null(prob_meta$prob_col)) {
+      return(list(logloss = NA_real_,
+                  brier_score = NA_real_,
+                  ece = NA_real_,
+                  estimator = NA_character_))
+    }
+    col_idx <- match(prob_meta$prob_col, prob_cols)
+    if (is.na(col_idx)) {
+      return(list(logloss = NA_real_,
+                  brier_score = NA_real_,
+                  ece = NA_real_,
+                  estimator = NA_character_))
+    }
+    prob_vec <- prob_mat[, col_idx]
+    logloss <- fastml_binary_logloss(truth_vec, prob_vec, prob_meta$positive_class)
+    brier <- fastml_binary_brier(truth_vec, prob_vec, prob_meta$positive_class)
+    ece <- fastml_binary_ece(truth_vec, prob_vec, prob_meta$positive_class)
+    return(list(logloss = logloss,
+                brier_score = brier,
+                ece = ece,
+                estimator = NA_character_))
+  }
+  aligned <- fastml_align_prob_matrix(prob_mat, prob_cols, truth_levels)
+  if (is.null(aligned)) {
+    return(list(logloss = NA_real_,
+                brier_score = NA_real_,
+                ece = NA_real_,
+                estimator = NA_character_))
+  }
+  prob_mat <- pmin(pmax(aligned$mat, 0), 1)
+  logloss <- fastml_multiclass_logloss(truth_vec, prob_mat, truth_levels)
+  brier <- fastml_multiclass_brier(truth_vec, prob_mat, truth_levels)
+  ece <- fastml_multiclass_ece(truth_vec, prob_mat, truth_levels)
+  list(logloss = logloss, brier_score = brier, ece = ece, estimator = "macro")
+}
+
+fastml_wrap_event_level_metric <- function(metric, event_class) {
+  if (is.null(event_class) || !event_class %in% c("first", "second")) {
+    return(metric)
+  }
+
+  metric_fun <- function(data, truth, estimate, ...) {
+    metric(data,
+           truth = {{truth}},
+           estimate = {{estimate}},
+           event_level = event_class,
+           ...)
+  }
+
+  class(metric_fun) <- class(metric)
+  attr(metric_fun, "direction") <- attr(metric, "direction")
+  attr(metric_fun, "metric_name") <- attr(metric, "metric_name")
+  metric_fun
+}
+
+fastml_resolve_binary_prob_column <- function(prob_cols,
+                                              truth_levels,
+                                              event_class,
+                                              allow_fallback = FALSE) {
   if (!event_class %in% c("first", "second")) {
     stop("Invalid event_class argument. It should be either 'first' or 'second'.")
   }
@@ -1253,7 +1507,7 @@ fastml_resolve_binary_prob_column <- function(prob_cols, truth_levels, event_cla
     return(result)
   }
 
-  if (length(prob_cols) == 2) {
+  if (isTRUE(allow_fallback) && length(prob_cols) == 2) {
     result$prob_col <- prob_cols[pos_idx]
     result$used_fallback <- TRUE
   }
@@ -1293,19 +1547,192 @@ fastml_auc_estimator_from_truth <- function(truth, multiclass_auc) {
   if (n_levels > 2) multiclass_auc else "binary"
 }
 
-fastml_configured_roc_auc <- function(multiclass_auc) {
+fastml_configured_roc_auc <- function(multiclass_auc, event_class = NULL) {
   multiclass_auc <- fastml_normalize_multiclass_auc(multiclass_auc)
 
   roc_fun <- function(data, truth, ..., estimator = NULL) {
+    truth_col <- data[[rlang::as_string(rlang::ensym(truth))]]
     if (missing(estimator) || is.null(estimator) || length(estimator) == 0 || is.na(estimator[[1]])) {
-      truth_col <- data[[rlang::as_string(rlang::ensym(truth))]]
       estimator <- fastml_auc_estimator_from_truth(truth_col, multiclass_auc)
     }
-    yardstick::roc_auc(data, truth = {{truth}}, ..., estimator = estimator)
+    estimator <- as.character(estimator)[1]
+    if (is.null(estimator) || is.na(estimator) || !nzchar(estimator)) {
+      estimator <- NA_character_
+    }
+
+    na_result <- function(estimator_value) {
+      tibble::tibble(
+        .metric = "roc_auc",
+        .estimator = estimator_value,
+        .estimate = NA_real_
+      )
+    }
+
+    if (is.null(truth_col)) {
+      return(na_result(estimator))
+    }
+
+    truth_vals <- truth_col[!is.na(truth_col)]
+    if (length(unique(truth_vals)) < 2) {
+      return(na_result(estimator))
+    }
+
+    dots <- rlang::enquos(...)
+    prob_cols <- fastml_prob_cols_from_dots(data, dots)
+    prob_info <- fastml_prepare_prob_matrix(data, prob_cols)
+    if (is.null(prob_info)) {
+      return(na_result(estimator))
+    }
+
+    prob_cols <- prob_info$cols
+    if (length(prob_cols) == 0) {
+      return(na_result(estimator))
+    }
+
+    if (identical(estimator, "binary")) {
+      truth_levels <- fastml_truth_levels(truth_col)
+      event_use <- if (!is.null(event_class) && event_class %in% c("first", "second")) {
+        event_class
+      } else {
+        "first"
+      }
+      prob_meta <- fastml_resolve_binary_prob_column(
+        prob_cols,
+        truth_levels,
+        event_use,
+        allow_fallback = FALSE
+      )
+      prob_col <- prob_meta$prob_col
+      if (is.null(prob_col) || !prob_col %in% prob_cols) {
+        return(na_result(estimator))
+      }
+      use_event <- !is.null(event_class) && event_class %in% c("first", "second")
+      if (use_event) {
+        yardstick::roc_auc(
+          data,
+          truth = {{truth}},
+          !!rlang::sym(prob_col),
+          estimator = "binary",
+          event_level = event_class
+        )
+      } else {
+        yardstick::roc_auc(
+          data,
+          truth = {{truth}},
+          !!rlang::sym(prob_col),
+          estimator = "binary"
+        )
+      }
+    } else {
+      truth_levels <- fastml_truth_levels(truth_col)
+      aligned <- fastml_align_prob_matrix(prob_info$mat, prob_cols, truth_levels)
+      if (is.null(aligned) || length(aligned$cols) == 0) {
+        return(na_result(estimator))
+      }
+      yardstick::roc_auc(
+        data,
+        truth = {{truth}},
+        !!!rlang::syms(aligned$cols),
+        estimator = estimator
+      )
+    }
   }
 
   class(roc_fun) <- class(yardstick::roc_auc)
   attr(roc_fun, "direction") <- attr(yardstick::roc_auc, "direction")
   attr(roc_fun, "metric_name") <- attr(yardstick::roc_auc, "metric_name")
   roc_fun
+}
+
+fastml_configured_logloss <- function(event_class = NULL) {
+  logloss_fun <- function(data, truth, ..., estimator = NULL) {
+    truth_col <- rlang::as_string(rlang::ensym(truth))
+    truth_vec <- data[[truth_col]]
+    dots <- rlang::enquos(...)
+    prob_cols <- fastml_prob_cols_from_dots(data, dots)
+    prob_info <- fastml_prepare_prob_matrix(data, prob_cols)
+    if (is.null(prob_info)) {
+      estimate <- NA_real_
+      estimator_out <- NA_character_
+    } else {
+      metrics <- fastml_class_calibration_metrics(truth_vec,
+                                                  prob_info$mat,
+                                                  prob_info$cols,
+                                                  event_class)
+      estimate <- metrics$logloss
+      estimator_out <- metrics$estimator
+    }
+    tibble::tibble(
+      .metric = "logloss",
+      .estimator = estimator_out,
+      .estimate = as.numeric(estimate)
+    )
+  }
+
+  class(logloss_fun) <- class(yardstick::roc_auc)
+  attr(logloss_fun, "direction") <- "minimize"
+  attr(logloss_fun, "metric_name") <- "logloss"
+  logloss_fun
+}
+
+fastml_configured_brier_score <- function(event_class = NULL) {
+  brier_fun <- function(data, truth, ..., estimator = NULL) {
+    truth_col <- rlang::as_string(rlang::ensym(truth))
+    truth_vec <- data[[truth_col]]
+    dots <- rlang::enquos(...)
+    prob_cols <- fastml_prob_cols_from_dots(data, dots)
+    prob_info <- fastml_prepare_prob_matrix(data, prob_cols)
+    if (is.null(prob_info)) {
+      estimate <- NA_real_
+      estimator_out <- NA_character_
+    } else {
+      metrics <- fastml_class_calibration_metrics(truth_vec,
+                                                  prob_info$mat,
+                                                  prob_info$cols,
+                                                  event_class)
+      estimate <- metrics$brier_score
+      estimator_out <- metrics$estimator
+    }
+    tibble::tibble(
+      .metric = "brier_score",
+      .estimator = estimator_out,
+      .estimate = as.numeric(estimate)
+    )
+  }
+
+  class(brier_fun) <- class(yardstick::roc_auc)
+  attr(brier_fun, "direction") <- "minimize"
+  attr(brier_fun, "metric_name") <- "brier_score"
+  brier_fun
+}
+
+fastml_configured_ece <- function(event_class = NULL) {
+  ece_fun <- function(data, truth, ..., estimator = NULL) {
+    truth_col <- rlang::as_string(rlang::ensym(truth))
+    truth_vec <- data[[truth_col]]
+    dots <- rlang::enquos(...)
+    prob_cols <- fastml_prob_cols_from_dots(data, dots)
+    prob_info <- fastml_prepare_prob_matrix(data, prob_cols)
+    if (is.null(prob_info)) {
+      estimate <- NA_real_
+      estimator_out <- NA_character_
+    } else {
+      metrics <- fastml_class_calibration_metrics(truth_vec,
+                                                  prob_info$mat,
+                                                  prob_info$cols,
+                                                  event_class)
+      estimate <- metrics$ece
+      estimator_out <- metrics$estimator
+    }
+    tibble::tibble(
+      .metric = "ece",
+      .estimator = estimator_out,
+      .estimate = as.numeric(estimate)
+    )
+  }
+
+  class(ece_fun) <- class(yardstick::roc_auc)
+  attr(ece_fun, "direction") <- "minimize"
+  attr(ece_fun, "metric_name") <- "ece"
+  ece_fun
 }

@@ -28,6 +28,7 @@ fastml(
   tune_params = NULL,
   engine_params = list(),
   metric = NULL,
+  class_threshold = "auto",
   algorithm_engines = NULL,
   use_parsnip_defaults = FALSE,
   warn_engine_defaults = TRUE,
@@ -115,7 +116,11 @@ successive resamples when \code{resampling_method = "rolling_origin"}.}
 \item{outer_folds}{Positive integer giving the number of outer folds to use when
 \code{resampling_method = "nested_cv"} and no custom \code{resamples} object is supplied.}
 
-\item{event_class}{A single string. Either "first" or "second" to specify which level of truth to consider as the "event". Default is "first".}
+\item{event_class}{A single string. Either "first" or "second" to specify which
+level of the binary outcome factor to treat as the positive class (the "event").
+For binary classification, "first" treats the first factor level as the positive
+class, "second" treats the second level as positive. Use
+\code{levels(your_data$outcome)} to check level order before training. Default is "first".}
 
 \item{exclude}{A character vector specifying the names of the columns to be excluded from the training process.}
 
@@ -134,7 +139,15 @@ should apply whenever an engine is fitted (for example,
 These arguments are distinct from \code{tune_params}, which define ranges of
 hyperparameters to explore during tuning. Default is an empty list.}
 
-\item{metric}{The performance metric to optimize during training.}
+\item{metric}{The performance metric to optimize during training. For
+classification, options include \code{"accuracy"}, \code{"roc_auc"},
+\code{"logloss"}, \code{"brier_score"}, and \code{"ece"} (plus other class metrics).}
+
+\item{class_threshold}{For binary classification, controls how class probabilities
+are converted into hard class predictions during holdout evaluation. Numeric
+values in (0, 1) set a fixed threshold. The default \code{"auto"} tunes a
+threshold on the training data to maximize F1; use \code{"model"} to keep
+the model's default threshold.}
 
 \item{algorithm_engines}{A named list specifying the engine to use for each algorithm.}
 
@@ -320,6 +333,30 @@ presets via \code{tuning_complexity} to make this trade-off explicit:
 Use \code{\link{print_tuning_presets}} to see all presets and
 \code{\link{estimate_tuning_time}} to estimate runtime before starting.
 }
+\section{Factor Level Warning}{
+
+For binary classification, the interpretation of metrics like sensitivity, specificity,
+and ROC AUC depends on which factor level is treated as the "positive" class (the event
+of interest). The \code{event_class} parameter controls this:
+\itemize{
+  \item \code{"first"} (default): The first factor level is treated as positive
+  \item \code{"second"}: The second factor level is treated as positive
+}
+
+\strong{Important:} Recipe preprocessing steps like \code{step_other()} or
+\code{step_unknown()} can modify factor levels, potentially changing which level
+is "first" or "second". Always verify factor levels after preprocessing.
+
+To ensure consistent behavior, explicitly set factor levels before calling fastml:
+\preformatted{
+# Ensure "positive" is the second level (event_class = "second")
+data$outcome <- factor(data$outcome, levels = c("negative", "positive"))
+
+# Or ensure "positive" is the first level (event_class = "first")
+data$outcome <- factor(data$outcome, levels = c("positive", "negative"))
+}
+}
+
 \examples{
 \donttest{
 # Example 1: Using the iris dataset for binary classification (excluding 'setosa')

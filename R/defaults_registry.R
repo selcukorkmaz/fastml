@@ -425,3 +425,95 @@ print_default_differences <- function(task = "classification", algorithms = NULL
 
   invisible(diffs)
 }
+
+#' Validate Defaults Registry Against Parsnip
+#'
+#' Compares the hardcoded parsnip default engines in fastml's registry against
+#' the actual defaults reported by \code{parsnip::show_engines()}. Returns a
+#' list of any mismatches found, which may indicate that parsnip has updated
+#' its defaults since fastml's registry was last updated.
+#'
+#' @return A list of mismatches. Each element is a list with components:
+#'   \describe{
+#'     \item{algorithm}{The algorithm name.}
+#'     \item{fastml_default}{The default engine recorded in fastml's registry.}
+#'     \item{parsnip_default}{The actual default engine from parsnip.}
+#'   }
+#'   Returns an empty list if no mismatches are found.
+#'
+#' @details This function queries parsnip for model specifications and compares
+#'   against the hardcoded \code{parsnip_defaults} list in
+#'   \code{get_parsnip_default_engine()}. Mismatches may occur when:
+#'   \itemize{
+#'     \item Parsnip updates its default engine for a model type
+
+#'     \item New engines are added to parsnip that become the new default
+#'     \item fastml's registry has not been updated after a parsnip release
+#'   }
+#'
+#'   This validation is intended for package maintenance and testing purposes.
+#'
+#' @export
+#' @examples
+#' \dontrun{
+#' mismatches <- validate_defaults_registry()
+#' if (length(mismatches) > 0) {
+#'   message("Found ", length(mismatches), " mismatch(es) with parsnip defaults")
+#' }
+#' }
+validate_defaults_registry <- function() {
+  mismatches <- list()
+
+  # Algorithms to check - those that have parsnip model functions
+  algorithms_to_check <- c(
+    "logistic_reg", "multinom_reg", "linear_reg", "decision_tree",
+    "rand_forest", "boost_tree", "svm_linear", "svm_rbf", "svm_poly",
+    "nearest_neighbor", "naive_Bayes", "mlp", "bag_tree",
+    "discrim_linear", "discrim_quad"
+  )
+
+  for (algo in algorithms_to_check) {
+    # Get fastml's recorded parsnip default
+    fastml_default <- get_parsnip_default_engine(algo, task = NULL)
+
+    if (is.null(fastml_default)) {
+      next
+    }
+
+    # Try to get parsnip's actual default by querying show_engines
+    parsnip_default <- tryCatch({
+      # Check if the model function exists in parsnip
+      if (!exists(algo, envir = asNamespace("parsnip"), inherits = FALSE)) {
+        NULL
+      } else {
+        # Get available engines
+        engines_df <- tryCatch(
+          parsnip::show_engines(algo),
+          error = function(e) NULL
+        )
+
+        if (is.null(engines_df) || nrow(engines_df) == 0) {
+          NULL
+        } else {
+          # The first engine listed is typically the default
+          # parsnip doesn't explicitly mark defaults, but the first registered
+          # engine is conventionally the default
+          engines_df$engine[1]
+        }
+      }
+    }, error = function(e) {
+      NULL
+    })
+
+    # Compare if we got a result from parsnip
+    if (!is.null(parsnip_default) && !identical(fastml_default, parsnip_default)) {
+      mismatches[[length(mismatches) + 1]] <- list(
+        algorithm = algo,
+        fastml_default = fastml_default,
+        parsnip_default = parsnip_default
+      )
+    }
+  }
+
+  mismatches
+}

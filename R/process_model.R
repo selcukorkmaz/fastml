@@ -13,6 +13,10 @@
 #' @param label The name of the outcome variable (as a character string).
 #' @param event_class For binary classification, specifies which class is considered the positive class:
 #'   `"first"` or `"second"`.
+#' @param class_threshold For binary classification, controls how class probabilities
+#'   are converted into hard class predictions. Numeric values in (0, 1) set a
+#'   fixed threshold. The default `"auto"` tunes a threshold on the training data
+#'   to maximize F1; use `"model"` to keep the model's default threshold.
 #' @param multiclass_auc For multiclass ROC AUC, the averaging method to use:
 #'   `"macro"` (default, tidymodels) or `"macro_weighted"`. Macro weights each
 #'   class equally, while macro_weighted weights by class prevalence and can
@@ -84,6 +88,7 @@ process_model <- function(model_obj,
                           test_data,
                           label,
                           event_class,
+                          class_threshold = "auto",
                           start_col = NULL,
                           time_col = NULL,
                           status_col = NULL,
@@ -102,19 +107,56 @@ process_model <- function(model_obj,
                           multiclass_auc = "macro") {
   # If the model object is a tuning result, finalize the workflow
   if (inherits(model_obj, "tune_results")) {
-    best_params <- tryCatch({
-      tune::select_best(model_obj, metric = metric)
-    }, error = function(e) {
+    select_metric <- metric
+    select_best_safe <- function(metric_name) {
+      tryCatch(tune::select_best(model_obj, metric = metric_name),
+               error = function(e) e)
+    }
+    best_params <- select_best_safe(select_metric)
+    select_error <- NULL
+    if (inherits(best_params, "error")) {
+      select_error <- best_params
+      available_metrics <- tryCatch(
+        unique(tune::collect_metrics(model_obj)$.metric),
+        error = function(e) NULL
+      )
+      if (!is.null(available_metrics) && length(available_metrics) > 0) {
+        fallback_priority <- switch(task,
+          classification = c("logloss", "brier_score", "roc_auc", "accuracy", "kap",
+                             "sens", "spec", "precision", "f_meas"),
+          regression = c("rmse", "rsq", "mae"),
+          survival = c("c_index", "uno_c", "ibs", "rmst_diff"),
+          c()
+        )
+        candidate_metrics <- c(
+          fallback_priority[fallback_priority %in% available_metrics],
+          setdiff(available_metrics, fallback_priority)
+        )
+        candidate_metrics <- unique(setdiff(candidate_metrics, select_metric))
+        for (cand in candidate_metrics) {
+          res <- select_best_safe(cand)
+          if (!inherits(res, "error")) {
+            best_params <- res
+            warning(sprintf(
+              "Metric '%s' unavailable for model '%s'; selecting best by '%s'.",
+              select_metric,
+              model_id,
+              cand
+            ), call. = FALSE)
+            break
+          }
+        }
+      }
+    }
+    if (inherits(best_params, "error") || is.null(best_params)) {
       warning(paste(
         "Could not select best parameters for model",
         model_id,
         ":",
-        e$message
+        conditionMessage(select_error)
       ))
       return(NULL)
-    })
-    if (is.null(best_params))
-      return(NULL)
+    }
 
     model_spec <- workflows::pull_workflow_spec(model_obj)
     model_recipe <- workflows::pull_workflow_preprocessor(model_obj)
@@ -255,6 +297,188 @@ process_model <- function(model_obj,
       !is.na(engine) && engine != "LiblineaR" &&
       length(prob_cols) > 0
 
+    compute_calibration_rows <- function(df) {
+      if (!prob_available || length(prob_cols) == 0) {
+        return(NULL)
+      }
+      prob_info <- fastml_prepare_prob_matrix(df, prob_cols)
+      if (is.null(prob_info)) {
+        return(NULL)
+      }
+      calib <- fastml_class_calibration_metrics(
+        truth_vec = df$truth,
+        prob_mat = prob_info$mat,
+        prob_cols = prob_info$cols,
+        event_class = event_class
+      )
+      if (!is.finite(calib$logloss) &&
+          !is.finite(calib$brier_score) &&
+          !is.finite(calib$ece)) {
+        return(NULL)
+      }
+      tibble::tibble(
+        .metric = c("logloss", "brier_score", "ece"),
+        .estimator = rep(calib$estimator, 3),
+        .estimate = as.numeric(c(calib$logloss, calib$brier_score, calib$ece))
+      )
+    }
+
+    ensure_calibration_metrics <- function(perf_df, estimator_value) {
+      metric_names <- c("logloss", "brier_score", "ece")
+      missing <- setdiff(metric_names, perf_df$.metric)
+      if (length(missing) == 0) {
+        return(perf_df)
+      }
+      add_rows <- tibble::tibble(
+        .metric = missing,
+        .estimator = rep(estimator_value, length(missing)),
+        .estimate = NA_real_
+      )
+      dplyr::bind_rows(perf_df, add_rows)
+    }
+
+    resolve_class_threshold <- function(class_threshold, metric_name) {
+      if (is.null(class_threshold)) {
+        return(list(mode = "model", metric = NULL, value = NA_real_))
+      }
+      if (is.numeric(class_threshold)) {
+        if (length(class_threshold) != 1 || !is.finite(class_threshold)) {
+          return(list(mode = "model", metric = NULL, value = NA_real_))
+        }
+        return(list(
+          mode = "fixed",
+          metric = "fixed",
+          value = min(max(class_threshold, 0), 1)
+        ))
+      }
+      if (!is.character(class_threshold) || length(class_threshold) != 1 || !nzchar(class_threshold)) {
+        return(list(mode = "model", metric = NULL, value = NA_real_))
+      }
+      method <- tolower(class_threshold)
+      if (method %in% c("f1", "f1_score", "f1-score")) {
+        method <- "f_meas"
+      }
+      if (method %in% c("model", "none", "default")) {
+        return(list(mode = "model", metric = NULL, value = NA_real_))
+      }
+      if (method == "auto") {
+        threshold_metrics <- c("accuracy", "sens", "spec", "precision", "f_meas")
+        if (!is.null(metric_name) && metric_name %in% threshold_metrics) {
+          method <- metric_name
+        } else {
+          method <- "f_meas"
+        }
+      }
+      if (method %in% c("accuracy", "sens", "spec", "precision", "f_meas", "youden")) {
+        return(list(mode = "tuned", metric = method, value = NA_real_))
+      }
+      warning(
+        sprintf("Unsupported class_threshold '%s'; using model default predictions.", class_threshold),
+        call. = FALSE
+      )
+      list(mode = "model", metric = NULL, value = NA_real_)
+    }
+
+    compute_optimal_threshold <- function(truth_vec, prob_vec, positive_class, method) {
+      if (is.null(positive_class)) {
+        return(NA_real_)
+      }
+      valid <- is.finite(prob_vec) & !is.na(truth_vec)
+      if (!any(valid)) {
+        return(NA_real_)
+      }
+      truth_vec <- as.character(truth_vec[valid])
+      prob_vec <- prob_vec[valid]
+      if (length(unique(truth_vec)) < 2) {
+        return(NA_real_)
+      }
+      pos <- truth_vec == positive_class
+      n_pos <- sum(pos)
+      n_neg <- length(pos) - n_pos
+      if (n_pos == 0 || n_neg == 0) {
+        return(NA_real_)
+      }
+      ord <- order(prob_vec, decreasing = TRUE)
+      prob_sorted <- prob_vec[ord]
+      pos_sorted <- pos[ord]
+      rle_probs <- rle(prob_sorted)
+      idx_end <- cumsum(rle_probs$lengths)
+      tp <- cumsum(pos_sorted)[idx_end]
+      fp <- cumsum(!pos_sorted)[idx_end]
+      fn <- n_pos - tp
+      tn <- n_neg - fp
+
+      accuracy <- (tp + tn) / (n_pos + n_neg)
+      sens <- ifelse((tp + fn) > 0, tp / (tp + fn), NA_real_)
+      spec <- ifelse((tn + fp) > 0, tn / (tn + fp), NA_real_)
+      precision <- ifelse((tp + fp) > 0, tp / (tp + fp), NA_real_)
+      f_meas <- ifelse((precision + sens) > 0, 2 * precision * sens / (precision + sens), NA_real_)
+      youden <- sens + spec - 1
+
+      metric_vals <- switch(
+        method,
+        accuracy = accuracy,
+        sens = sens,
+        spec = spec,
+        precision = precision,
+        f_meas = f_meas,
+        youden = youden,
+        accuracy
+      )
+      if (!any(is.finite(metric_vals))) {
+        return(NA_real_)
+      }
+      best_val <- max(metric_vals, na.rm = TRUE)
+      best_idx <- which(metric_vals == best_val)
+      if (length(best_idx) > 1) {
+        best_idx <- best_idx[which.min(abs(rle_probs$values[best_idx] - 0.5))]
+      }
+      rle_probs$values[best_idx]
+    }
+
+    tune_class_threshold <- function(positive_class, method) {
+      if (is.null(train_data) || !is.data.frame(train_data)) {
+        return(NA_real_)
+      }
+      train_truth <- train_data[[label]]
+      if (is.null(train_truth)) {
+        return(NA_real_)
+      }
+      train_prob <- tryCatch(
+        predict(final_model, new_data = train_data, type = "prob"),
+        error = function(e) NULL
+      )
+      if (is.null(train_prob) || !is.data.frame(train_prob) || nrow(train_prob) == 0) {
+        return(NA_real_)
+      }
+      prob_cols_train <- names(train_prob)
+      prob_cols_train <- prob_cols_train[
+        vapply(train_prob[prob_cols_train], is.numeric, logical(1))
+      ]
+      if (length(prob_cols_train) == 0) {
+        return(NA_real_)
+      }
+      prob_meta_train <- fastml_resolve_binary_prob_column(
+        prob_cols = prob_cols_train,
+        truth_levels = truth_levels,
+        event_class = event_class
+      )
+      prob_col_train <- prob_meta_train$prob_col
+      if (is.null(prob_col_train) || !is.numeric(train_prob[[prob_col_train]])) {
+        return(NA_real_)
+      }
+      if (!any(is.finite(train_prob[[prob_col_train]]))) {
+        return(NA_real_)
+      }
+      train_truth <- factor(train_truth, levels = truth_levels)
+      compute_optimal_threshold(
+        truth_vec = train_truth,
+        prob_vec = train_prob[[prob_col_train]],
+        positive_class = positive_class,
+        method = method
+      )
+    }
+
     truth_levels <- levels(data_metrics$truth)
     if (is.null(truth_levels) || length(truth_levels) == 0) {
       truth_levels <- unique(as.character(data_metrics$truth))
@@ -302,18 +526,13 @@ process_model <- function(model_obj,
       )
     }
 
+    threshold_used <- NA_real_
+    threshold_metric <- NA_character_
+
     if (num_classes == 2) {
       if (!event_class %in% c("first", "second")) {
         stop("Invalid event_class argument. It should be either 'first' or 'second'.")
       }
-
-      metrics_class <- build_class_metrics()
-      perf_class <- safe_metrics_class(
-        data_metrics,
-        truth = truth,
-        estimate = estimate,
-        event_level = event_class
-      )
 
       prob_meta <- fastml_resolve_binary_prob_column(
         prob_cols = prob_cols,
@@ -339,6 +558,36 @@ process_model <- function(model_obj,
           call. = FALSE
         )
       }
+
+      if (prob_available && !is.null(prob_col)) {
+        threshold_spec <- resolve_class_threshold(class_threshold, metric_name)
+        if (identical(threshold_spec$mode, "fixed")) {
+          threshold_used <- threshold_spec$value
+          threshold_metric <- threshold_spec$metric
+        } else if (identical(threshold_spec$mode, "tuned")) {
+          threshold_metric <- threshold_spec$metric
+          threshold_used <- tune_class_threshold(positive_class, threshold_spec$metric)
+        }
+        if (is.finite(threshold_used) && !is.null(positive_class)) {
+          negative_class <- setdiff(truth_levels, positive_class)[1]
+          if (!is.null(negative_class) && length(negative_class) == 1 && !is.na(negative_class)) {
+            data_metrics$estimate <- ifelse(
+              data_metrics[[prob_col]] >= threshold_used,
+              positive_class,
+              negative_class
+            )
+            data_metrics$estimate <- factor(data_metrics$estimate, levels = truth_levels)
+          }
+        }
+      }
+
+      metrics_class <- build_class_metrics()
+      perf_class <- safe_metrics_class(
+        data_metrics,
+        truth = truth,
+        estimate = estimate,
+        event_level = event_class
+      )
 
       if (prob_available) {
         if (observed_classes < 2) {
@@ -374,6 +623,23 @@ process_model <- function(model_obj,
         perf <- perf_class
       }
 
+      if (!any(perf$.metric == "roc_auc")) {
+        perf <- dplyr::bind_rows(
+          perf,
+          tibble::tibble(
+            .metric = "roc_auc",
+            .estimator = "binary",
+            .estimate = NA_real_
+          )
+        )
+      }
+
+      calib_rows <- compute_calibration_rows(data_metrics)
+      if (!is.null(calib_rows)) {
+        perf <- dplyr::bind_rows(perf, calib_rows)
+      }
+      perf <- ensure_calibration_metrics(perf, NA_character_)
+
       compute_boot_perf <- function(df) {
         perf_boot <- tryCatch(
           suppressWarnings(safe_metrics_class(
@@ -400,6 +666,10 @@ process_model <- function(model_obj,
             perf_boot <- dplyr::bind_rows(perf_boot, roc_boot)
           }
         }
+        calib_boot <- compute_calibration_rows(df)
+        if (!is.null(calib_boot)) {
+          perf_boot <- dplyr::bind_rows(perf_boot, calib_boot)
+        }
         perf_boot
       }
     } else {
@@ -409,7 +679,7 @@ process_model <- function(model_obj,
         data_metrics,
         truth = truth,
         estimate = estimate,
-        estimator = "macro"
+        estimator = multiclass_auc
       )
 
       if (has_probabilities) {
@@ -423,13 +693,36 @@ process_model <- function(model_obj,
         perf <- perf_class
       }
 
+      if (!any(perf$.metric == "roc_auc")) {
+        perf <- dplyr::bind_rows(
+          perf,
+          tibble::tibble(
+            .metric = "roc_auc",
+            .estimator = multiclass_auc,
+            .estimate = NA_real_
+          )
+        )
+      }
+
+      calib_rows <- compute_calibration_rows(data_metrics)
+      if (!is.null(calib_rows)) {
+        perf <- dplyr::bind_rows(perf, calib_rows)
+      }
+      calib_estimator <- if (!is.null(calib_rows) &&
+                             ".estimator" %in% names(calib_rows)) {
+        calib_rows$.estimator[1]
+      } else {
+        "macro"
+      }
+      perf <- ensure_calibration_metrics(perf, calib_estimator)
+
       compute_boot_perf <- function(df) {
         perf_boot <- tryCatch(
           suppressWarnings(safe_metrics_class(
             df,
             truth = truth,
             estimate = estimate,
-            estimator = "macro"
+            estimator = multiclass_auc
           )),
           error = function(e) NULL
         )
@@ -449,11 +742,21 @@ process_model <- function(model_obj,
             perf_boot <- dplyr::bind_rows(perf_boot, roc_boot)
           }
         }
+        calib_boot <- compute_calibration_rows(df)
+        if (!is.null(calib_boot)) {
+          perf_boot <- dplyr::bind_rows(perf_boot, calib_boot)
+        }
         perf_boot
       }
     }
 
     perf <- add_bootstrap_ci(perf, data_metrics, compute_boot_perf)
+    if (is.finite(threshold_used)) {
+      attr(perf, "class_threshold") <- threshold_used
+      attr(perf, "class_threshold_metric") <- threshold_metric
+      attr(data_metrics, "class_threshold") <- threshold_used
+      attr(data_metrics, "class_threshold_metric") <- threshold_metric
+    }
   } else if (task == "survival") {
     survival_metric_convention <- fastml_normalize_survival_convention(survival_metric_convention)
     status_warning_emitted <- FALSE

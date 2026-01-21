@@ -73,6 +73,10 @@ Provides model explainability across several backends. With \code{method = "dale
 }
 \details{
 \itemize{
+   \item \bold{Training data explanations:} All explanations (variable importance, SHAP values,
+   partial dependence profiles) are computed on the training data and reflect in-sample model behavior.
+   These indicate how the model uses features on data it has seen, not necessarily how it will
+   generalize to new data.
    \item \bold{Method dispatch:} \code{method} can route to LIME, ICE, ALE, surrogate tree, interaction strengths,
    DALEX/modelStudio dashboards, fairness diagnostics, iBreakDown contributions, or counterfactual search.
    \item \bold{Variable importance controls:} Use \code{vi_iterations} to tune permutation stability and \code{loss_function}
@@ -80,4 +84,10 @@ Provides model explainability across several backends. With \code{method = "dale
    \item \bold{Fairness and breakdown support:} Provide \code{protected} for \code{method = "fairness"} and an \code{observation}
    for \code{method = "breakdown"} or \code{method = "counterfactual"}. Observations are aligned to the explainer data before scoring.
  }
+}
+\note{
+Variable importance, SHAP values, and partial dependence profiles are computed using
+training data. These reflect the model's behavior on data it has seen, not generalization
+performance. For unbiased feature importance estimates, consider using held-out test data
+or nested cross-validation approaches.
 }

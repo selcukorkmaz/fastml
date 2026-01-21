@@ -38,7 +38,7 @@ test_that("binary roc_auc uses available probability columns", {
   expect_true(any(grepl("^\\.pred_", names(preds))))
 })
 
-test_that("binary probability column resolver handles sanitized and fallback names", {
+test_that("binary probability column resolver handles sanitized names and explicit fallback", {
   res <- fastml:::fastml_resolve_binary_prob_column(
     prob_cols = c(".pred_pos.class", ".pred_neg.class"),
     truth_levels = c("pos class", "neg class"),
@@ -52,8 +52,17 @@ test_that("binary probability column resolver handles sanitized and fallback nam
     truth_levels = c("no", "yes"),
     event_class = "second"
   )
-  expect_identical(res_fallback$prob_col, ".prob1")
-  expect_true(isTRUE(res_fallback$used_fallback))
+  expect_null(res_fallback$prob_col)
+  expect_false(isTRUE(res_fallback$used_fallback))
+
+  res_fallback_allowed <- fastml:::fastml_resolve_binary_prob_column(
+    prob_cols = c(".prob0", ".prob1"),
+    truth_levels = c("no", "yes"),
+    event_class = "second",
+    allow_fallback = TRUE
+  )
+  expect_identical(res_fallback_allowed$prob_col, ".prob1")
+  expect_true(isTRUE(res_fallback_allowed$used_fallback))
 })
 
 test_that("configured roc_auc accepts explicit estimator", {
@@ -72,4 +81,38 @@ test_that("configured roc_auc accepts explicit estimator", {
   expect_silent(
     roc_fun(df, truth = Species, .pred_versicolor, estimator = "binary")
   )
+})
+
+test_that("logloss and brier_score are computed when probabilities are available", {
+  required <- c("parsnip", "workflows", "recipes", "yardstick", "rsample")
+  lapply(required, skip_if_not_installed)
+
+  data(iris)
+  df <- iris[iris$Species != "setosa", c("Sepal.Length", "Sepal.Width", "Species")]
+  df$Species <- factor(df$Species)
+  levels(df$Species) <- c("negative class", "positive class")
+
+  fit <- fastml(
+    data = df,
+    label = "Species",
+    algorithms = "logistic_reg",
+    task = "classification",
+    resampling_method = "none",
+    use_default_tuning = FALSE,
+    test_size = 0.3,
+    seed = 321,
+    bootstrap_ci = FALSE,
+    metric = "logloss",
+    event_class = "second"
+  )
+
+  perf <- fit$performance[[1]]
+  if (is.list(perf) && !is.data.frame(perf)) {
+    perf <- perf[[1]]
+  }
+
+  expect_true(all(c("logloss", "brier_score", "ece") %in% perf$.metric))
+  calib_vals <- perf$.estimate[perf$.metric %in% c("logloss", "brier_score", "ece")]
+  expect_true(all(is.finite(calib_vals)))
+  expect_true(all(calib_vals >= 0))
 })

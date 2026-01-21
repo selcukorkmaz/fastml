@@ -120,7 +120,7 @@ plot.fastml <- function(x,
   }
 
   if (task == "classification") {
-    desired_metrics <- c("accuracy", "f_meas", "kap", "precision", "sens", "spec", "roc_auc")
+    desired_metrics <- c("accuracy", "f_meas", "kap", "precision", "sens", "spec", "roc_auc", "logloss", "brier_score")
   } else if (task == "regression") {
     desired_metrics <- c("rmse", "rsq", "mae")
   } else if (task == "survival") {
@@ -162,7 +162,7 @@ plot.fastml <- function(x,
   }
 
   brier_cols <- grep("^brier_t", colnames(performance_wide), value = TRUE)
-  ascending_metrics <- unique(c("rmse", "mae", "ibs", "logloss", "mse", brier_cols))
+  ascending_metrics <- unique(c("rmse", "mae", "ibs", "logloss", "brier_score", "mse", brier_cols))
   if (main_metric %in% ascending_metrics) {
     performance_wide <- performance_wide[order(performance_wide[[main_metric]], na.last = TRUE), ]
   } else {
@@ -465,6 +465,31 @@ plot.fastml <- function(x,
               cat("Error: Column", pred_col, "not found in model predictions for", model_name, "\n")
               next
             }
+            prob_cols_metric <- setdiff(names(model_predictions), c("truth", "estimate"))
+            prob_cols_metric <- prob_cols_metric[
+              vapply(model_predictions[prob_cols_metric], is.numeric, logical(1))
+            ]
+            prob_info <- fastml_prepare_prob_matrix(model_predictions, prob_cols_metric)
+            calib_label <- NULL
+            if (!is.null(prob_info)) {
+              calib <- fastml_class_calibration_metrics(
+                truth_vec = model_predictions$truth,
+                prob_mat = prob_info$mat,
+                prob_cols = prob_info$cols,
+                event_class = x$event_class
+              )
+              calib_vals <- c(calib$logloss, calib$brier_score, calib$ece)
+              if (any(is.finite(calib_vals))) {
+                calib_label <- paste0(
+                  "Logloss: ",
+                  ifelse(is.finite(calib$logloss), sprintf("%.3f", calib$logloss), "NA"),
+                  ", Brier: ",
+                  ifelse(is.finite(calib$brier_score), sprintf("%.3f", calib$brier_score), "NA"),
+                  ", ECE: ",
+                  ifelse(is.finite(calib$ece), sprintf("%.3f", calib$ece), "NA")
+                )
+              }
+            }
             p_cal <- probably::cal_plot_breaks(
               model_predictions,
               truth    = truth,
@@ -472,7 +497,8 @@ plot.fastml <- function(x,
               event_level = x$event_class
             ) +
               ggplot2::labs(
-                title = paste("Calibration Plot for", model_name)
+                title = paste("Calibration Plot for", model_name),
+                subtitle = calib_label
               )
             print(p_cal)
           }

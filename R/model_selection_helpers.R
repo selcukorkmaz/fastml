@@ -129,7 +129,7 @@ get_best_model_idx <- function(df, metric, group_cols = c("Model", "Engine")) {
   group_values <- interaction(df[, group_cols], drop = TRUE)
 
   # Compute the maximum metric for each group
-  lower_is_better <- metric %in% c("rmse", "mae", "ibs", "logloss", "mse", "brier_score") ||
+  lower_is_better <- metric %in% c("rmse", "mae", "ibs", "logloss", "mse", "brier_score", "ece") ||
     grepl("^brier_t", metric) ||
     grepl("loss", metric)
   if(lower_is_better){
@@ -166,24 +166,98 @@ fastml_aggregate_resample_metrics <- function(perf, task) {
     perf$.estimator <- NA_character_
   }
 
+  weight_col <- NULL
+  if (".n" %in% names(perf)) {
+    weight_col <- ".n"
+  }
+
+  weighted_mean <- function(x, w) {
+    valid <- is.finite(x) & is.finite(w) & w > 0
+    if (!any(valid)) {
+      return(NA_real_)
+    }
+    x <- x[valid]
+    w <- w[valid]
+    sum(w * x) / sum(w)
+  }
+
+  weighted_sd <- function(x, w) {
+    valid <- is.finite(x) & is.finite(w) & w > 0
+    if (!any(valid)) {
+      return(NA_real_)
+    }
+    x <- x[valid]
+    w <- w[valid]
+    w_sum <- sum(w)
+    if (!is.finite(w_sum) || w_sum <= 0) {
+      return(NA_real_)
+    }
+    mu <- sum(w * x) / w_sum
+    sqrt(sum(w * (x - mu)^2) / w_sum)
+  }
+
+  weighted_n_eff <- function(w) {
+    valid <- is.finite(w) & w > 0
+    if (!any(valid)) {
+      return(NA_real_)
+    }
+    w <- w[valid]
+    denom <- sum(w^2)
+    if (!is.finite(denom) || denom <= 0) {
+      return(NA_real_)
+    }
+    (sum(w)^2) / denom
+  }
+
+  weighted_se <- function(x, w) {
+    sd_val <- weighted_sd(x, w)
+    n_eff <- weighted_n_eff(w)
+    if (!is.finite(sd_val) || !is.finite(n_eff) || n_eff <= 0) {
+      return(NA_real_)
+    }
+    sd_val / sqrt(n_eff)
+  }
+
   if (identical(task, "survival")) {
-    dplyr::summarise(
-      dplyr::group_by(perf, .data$.metric),
-      .estimate = mean(.data$.estimate, na.rm = TRUE),
-      n = sum(is.finite(.data$.estimate)),
-      std_dev = stats::sd(.data$.estimate, na.rm = TRUE),
-      std_err = ifelse(n > 0, std_dev / sqrt(n), NA_real_),
-      .groups = "drop"
-    )
+    if (!is.null(weight_col)) {
+      dplyr::summarise(
+        dplyr::group_by(perf, .data$.metric),
+        .estimate = weighted_mean(.data$.estimate, .data[[weight_col]]),
+        n = sum(is.finite(.data$.estimate)),
+        std_dev = weighted_sd(.data$.estimate, .data[[weight_col]]),
+        std_err = weighted_se(.data$.estimate, .data[[weight_col]]),
+        .groups = "drop"
+      )
+    } else {
+      dplyr::summarise(
+        dplyr::group_by(perf, .data$.metric),
+        .estimate = mean(.data$.estimate, na.rm = TRUE),
+        n = sum(is.finite(.data$.estimate)),
+        std_dev = stats::sd(.data$.estimate, na.rm = TRUE),
+        std_err = ifelse(n > 0, std_dev / sqrt(n), NA_real_),
+        .groups = "drop"
+      )
+    }
   } else {
-    dplyr::summarise(
-      dplyr::group_by(perf, .data$.metric, .data$.estimator),
-      .estimate = mean(.data$.estimate, na.rm = TRUE),
-      n = sum(is.finite(.data$.estimate)),
-      std_dev = stats::sd(.data$.estimate, na.rm = TRUE),
-      std_err = ifelse(n > 0, std_dev / sqrt(n), NA_real_),
-      .groups = "drop"
-    )
+    if (!is.null(weight_col)) {
+      dplyr::summarise(
+        dplyr::group_by(perf, .data$.metric, .data$.estimator),
+        .estimate = weighted_mean(.data$.estimate, .data[[weight_col]]),
+        n = sum(is.finite(.data$.estimate)),
+        std_dev = weighted_sd(.data$.estimate, .data[[weight_col]]),
+        std_err = weighted_se(.data$.estimate, .data[[weight_col]]),
+        .groups = "drop"
+      )
+    } else {
+      dplyr::summarise(
+        dplyr::group_by(perf, .data$.metric, .data$.estimator),
+        .estimate = mean(.data$.estimate, na.rm = TRUE),
+        n = sum(is.finite(.data$.estimate)),
+        std_dev = stats::sd(.data$.estimate, na.rm = TRUE),
+        std_err = ifelse(n > 0, std_dev / sqrt(n), NA_real_),
+        .groups = "drop"
+      )
+    }
   }
 }
 
@@ -214,7 +288,11 @@ fastml_extract_selection_performance <- function(resampling_results,
       length(resampling_results) > 0) {
     selection_perf <- lapply(resampling_results, function(entry) {
       if (is.list(entry) && !inherits(entry, "data.frame")) {
-        entry$aggregated
+        if (!is.null(entry$folds) && is.data.frame(entry$folds)) {
+          fastml_aggregate_resample_metrics(entry$folds, task)
+        } else {
+          entry$aggregated
+        }
       } else if (is.data.frame(entry)) {
         entry
       } else {
