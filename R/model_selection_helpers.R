@@ -162,12 +162,14 @@ fastml_aggregate_resample_metrics <- function(perf, task) {
   if (!".estimate" %in% names(perf)) {
     return(NULL)
   }
+  perf$.estimate <- suppressWarnings(as.numeric(perf$.estimate))
   if (!".estimator" %in% names(perf)) {
     perf$.estimator <- NA_character_
   }
 
   weight_col <- NULL
   if (".n" %in% names(perf)) {
+    perf$.n <- suppressWarnings(as.numeric(perf$.n))
     weight_col <- ".n"
   }
 
@@ -222,10 +224,28 @@ fastml_aggregate_resample_metrics <- function(perf, task) {
     if (!is.null(weight_col)) {
       dplyr::summarise(
         dplyr::group_by(perf, .data$.metric),
-        .estimate = weighted_mean(.data$.estimate, .data[[weight_col]]),
+        .estimate = {
+          mean_val <- weighted_mean(.data$.estimate, .data[[weight_col]])
+          if (!is.finite(mean_val)) {
+            mean_val <- mean(.data$.estimate, na.rm = TRUE)
+          }
+          mean_val
+        },
         n = sum(is.finite(.data$.estimate)),
-        std_dev = weighted_sd(.data$.estimate, .data[[weight_col]]),
-        std_err = weighted_se(.data$.estimate, .data[[weight_col]]),
+        std_dev = {
+          sd_val <- weighted_sd(.data$.estimate, .data[[weight_col]])
+          if (!is.finite(sd_val) && n > 1) {
+            sd_val <- stats::sd(.data$.estimate, na.rm = TRUE)
+          }
+          sd_val
+        },
+        std_err = {
+          se_val <- weighted_se(.data$.estimate, .data[[weight_col]])
+          if (!is.finite(se_val) && is.finite(std_dev) && n > 0) {
+            se_val <- std_dev / sqrt(n)
+          }
+          se_val
+        },
         .groups = "drop"
       )
     } else {
@@ -242,10 +262,28 @@ fastml_aggregate_resample_metrics <- function(perf, task) {
     if (!is.null(weight_col)) {
       dplyr::summarise(
         dplyr::group_by(perf, .data$.metric, .data$.estimator),
-        .estimate = weighted_mean(.data$.estimate, .data[[weight_col]]),
+        .estimate = {
+          mean_val <- weighted_mean(.data$.estimate, .data[[weight_col]])
+          if (!is.finite(mean_val)) {
+            mean_val <- mean(.data$.estimate, na.rm = TRUE)
+          }
+          mean_val
+        },
         n = sum(is.finite(.data$.estimate)),
-        std_dev = weighted_sd(.data$.estimate, .data[[weight_col]]),
-        std_err = weighted_se(.data$.estimate, .data[[weight_col]]),
+        std_dev = {
+          sd_val <- weighted_sd(.data$.estimate, .data[[weight_col]])
+          if (!is.finite(sd_val) && n > 1) {
+            sd_val <- stats::sd(.data$.estimate, na.rm = TRUE)
+          }
+          sd_val
+        },
+        std_err = {
+          se_val <- weighted_se(.data$.estimate, .data[[weight_col]])
+          if (!is.finite(se_val) && is.finite(std_dev) && n > 0) {
+            se_val <- std_dev / sqrt(n)
+          }
+          se_val
+        },
         .groups = "drop"
       )
     } else {
@@ -288,10 +326,29 @@ fastml_extract_selection_performance <- function(resampling_results,
       length(resampling_results) > 0) {
     selection_perf <- lapply(resampling_results, function(entry) {
       if (is.list(entry) && !inherits(entry, "data.frame")) {
-        if (!is.null(entry$folds) && is.data.frame(entry$folds)) {
-          fastml_aggregate_resample_metrics(entry$folds, task)
-        } else {
+        # DEBUG output
+        if (getOption("fastml.debug", FALSE)) {
+          message("DEBUG entry names: ", paste(names(entry), collapse = ", "))
+          message("DEBUG entry$folds is.null: ", is.null(entry$folds))
+          message("DEBUG entry$folds is.data.frame: ", is.data.frame(entry$folds))
+          if (!is.null(entry$folds) && is.data.frame(entry$folds)) {
+            message("DEBUG entry$folds nrow: ", nrow(entry$folds))
+            message("DEBUG entry$folds columns: ", paste(names(entry$folds), collapse = ", "))
+          }
+        }
+        folds_perf <- NULL
+        if (!is.null(entry$folds) && is.data.frame(entry$folds) && nrow(entry$folds) > 0) {
+          folds_perf <- fastml_aggregate_resample_metrics(entry$folds, task)
+        }
+
+        if (!is.null(folds_perf) && is.data.frame(folds_perf) && nrow(folds_perf) > 0) {
+          return(folds_perf)
+        }
+
+        if (!is.null(entry$aggregated) && is.data.frame(entry$aggregated)) {
           entry$aggregated
+        } else {
+          NULL
         }
       } else if (is.data.frame(entry)) {
         entry

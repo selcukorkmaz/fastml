@@ -90,7 +90,51 @@ summary.fastml <- function(object,
   resampling_plan <- object$resampling_plan
   resampling_desc <- fastml_describe_resampling(resampling_plan)
 
-  # cat(sprintf("Resampling strategy: %s\n", resampling_desc))
+  # Extract CV/resampling metrics for display and sorting
+  selection_info <- object$selection
+  cv_metrics_lookup <- list()
+  cv_fold_lookup <- list()
+  cv_source <- if (!is.null(selection_info$source)) selection_info$source else "none"
+
+  if (cv_source %in% c("resampling", "nested_cv")) {
+    cv_bundle <- fastml_extract_selection_performance(
+      resampling_results = object$resampling_results,
+      nested_results = object$nested_cv,
+      task = task
+    )
+    if (!is.null(cv_bundle$performance) && length(cv_bundle$performance) > 0) {
+      for (alg in names(cv_bundle$performance)) {
+        cv_perf <- cv_bundle$performance[[alg]]
+        if (is.data.frame(cv_perf) && ".metric" %in% names(cv_perf)) {
+          cv_metrics_lookup[[alg]] <- cv_perf
+        }
+      }
+    }
+
+    if (!is.null(object$resampling_results) && length(object$resampling_results) > 0) {
+      cv_fold_lookup <- lapply(object$resampling_results, function(entry) {
+        if (is.list(entry) && !inherits(entry, "data.frame")) {
+          folds_tbl <- entry$folds
+          if (!is.null(folds_tbl) && is.data.frame(folds_tbl) && nrow(folds_tbl) > 0) {
+            return(fastml_aggregate_resample_metrics(folds_tbl, task))
+          }
+        } else if (is.data.frame(entry)) {
+          return(fastml_aggregate_resample_metrics(entry, task))
+        }
+        NULL
+      })
+      cv_fold_lookup <- cv_fold_lookup[!vapply(cv_fold_lookup, is.null, logical(1))]
+    }
+    # DEBUG: Print CV metrics structure
+    if (getOption("fastml.debug", TRUE)) {
+      message("DEBUG cv_metrics_lookup keys: ", paste(names(cv_metrics_lookup), collapse = ", "))
+      if (length(cv_metrics_lookup) > 0) {
+        message("DEBUG first entry columns: ", paste(names(cv_metrics_lookup[[1]]), collapse = ", "))
+        message("DEBUG first entry:\n")
+        print(cv_metrics_lookup[[1]])
+      }
+    }
+  }
 
   resolve_engine_name <- function(model_name, default_engine = NA_character_) {
     if (!is.null(engine_names) && !is.null(engine_names[[model_name]])) {
@@ -579,17 +623,74 @@ summary.fastml <- function(object,
   # performance_wide$Engine <- engine_names[match(performance_wide$Model, names(engine_names))]
   # performance_wide <- performance_wide[, c("Model", "Engine", setdiff(colnames(performance_wide), c("Model", "Engine")))]
 
+  # Add CV metrics for sorting and display when resampling was used
+  cv_metric_col <- paste0("cv_", main_metric)
+  cv_se_col <- paste0("cv_", main_metric, "_se")
+  has_cv_metrics <- length(cv_metrics_lookup) > 0 || length(cv_fold_lookup) > 0
+
+  if (has_cv_metrics) {
+    # Extract CV metric values for each model
+    # Note: cv_metrics_lookup keys are "algorithm (engine)" format
+    performance_wide[[cv_metric_col]] <- mapply(function(m, e) {
+      # Try combined key first (e.g., "rand_forest (ranger)")
+      combined_key <- paste0(m, " (", e, ")")
+      cv_df <- cv_fold_lookup[[combined_key]]
+      # Fallback to just model name
+      if (is.null(cv_df)) cv_df <- cv_fold_lookup[[m]]
+      if (is.null(cv_df)) cv_df <- cv_metrics_lookup[[combined_key]]
+      if (is.null(cv_df)) cv_df <- cv_metrics_lookup[[m]]
+      if (is.null(cv_df)) return(NA_real_)
+      row <- cv_df[cv_df$.metric == main_metric, , drop = FALSE]
+      if (nrow(row) == 0) return(NA_real_)
+      as.numeric(row$.estimate[1])
+    }, performance_wide$Model, performance_wide$Engine)
+    performance_wide[[cv_se_col]] <- mapply(function(m, e) {
+      combined_key <- paste0(m, " (", e, ")")
+      cv_df <- cv_fold_lookup[[combined_key]]
+      if (is.null(cv_df)) cv_df <- cv_fold_lookup[[m]]
+      if (is.null(cv_df)) cv_df <- cv_metrics_lookup[[combined_key]]
+      if (is.null(cv_df)) cv_df <- cv_metrics_lookup[[m]]
+      if (is.null(cv_df)) return(NA_real_)
+      row <- cv_df[cv_df$.metric == main_metric, , drop = FALSE]
+      if (nrow(row) == 0) return(NA_real_)
+      # Try std_dev first (SD), then std_err (SE) as fallback
+      if ("std_dev" %in% names(row) && !is.na(row$std_dev[1])) {
+        return(as.numeric(row$std_dev[1]))
+      } else if ("std_err" %in% names(row) && !is.na(row$std_err[1])) {
+        return(as.numeric(row$std_err[1]))
+      }
+      NA_real_
+    }, performance_wide$Model, performance_wide$Engine)
+    # Create display column with mean +/- SE
+    performance_display[[cv_metric_col]] <- sapply(seq_len(nrow(performance_wide)), function(i) {
+      val <- performance_wide[[cv_metric_col]][i]
+      se <- performance_wide[[cv_se_col]][i]
+      if (is.na(val)) return(NA_character_)
+      if (is.na(se) || !is.finite(se)) return(sprintf("%.3f", val))
+      sprintf("%.3f \u00b1 %.3f", val, se)
+    })
+  }
+
   # Sort direction: lower-better metrics vs higher-better metrics
   brier_cols <- grep("^brier_t", colnames(performance_wide), value = TRUE)
   ascending_metrics <- unique(c("rmse", "mae", "ibs", "logloss", "brier_score", "ece", "mse", brier_cols))
-  if (main_metric %in% colnames(performance_wide)) {
-    if (main_metric %in% ascending_metrics) {
-      order_idx <- order(performance_wide[[main_metric]], na.last = TRUE)
+  lower_is_better <- main_metric %in% ascending_metrics
+
+  # Sort by CV metric when available, otherwise by holdout metric
+ sort_col <- if (has_cv_metrics && cv_metric_col %in% colnames(performance_wide)) {
+    cv_metric_col
+  } else {
+    main_metric
+  }
+
+  if (sort_col %in% colnames(performance_wide)) {
+    if (lower_is_better) {
+      order_idx <- order(performance_wide[[sort_col]], na.last = TRUE)
     } else {
-      order_idx <- order(-performance_wide[[main_metric]], na.last = TRUE)
+      order_idx <- order(-performance_wide[[sort_col]], na.last = TRUE)
     }
   } else {
-    warning(sprintf("Main metric '%s' not available for sorting; retaining original order.", main_metric))
+    warning(sprintf("Sort metric '%s' not available; retaining original order.", sort_col))
     order_idx <- seq_len(nrow(performance_wide))
   }
   performance_wide <- performance_wide[order_idx, , drop = FALSE]
@@ -702,32 +803,104 @@ summary.fastml <- function(object,
 
   cat("\n===== fastml Model Summary =====\n")
   cat("Task:", task, "\n")
-  cat("Number of Models Trained:", model_count, "\n")
-  if (!is.null(object$selection) && !is.null(object$selection$source)) {
-    cat("Selection:", object$selection$source,
-        sprintf("(metric: %s)", object$selection$metric), "\n")
+  cat("Number of Models Trained:", model_count, "\n\n")
+
+  # Compute safe column widths helper
+
+  safe_nchar <- function(x) {
+    x_chr <- as.character(x)
+    x_chr[is.na(x_chr)] <- ""
+    nchar(x_chr)
   }
 
-  # If you just want the unique metric values:
-  best_val <- best_val_df %>%
-    pull(!!sym(main_metric)) %>%
-    unique()
-  cat("Best Model(s):",
-      paste0(names(best_model_name), " (", best_model_name, ")"),
-      sprintf("(%s: %.7f)", main_metric, as.numeric(best_val)),
-      "\n\n")
-
-  cat("Performance Metrics (Sorted by ", main_metric,"):\n\n", sep = "")
+  # Helper to print a table
+  print_table <- function(header, data_df, col_keys) {
+    col_widths <- sapply(seq_along(header), function(i) {
+      col_name <- header[i]
+      col_key <- col_keys[i]
+      col_data <- data_df[[col_key]]
+      name_w <- safe_nchar(col_name)
+      data_w <- if (length(col_data)) max(safe_nchar(col_data), na.rm = TRUE) else 0
+      max(name_w, data_w, na.rm = TRUE)
+    })
+    header_line <- paste(mapply(function(h, w) format(h, width = w, justify = "left"), header, col_widths), collapse = "  ")
+    line_sep <- paste(rep("-", sum(col_widths) + 2 * (length(col_widths) - 1)), collapse = "")
+    cat(line_sep, "\n")
+    cat(header_line, "\n")
+    cat(line_sep, "\n")
+    for (i in seq_len(nrow(data_df))) {
+      row_line <- paste(mapply(function(v, w) format(v, width = w, justify = "left"),
+                               data_df[i, col_keys, drop = FALSE], col_widths), collapse = "  ")
+      cat(row_line, "\n")
+    }
+    cat(line_sep, "\n")
+  }
 
   metrics_to_print <- c("Model", "Engine", desired_metrics)
 
-  if(all(algorithm != "best")){
-
+  if (all(algorithm != "best")) {
     performance_wide <- performance_wide %>% dplyr::filter(Model %in% algorithm)
     performance_display <- performance_display %>% dplyr::filter(Model %in% algorithm)
     performance_lookup <- performance_wide
   }
 
+  # ============================================================
+  # TABLE 1: Model Selection (CV Performance) - when resampling was used
+  # ============================================================
+  if (has_cv_metrics && cv_metric_col %in% colnames(performance_wide)) {
+    cat("-- Table 1: Model Selection (Cross-Validation) --\n")
+    cat("Note: This table determines the best model.\n\n")
+
+    # Build CV selection table
+    cv_select_df <- data.frame(
+      Model = performance_wide$Model,
+      Engine = performance_wide$Engine,
+      stringsAsFactors = FALSE
+    )
+
+    # Get display name for the main metric
+    metric_display <- if (main_metric %in% names(display_names)) display_names[[main_metric]] else main_metric
+
+    # Add CV mean column
+    cv_select_df[[paste0(metric_display, " (CV mean)")]] <- sapply(performance_wide[[cv_metric_col]], function(v) {
+      if (is.na(v)) "NA" else sprintf("%.4f", v)
+    })
+
+    # Add CV SD column if available
+    if (cv_se_col %in% colnames(performance_wide)) {
+      cv_select_df[[paste0(metric_display, " (CV SD)")]] <- sapply(performance_wide[[cv_se_col]], function(v) {
+        if (is.na(v)) "NA" else sprintf("%.4f", v)
+      })
+    }
+
+    # Mark selected model with dagger
+    cv_select_df$Model <- as.character(cv_select_df$Model)
+    if (all(algorithm == "best")) {
+      cv_select_df$Model[best_model_idx] <- paste0(cv_select_df$Model[best_model_idx], "\u2020")
+    }
+
+    cv_header <- colnames(cv_select_df)
+    print_table(cv_header, cv_select_df, cv_header)
+
+    if (all(algorithm == "best")) {
+      cat("\u2020 Selected based on mean ", metric_display, " across CV folds\n\n", sep = "")
+    } else {
+      cat("\n")
+    }
+  }
+
+  # ============================================================
+  # TABLE 2: Final Evaluation (Test Set Performance)
+  # ============================================================
+  if (has_cv_metrics) {
+    cat("-- Table 2: Final Evaluation (Test Set) --\n")
+    cat("Note: For reporting only; selection was based on CV above.\n\n")
+  } else {
+    # No CV - this is the only table, and it determines selection
+    cat("-- Performance Metrics (Holdout) --\n\n")
+  }
+
+  # Build holdout table header (no CV columns)
   header <- c("Model", "Engine", sapply(desired_metrics, function(m) {
     if (m %in% names(display_names)) display_names[[m]] else m
   }))
@@ -735,44 +908,18 @@ summary.fastml <- function(object,
   data_str <- performance_display
   data_str$Model <- as.character(data_str$Model)
 
-  if(all(algorithm == "best")){
-    data_str$Model[best_model_idx] <- paste0(data_str$Model[best_model_idx], "*")
+  # Only mark with dagger if NO CV was used (i.e., holdout determines selection)
+  if (!has_cv_metrics && all(algorithm == "best")) {
+    data_str$Model[best_model_idx] <- paste0(data_str$Model[best_model_idx], "\u2020")
   }
 
-  # Compute safe column widths (handle NA and non-character values)
-  safe_nchar <- function(x) {
-    x_chr <- as.character(x)
-    x_chr[is.na(x_chr)] <- ""
-    nchar(x_chr)
-  }
+  col_keys <- c("Model", "Engine", desired_metrics)
+  print_table(header, data_str, col_keys)
 
-  col_widths <- sapply(seq_along(header), function(i) {
-    col_name <- header[i]
-    col_key  <- c("Model", "Engine", desired_metrics)[i]
-    col_data <- data_str[[col_key]]
-    name_w   <- safe_nchar(col_name)
-    data_w   <- if (length(col_data)) max(safe_nchar(col_data), na.rm = TRUE) else 0
-    max(name_w, data_w, na.rm = TRUE)
-  })
-
-  header_line <- paste(mapply(function(h, w) format(h, width = w, justify = "left"), header, col_widths), collapse = "  ")
-  line_sep <- paste(rep("-", sum(col_widths) + 2*(length(col_widths)-1)), collapse = "")
-
-  cat(line_sep, "\n")
-  cat(header_line, "\n")
-  cat(line_sep, "\n")
-
-  for (i in seq_len(nrow(data_str))) {
-    row_line <- paste(mapply(function(v, w) format(v, width = w, justify = "left"),
-                             data_str[i, c("Model", "Engine", desired_metrics), drop=FALSE], col_widths),
-                      collapse = "  ")
-    cat(row_line, "\n")
-  }
-
-  cat(line_sep, "\n")
-
-  if (all(algorithm == "best")) {
-    cat("(*Best model)\n\n")
+  if (!has_cv_metrics && all(algorithm == "best")) {
+    cat("\u2020 Selected based on ", main_metric, "\n\n", sep = "")
+  } else {
+    cat("\n")
   }
 
 }

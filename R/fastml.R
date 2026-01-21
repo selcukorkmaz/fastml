@@ -1374,6 +1374,22 @@ fastml <- function(data = NULL,
     resampling_results <- resampling_named
   }
 
+  if (!is.null(resampling_results)) {
+    resampling_results <- lapply(resampling_results, function(entry) {
+      if (!is.list(entry) || inherits(entry, "data.frame")) {
+        return(entry)
+      }
+      folds_tbl <- entry$folds
+      if (!is.null(folds_tbl) && is.data.frame(folds_tbl) && nrow(folds_tbl) > 0) {
+        agg <- fastml_aggregate_resample_metrics(folds_tbl, task)
+        if (!is.null(agg) && is.data.frame(agg) && nrow(agg) > 0) {
+          entry$aggregated <- agg
+        }
+      }
+      entry
+    })
+  }
+
   if (!is.null(nested_results)) {
     nested_named <- list()
     for (alg in names(nested_results)) {
@@ -1572,6 +1588,87 @@ fastml <- function(data = NULL,
         rsample::training(sub_split)
       }
 
+      n_sub <- nrow(sub_train)
+      if (is.null(n_sub) || n_sub < 2) {
+        return(data.frame(Fraction = fraction, Performance = NA_real_))
+      }
+
+      adjust_folds <- function(n_rows, folds_val) {
+        if (is.null(folds_val)) {
+          return(NULL)
+        }
+        folds_int <- suppressWarnings(as.integer(folds_val))
+        if (!is.finite(folds_int)) {
+          return(folds_val)
+        }
+        n_rows <- suppressWarnings(as.integer(n_rows))
+        if (!is.finite(n_rows) || n_rows <= 2L) {
+          return(NA_integer_)
+        }
+        max_allowed <- max(2L, n_rows - 1L)
+        max(2L, min(folds_int, max_allowed))
+      }
+
+      sub_resampling_method <- resampling_method
+      sub_folds <- folds
+      sub_outer_folds <- outer_folds
+      folds_adjusted <- FALSE
+      outer_adjusted <- FALSE
+      resampling_disabled <- FALSE
+      if (!is.null(resampling_method)) {
+        if (resampling_method %in% c("cv", "repeatedcv", "grouped_cv", "nested_cv")) {
+          sub_folds <- adjust_folds(n_sub, folds)
+          folds_adjusted <- !is.null(folds) && !is.na(sub_folds) &&
+            !identical(as.integer(folds), as.integer(sub_folds))
+        }
+        if (resampling_method == "nested_cv") {
+          sub_outer_folds <- adjust_folds(n_sub, outer_folds)
+          outer_adjusted <- !is.null(outer_folds) && !is.na(sub_outer_folds) &&
+            !identical(as.integer(outer_folds), as.integer(sub_outer_folds))
+        }
+      }
+      if (resampling_method %in% c("cv", "repeatedcv", "grouped_cv") &&
+          is.na(sub_folds)) {
+        sub_resampling_method <- "none"
+        sub_folds <- folds
+        resampling_disabled <- TRUE
+      }
+      if (resampling_method == "nested_cv" &&
+          (is.na(sub_folds) || is.na(sub_outer_folds))) {
+        sub_resampling_method <- "none"
+        sub_folds <- folds
+        sub_outer_folds <- outer_folds
+        resampling_disabled <- TRUE
+      }
+      if (resampling_disabled) {
+        warning(
+          sprintf(
+            "Learning curve: disabling resampling for %.0f%% subset (n=%d) to avoid invalid CV settings.",
+            fraction * 100, n_sub
+          ),
+          call. = FALSE
+        )
+      } else {
+        if (folds_adjusted) {
+          warning(
+            sprintf(
+              "Learning curve: reducing folds from %d to %d for %.0f%% subset (n=%d).",
+              as.integer(folds), as.integer(sub_folds), fraction * 100, n_sub
+            ),
+            call. = FALSE
+          )
+        }
+        if (outer_adjusted) {
+          warning(
+            sprintf(
+              "Learning curve: reducing outer_folds from %d to %d for %.0f%% subset (n=%d).",
+              as.integer(outer_folds), as.integer(sub_outer_folds), fraction * 100, n_sub
+            ),
+            call. = FALSE
+          )
+        }
+      }
+
       # Train models on the subset
       sub_models <- withCallingHandlers(
         train_models(
@@ -1579,8 +1676,8 @@ fastml <- function(data = NULL,
           label = label,
           task = task,
           algorithms = algorithms,
-          resampling_method = resampling_method,
-          folds = folds,
+          resampling_method = sub_resampling_method,
+          folds = sub_folds,
           repeats = repeats,
           group_cols = group_cols,
           block_col = block_col,
@@ -1588,7 +1685,7 @@ fastml <- function(data = NULL,
           initial_window = initial_window,
           assess_window = assess_window,
           skip = skip,
-          outer_folds = outer_folds,
+          outer_folds = sub_outer_folds,
           resamples = resamples,
           tune_params = tune_params,
           engine_params = engine_params,
@@ -1625,13 +1722,16 @@ fastml <- function(data = NULL,
 
       # Evaluate models on the subset
       sub_eval <- evaluate_models(
-        sub_models,
-        sub_train,
-        test_data,
-        label_surv,
-        task,
-        metric,
-        event_class,
+        models = sub_models,
+        train_data = sub_train,
+        test_data = test_data,
+        label = label_surv,
+        start_col = start_col,
+        time_col = time_col,
+        status_col = status_col,
+        task = task,
+        metric = metric,
+        event_class = event_class,
         class_threshold = class_threshold,
         eval_times = eval_times,
         bootstrap_ci = bootstrap_ci,
@@ -1644,8 +1744,9 @@ fastml <- function(data = NULL,
 
 
       # Extract the performance metric from each model evaluation
-      perf_values <- sapply(sub_eval$performance, function(engine_list) {
-        perf_df <- engine_list[[1]]
+      perf_values <- sapply(sub_eval$performance, function(entry) {
+        # entry may be a data frame (unwrapped single-engine) or a list of data frames
+        perf_df <- if (inherits(entry, "data.frame")) entry else entry[[1]]
         val <- perf_df[perf_df$.metric == metric, ".estimate", drop = TRUE]
         if (length(val) == 0) NA_real_ else as.numeric(val[[1]])
       })

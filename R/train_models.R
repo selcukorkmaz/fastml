@@ -676,7 +676,36 @@ fastml_run_nested_cv <- function(workflow_spec,
     )
   }
 
-  final_workflow <- if (!is.null(final_params)) {
+  if (do_tuning && (is.null(final_params) || !is.data.frame(final_params) || nrow(final_params) == 0)) {
+    params_final <- tune_params_template
+    if (!is.null(params_final)) {
+      params_final <- tryCatch(
+        finalize(
+          params_final,
+          x = train_data %>% dplyr::select(-dplyr::all_of(label))
+        ),
+        error = function(e) NULL
+      )
+    }
+    if (!is.null(params_final) && !is.null(engine_tune_params)) {
+      params_final <- update_params_fn(params_final, engine_tune_params)
+    }
+    if (!is.null(params_final) && nrow(params_final) > 0) {
+      fallback_grid <- tryCatch(
+        grid_regular(params_final, levels = grid_levels),
+        error = function(e) NULL
+      )
+      if (!is.null(fallback_grid) && nrow(fallback_grid) > 0) {
+        final_params <- fallback_grid[1, , drop = FALSE]
+        warning(
+          "Nested tuning failed to select parameters; using the first available grid configuration.",
+          call. = FALSE
+        )
+      }
+    }
+  }
+
+  final_workflow <- if (!is.null(final_params) && is.data.frame(final_params) && nrow(final_params) > 0) {
     finalize_workflow(workflow_spec, final_params)
   } else {
     workflow_spec
@@ -1031,6 +1060,8 @@ train_models <- function(train_data,
 
   multiclass_auc <- fastml_normalize_multiclass_auc(multiclass_auc)
   roc_auc <- fastml_configured_roc_auc(multiclass_auc, event_class = event_class)
+  accuracy_metric <- fastml_wrap_basic_metric(accuracy)
+  kap_metric <- fastml_wrap_basic_metric(kap)
   sens_metric <- fastml_wrap_event_level_metric(sens, event_class)
   spec_metric <- fastml_wrap_event_level_metric(spec, event_class)
   precision_metric <- fastml_wrap_event_level_metric(precision, event_class)
@@ -2445,8 +2476,8 @@ train_models <- function(train_data,
   } else if (task == "classification") {
     if(is.null(summaryFunction)){
       metrics <- metric_set(
-        accuracy,
-        kap,
+        accuracy_metric,
+        kap_metric,
         sens_metric,
         spec_metric,
         precision_metric,
@@ -2463,8 +2494,8 @@ train_models <- function(train_data,
       assign(metric, newClassMetric)
 
       metrics <- metric_set(
-        accuracy,
-        kap,
+        accuracy_metric,
+        kap_metric,
         sens_metric,
         spec_metric,
         precision_metric,
@@ -3057,8 +3088,8 @@ train_models <- function(train_data,
             attr(roc_auc_h2o, "metric_name") <- attr(yardstick::roc_auc, "metric_name")
 
             my_metrics <- metric_set(
-              accuracy,
-              kap,
+              accuracy_metric,
+              kap_metric,
               sens_metric,
               spec_metric,
               precision_metric,
@@ -3074,7 +3105,7 @@ train_models <- function(train_data,
 
           else if(engine == "LiblineaR"){
 
-            my_metrics <- metric_set(accuracy, kap, sens_metric, spec_metric, precision_metric, f_meas_metric)
+            my_metrics <- metric_set(accuracy_metric, kap_metric, sens_metric, spec_metric, precision_metric, f_meas_metric)
             allow_par <- allow_par_base
 
           }else{
@@ -3195,8 +3226,104 @@ train_models <- function(train_data,
             })
           }
 
-          best_params <- select_best(model_tuned, metric = metric)
-          final_workflow <- finalize_workflow(workflow_spec, best_params)
+          best_metric_used <- metric
+          best_params <- tryCatch(
+            select_best(model_tuned, metric = metric),
+            error = function(e) NULL
+          )
+          if (is.null(best_params) || !is.data.frame(best_params) || nrow(best_params) == 0) {
+            metrics_tbl <- tryCatch(
+              tune::collect_metrics(model_tuned),
+              error = function(e) NULL
+            )
+            if (!is.null(metrics_tbl) && ".metric" %in% names(metrics_tbl)) {
+              candidate_metrics <- unique(metrics_tbl$.metric)
+              candidate_metrics <- setdiff(candidate_metrics, metric)
+              for (cand in candidate_metrics) {
+                cand_best <- tryCatch(
+                  select_best(model_tuned, metric = cand),
+                  error = function(e) NULL
+                )
+                if (!is.null(cand_best) && nrow(cand_best) > 0) {
+                  best_params <- cand_best
+                  best_metric_used <- cand
+                  break
+                }
+              }
+            }
+          }
+
+          if (!identical(best_metric_used, metric)) {
+            warning(
+              sprintf(
+                "Metric '%s' unavailable during tuning for %s (%s); selecting parameters using '%s'.",
+                metric, algo, engine, best_metric_used
+              ),
+              call. = FALSE
+            )
+          }
+
+          fallback_workflow <- NULL
+          if (is.null(best_params) || !is.data.frame(best_params) || nrow(best_params) == 0) {
+            fallback_grid <- tune_grid_values
+            if (is.null(fallback_grid) || nrow(fallback_grid) == 0) {
+              fallback_grid <- tryCatch(
+                grid_regular(tune_params_model, levels = grid_levels),
+                error = function(e) NULL
+              )
+            }
+            if (!is.null(fallback_grid) && nrow(fallback_grid) > 0) {
+              best_params <- fallback_grid[1, , drop = FALSE]
+              warning(
+                sprintf(
+                  "Tuning failed to select parameters for %s (%s); using the first available grid configuration.",
+                  algo, engine
+                ),
+                call. = FALSE
+              )
+            } else {
+              warning(
+                sprintf(
+                  "Tuning failed to select parameters for %s (%s); refitting with default settings.",
+                  algo, engine
+                ),
+                call. = FALSE
+              )
+              fallback_context <- spec_context
+              fallback_context$tuning <- FALSE
+              fallback_info <- fastml_get_model_spec(algo, fallback_context)
+              fallback_spec <- if (!is.null(fallback_info)) fallback_info$model_spec else NULL
+              if (!is.null(fallback_spec)) {
+                fallback_spec_base <- if (inherits(fallback_spec, "model_spec")) {
+                  fallback_spec
+                } else {
+                  fallback_spec[[1]]
+                }
+                if (length(engine_args) > 0) {
+                  fallback_spec_base <- do.call(
+                    parsnip::set_engine,
+                    c(list(fallback_spec_base, engine = engine), engine_args)
+                  )
+                }
+                fallback_workflow <- workflow() %>%
+                  add_model(fallback_spec_base) %>%
+                  add_recipe(recipe)
+              }
+            }
+          }
+
+          if (!is.null(best_params) && is.data.frame(best_params) && nrow(best_params) > 0) {
+            final_workflow <- finalize_workflow(workflow_spec, best_params)
+          } else if (!is.null(fallback_workflow)) {
+            final_workflow <- fallback_workflow
+          } else {
+            stop(
+              sprintf(
+                "Tuning failed for %s (%s) and no fallback configuration is available.",
+                algo, engine
+              )
+            )
+          }
           if (!nested_mode && !is.null(resamples)) {
             res_summary <- fastml_guarded_resample_fit(
               workflow_spec = final_workflow,

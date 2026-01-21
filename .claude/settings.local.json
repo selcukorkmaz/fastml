@@ -19,7 +19,14 @@
       "Bash(\"/c/Program Files/R/R-4.5.1/bin/Rscript.exe\" -e \"tryCatch\\({ parse\\(file=''C:/Users/Selçuk/Documents/GitHub/fastml/R/train_models.R''\\); cat\\(''train_models.R: OK\\\\n''\\) }, error=function\\(e\\) cat\\(''train_models.R:'', e$message, ''\\\\n''\\)\\)\")",
       "Bash(\"/c/Program Files/R/R-4.5.1/bin/Rscript.exe\" -e \"parse\\(file=''R/train_models.R''\\); cat\\(''train_models.R: OK''\\)\")",
       "Bash(\"/c/Program Files/R/R-4.5.1/bin/Rscript.exe\" -e \"parse\\(file=''R/process_model_helpers.R''\\); cat\\(''process_model_helpers.R: OK''\\)\")",
-      "Bash(\"/c/Program Files/R/R-4.5.1/bin/Rscript.exe\" -e \"parse\\(file=''R/process_model_helpers.R''\\); cat\\(''process_model_helpers.R: OK\\\\n''\\)\")"
+      "Bash(\"/c/Program Files/R/R-4.5.1/bin/Rscript.exe\" -e \"parse\\(file=''R/process_model_helpers.R''\\); cat\\(''process_model_helpers.R: OK\\\\n''\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" -e \"testthat::test_file\\(''tests/testthat/test-fastml.R''\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" -e \"devtools::load_all\\(\\); testthat::test_file\\(''tests/testthat/test-fastml.R''\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" -e \"devtools::load_all\\(\\); testthat::test_file\\(''tests/testthat/test-holdout-splitting.R''\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" -e \"devtools::load_all\\(\\); testthat::test_file\\(''tests/testthat/test-resampling.R''\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" -e \"devtools::load_all\\(\\); testthat::test_file\\(''tests/testthat/test-survival.R''\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" -e \"\ndevtools::load_all\\(\\)\nset.seed\\(123\\)\ndata\\(iris\\)\niris2 <- iris[iris$Species != ''setosa'', ]\niris2$Species <- factor\\(iris2$Species\\)\nresult <- fastml\\(\n  data = iris2,\n  label = ''Species'',\n  algorithms = c\\(''logistic_reg'', ''rand_forest''\\),\n  resampling_method = ''cv'',\n  cv_folds = 3,\n  test_size = 0.3,\n  seed = 42,\n  verbose = FALSE\n\\)\nsummary\\(result\\)\n\")",
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\":*)"
     ]
   }
 }
