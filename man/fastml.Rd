@@ -242,7 +242,10 @@ If \code{NULL} (default), determined by \code{tuning_complexity}.}
 
 \item{learning_curve}{Logical. If TRUE, generate learning curves (performance vs. training size).}
 
-\item{seed}{An integer value specifying the random seed for reproducibility.}
+\item{seed}{An integer value specifying the random seed for reproducibility.
+fastml also configures parallel backends for deterministic RNG streams when
+possible; some external engines (e.g., h2o, spark, keras) may still be
+nondeterministic and will emit a warning.}
 
 \item{verbose}{Logical; if TRUE, prints progress messages during the training
 and evaluation process.}
@@ -265,7 +268,8 @@ should be computed for performance metrics. Applies to all task types.}
 use when \code{bootstrap_ci = TRUE}. Defaults to 500.}
 
 \item{bootstrap_seed}{Optional seed passed to the bootstrap procedure used to
-estimate confidence intervals.}
+estimate confidence intervals. When omitted, defaults to `seed` for
+reproducible intervals; set to `NULL` to allow random bootstrap draws.}
 
 \item{at_risk_threshold}{Numeric value between 0 and 1 used for survival
 metrics to determine the last follow-up time (\eqn{t_{max}}). The maximum

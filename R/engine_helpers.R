@@ -245,6 +245,165 @@ call_with_engine_params <- function(fun, base_args, engine_args) {
   do.call(fun, combined)
 }
 
+fastml_normalize_seed <- function(seed) {
+  if (is.null(seed) || length(seed) == 0 || is.na(seed[[1]])) {
+    return(NULL)
+  }
+  seed <- as.integer(seed[[1]])
+  if (!is.finite(seed)) {
+    return(NULL)
+  }
+  seed
+}
+
+fastml_normalize_threads <- function(n_cores) {
+  if (is.null(n_cores) || length(n_cores) == 0 || is.na(n_cores[[1]])) {
+    return(NULL)
+  }
+  n_cores <- as.integer(n_cores[[1]])
+  if (!is.finite(n_cores) || n_cores < 1L) {
+    return(NULL)
+  }
+  n_cores
+}
+
+fastml_engine_arg_value <- function(engine_args, name) {
+  if (is.null(engine_args) || length(engine_args) == 0) {
+    return(NULL)
+  }
+  if (!is.null(engine_args[[name]])) {
+    return(engine_args[[name]])
+  }
+  params <- engine_args$params
+  if (!is.null(params) && !is.null(params[[name]])) {
+    return(params[[name]])
+  }
+  NULL
+}
+
+fastml_apply_engine_seed <- function(engine_args,
+                                     algo,
+                                     engine,
+                                     seed,
+                                     n_cores,
+                                     task = NULL) {
+  if (is.null(engine_args)) {
+    engine_args <- list()
+  }
+  seed_val <- fastml_normalize_seed(seed)
+  threads_val <- fastml_normalize_threads(n_cores)
+  if (is.null(seed_val) && is.null(threads_val)) {
+    return(engine_args)
+  }
+
+  engine_key <- tolower(as.character(engine))
+  add_if_missing <- function(name, value) {
+    if (is.null(engine_args[[name]])) {
+      engine_args[[name]] <<- value
+    }
+  }
+
+  if (engine_key %in% c("ranger")) {
+    if (!is.null(seed_val)) {
+      add_if_missing("seed", seed_val)
+    }
+    if (!is.null(threads_val)) {
+      add_if_missing("num.threads", threads_val)
+    }
+  } else if (engine_key == "lightgbm") {
+    if (!is.null(seed_val)) {
+      add_if_missing("seed", seed_val)
+    }
+    add_if_missing("deterministic", TRUE)
+    if (!is.null(threads_val)) {
+      add_if_missing("num_threads", threads_val)
+    }
+  } else if (engine_key == "xgboost") {
+    if (!is.null(threads_val)) {
+      add_if_missing("nthread", threads_val)
+    }
+  } else if (engine_key == "h2o") {
+    if (!is.null(seed_val)) {
+      add_if_missing("seed", seed_val)
+    }
+  } else if (engine_key == "spark") {
+    if (!is.null(seed_val)) {
+      add_if_missing("seed", seed_val)
+    }
+  }
+
+  engine_args
+}
+
+fastml_engine_determinism_warning <- function(algo,
+                                              engine,
+                                              task,
+                                              n_cores,
+                                              engine_args) {
+  engine_key <- tolower(as.character(engine))
+  if (engine_key %in% c("keras")) {
+    return("Keras/TensorFlow uses nondeterministic ops by default; configure TensorFlow for determinism to reproduce results.")
+  }
+  if (engine_key %in% c("h2o")) {
+    return("H2O engines can be nondeterministic across runs even with a seed due to distributed execution.")
+  }
+  if (engine_key %in% c("spark")) {
+    return("Spark MLlib training can be nondeterministic across executors/partitions even with a seed.")
+  }
+  if (engine_key %in% c("aorsf")) {
+    seed_val <- fastml_engine_arg_value(engine_args, "seed")
+    if (is.null(seed_val)) {
+      return("aorsf randomness is not controlled unless a fixed seed is supplied via engine_params.")
+    }
+  }
+
+  threads_val <- fastml_engine_arg_value(engine_args, "num_threads")
+  if (is.null(threads_val)) {
+    threads_val <- fastml_engine_arg_value(engine_args, "nthread")
+  }
+  if (is.null(threads_val)) {
+    threads_val <- fastml_normalize_threads(n_cores)
+  }
+  if (!is.null(threads_val)) {
+    threads_val <- as.integer(threads_val[[1]])
+    if (!is.finite(threads_val)) {
+      threads_val <- NULL
+    } else if (threads_val <= 0L) {
+      threads_val <- 2L
+    }
+  }
+  if (engine_key %in% c("lightgbm") && !is.null(threads_val) && threads_val > 1L) {
+    return("LightGBM can be nondeterministic with multithreading; set num_threads = 1 for strict reproducibility.")
+  }
+  if (engine_key %in% c("xgboost") && !is.null(threads_val) && threads_val > 1L) {
+    return("xgboost can be nondeterministic with multithreading; set nthread = 1 for strict reproducibility.")
+  }
+
+  NULL
+}
+
+fastml_emit_determinism_warnings <- function(entries) {
+  if (length(entries) == 0) {
+    return(invisible(NULL))
+  }
+  lines <- vapply(
+    entries,
+    function(entry) {
+      sprintf("%s (%s): %s", entry$algo, entry$engine, entry$reason)
+    },
+    character(1)
+  )
+  warning(
+    paste(
+      "Determinism warnings for selected engines:",
+      paste(lines, collapse = "\n"),
+      sep = "\n"
+    ),
+    call. = FALSE
+  )
+  invisible(NULL)
+}
+
 
 #' Get Engine Names from Model Workflows
 #'

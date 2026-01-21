@@ -156,6 +156,7 @@ fastml_guarded_resample_fit <- function(workflow_spec,
                                         at_risk_threshold = 0.1,
                                         survival_metric_convention = "fastml",
                                         engine_args = list(),
+                                        seed = NULL,
                                         summaryFunction = NULL,
                                         multiclass_auc = "macro") {
   survival_metric_convention <- fastml_normalize_survival_convention(survival_metric_convention)
@@ -198,11 +199,14 @@ fastml_guarded_resample_fit <- function(workflow_spec,
     assessment_data <- rsample::assessment(split)
 
     fit_args <- list(object = workflow_spec, data = analysis_data)
-    if (!is.null(engine_args) && length(engine_args) > 0) {
-      fold_fit <- call_with_engine_params(parsnip::fit, fit_args, engine_args)
-    } else {
-      fold_fit <- parsnip::fit(workflow_spec, data = analysis_data)
-    }
+    fold_seed <- fastml_tuning_seed(seed, offset = i)
+    fold_fit <- fastml_with_seed(fold_seed, function() {
+      if (!is.null(engine_args) && length(engine_args) > 0) {
+        call_with_engine_params(parsnip::fit, fit_args, engine_args)
+      } else {
+        parsnip::fit(workflow_spec, data = analysis_data)
+      }
+    })
 
     fold_result <- process_model(
       model_obj = fold_fit,

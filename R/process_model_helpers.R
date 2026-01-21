@@ -1442,17 +1442,48 @@ fastml_wrap_event_level_metric <- function(metric, event_class) {
     return(metric)
   }
 
-  metric_fun <- function(data, truth, estimate, ...) {
-    metric(data,
-           truth = {{truth}},
-           estimate = {{estimate}},
-           event_level = event_class,
-           ...)
+  metric_fun <- function(data, truth, estimate, na_rm = TRUE, case_weights = NULL, ...) {
+    truth_quo <- rlang::enquo(truth)
+    estimate_quo <- rlang::enquo(estimate)
+    case_weights_quo <- rlang::enquo(case_weights)
+    if (rlang::quo_is_missing(truth_quo) || rlang::quo_is_missing(estimate_quo)) {
+      metric_name <- attr(metric, "metric_name")
+      if (is.null(metric_name) || !nzchar(metric_name)) {
+        metric_name <- "metric"
+      }
+      return(tibble::tibble(
+        .metric = metric_name,
+        .estimator = NA_character_,
+        .estimate = NA_real_
+      ))
+    }
+    dots <- rlang::enquos(...)
+    dots$event_level <- NULL
+    call <- rlang::expr(
+      metric(
+        data = data,
+        truth = !!truth_quo,
+        estimate = !!estimate_quo,
+        na_rm = na_rm,
+        case_weights = !!case_weights_quo,
+        event_level = event_class,
+        !!!dots
+      )
+    )
+    rlang::eval_tidy(call)
   }
 
   class(metric_fun) <- class(metric)
   attr(metric_fun, "direction") <- attr(metric, "direction")
   attr(metric_fun, "metric_name") <- attr(metric, "metric_name")
+  attr(metric_fun, "range") <- attr(metric, "range")
+  static <- attr(metric, "static", exact = TRUE)
+  if (is.null(static)) {
+    static <- "event_level"
+  } else {
+    static <- unique(c(static, "event_level"))
+  }
+  attr(metric_fun, "static") <- static
   metric_fun
 }
 
@@ -1551,15 +1582,6 @@ fastml_configured_roc_auc <- function(multiclass_auc, event_class = NULL) {
   multiclass_auc <- fastml_normalize_multiclass_auc(multiclass_auc)
 
   roc_fun <- function(data, truth, ..., estimator = NULL) {
-    truth_col <- data[[rlang::as_string(rlang::ensym(truth))]]
-    if (missing(estimator) || is.null(estimator) || length(estimator) == 0 || is.na(estimator[[1]])) {
-      estimator <- fastml_auc_estimator_from_truth(truth_col, multiclass_auc)
-    }
-    estimator <- as.character(estimator)[1]
-    if (is.null(estimator) || is.na(estimator) || !nzchar(estimator)) {
-      estimator <- NA_character_
-    }
-
     na_result <- function(estimator_value) {
       tibble::tibble(
         .metric = "roc_auc",
@@ -1568,8 +1590,35 @@ fastml_configured_roc_auc <- function(multiclass_auc, event_class = NULL) {
       )
     }
 
+    # Extract the truth column name from the argument
+    truth_name <- NULL
+    if (!missing(truth) && !is.null(truth)) {
+      truth_name <- tryCatch({
+        truth_sym <- rlang::ensym(truth)
+        rlang::as_string(truth_sym)
+      }, error = function(e) NULL)
+    }
+
+    if (is.null(truth_name) || !nzchar(truth_name) || !is.data.frame(data)) {
+      return(na_result(NA_character_))
+    }
+
+    if (!truth_name %in% names(data)) {
+      return(na_result(NA_character_))
+    }
+
+    truth_col <- data[[truth_name]]
     if (is.null(truth_col)) {
-      return(na_result(estimator))
+      return(na_result(NA_character_))
+    }
+
+    # Determine estimator type
+    if (missing(estimator) || is.null(estimator) || length(estimator) == 0 || is.na(estimator[[1]])) {
+      estimator <- fastml_auc_estimator_from_truth(truth_col, multiclass_auc)
+    }
+    estimator <- as.character(estimator)[1]
+    if (is.null(estimator) || is.na(estimator) || !nzchar(estimator)) {
+      estimator <- NA_character_
     }
 
     truth_vals <- truth_col[!is.na(truth_col)]
@@ -1589,6 +1638,7 @@ fastml_configured_roc_auc <- function(multiclass_auc, event_class = NULL) {
       return(na_result(estimator))
     }
 
+    # Use the vector-based approach to avoid NSE issues
     if (identical(estimator, "binary")) {
       truth_levels <- fastml_truth_levels(truth_col)
       event_use <- if (!is.null(event_class) && event_class %in% c("first", "second")) {
@@ -1606,35 +1656,71 @@ fastml_configured_roc_auc <- function(multiclass_auc, event_class = NULL) {
       if (is.null(prob_col) || !prob_col %in% prob_cols) {
         return(na_result(estimator))
       }
-      use_event <- !is.null(event_class) && event_class %in% c("first", "second")
-      if (use_event) {
-        yardstick::roc_auc(
-          data,
-          truth = {{truth}},
-          !!rlang::sym(prob_col),
-          estimator = "binary",
-          event_level = event_class
+
+      result <- tryCatch({
+        # Use yardstick::roc_auc_vec for vector-based computation (no NSE)
+        truth_vec <- truth_col
+        prob_vec <- data[[prob_col]]
+
+        if (!is.factor(truth_vec)) {
+          truth_vec <- factor(truth_vec)
+        }
+
+        event_level_use <- if (!is.null(event_class) && event_class %in% c("first", "second")) {
+          event_class
+        } else {
+          "first"
+        }
+
+        auc_value <- yardstick::roc_auc_vec(
+          truth = truth_vec,
+          estimate = prob_vec,
+          event_level = event_level_use
         )
-      } else {
-        yardstick::roc_auc(
-          data,
-          truth = {{truth}},
-          !!rlang::sym(prob_col),
-          estimator = "binary"
+
+        tibble::tibble(
+          .metric = "roc_auc",
+          .estimator = "binary",
+          .estimate = auc_value
         )
-      }
+      }, error = function(e) {
+        na_result("binary")
+      })
+
+      return(result)
     } else {
+      # Multiclass case
       truth_levels <- fastml_truth_levels(truth_col)
       aligned <- fastml_align_prob_matrix(prob_info$mat, prob_cols, truth_levels)
       if (is.null(aligned) || length(aligned$cols) == 0) {
         return(na_result(estimator))
       }
-      yardstick::roc_auc(
-        data,
-        truth = {{truth}},
-        !!!rlang::syms(aligned$cols),
-        estimator = estimator
-      )
+
+      result <- tryCatch({
+        truth_vec <- truth_col
+        if (!is.factor(truth_vec)) {
+          truth_vec <- factor(truth_vec, levels = truth_levels)
+        }
+
+        # Create probability matrix for multiclass
+        prob_mat <- as.matrix(data[, aligned$cols, drop = FALSE])
+
+        auc_value <- yardstick::roc_auc_vec(
+          truth = truth_vec,
+          estimate = prob_mat,
+          estimator = estimator
+        )
+
+        tibble::tibble(
+          .metric = "roc_auc",
+          .estimator = estimator,
+          .estimate = auc_value
+        )
+      }, error = function(e) {
+        na_result(estimator)
+      })
+
+      return(result)
     }
   }
 
@@ -1646,7 +1732,22 @@ fastml_configured_roc_auc <- function(multiclass_auc, event_class = NULL) {
 
 fastml_configured_logloss <- function(event_class = NULL) {
   logloss_fun <- function(data, truth, ..., estimator = NULL) {
-    truth_col <- rlang::as_string(rlang::ensym(truth))
+    truth_sym <- NULL
+    if (!missing(truth) && !is.null(truth)) {
+      truth_sym <- tryCatch(rlang::ensym(truth), error = function(e) NULL)
+    }
+    truth_col <- if (!is.null(truth_sym)) {
+      tryCatch(rlang::as_string(truth_sym), error = function(e) NULL)
+    } else {
+      NULL
+    }
+    if (is.null(truth_col) || !nzchar(truth_col) || !is.data.frame(data)) {
+      return(tibble::tibble(
+        .metric = "logloss",
+        .estimator = NA_character_,
+        .estimate = NA_real_
+      ))
+    }
     truth_vec <- data[[truth_col]]
     dots <- rlang::enquos(...)
     prob_cols <- fastml_prob_cols_from_dots(data, dots)
@@ -1677,7 +1778,22 @@ fastml_configured_logloss <- function(event_class = NULL) {
 
 fastml_configured_brier_score <- function(event_class = NULL) {
   brier_fun <- function(data, truth, ..., estimator = NULL) {
-    truth_col <- rlang::as_string(rlang::ensym(truth))
+    truth_sym <- NULL
+    if (!missing(truth) && !is.null(truth)) {
+      truth_sym <- tryCatch(rlang::ensym(truth), error = function(e) NULL)
+    }
+    truth_col <- if (!is.null(truth_sym)) {
+      tryCatch(rlang::as_string(truth_sym), error = function(e) NULL)
+    } else {
+      NULL
+    }
+    if (is.null(truth_col) || !nzchar(truth_col) || !is.data.frame(data)) {
+      return(tibble::tibble(
+        .metric = "brier_score",
+        .estimator = NA_character_,
+        .estimate = NA_real_
+      ))
+    }
     truth_vec <- data[[truth_col]]
     dots <- rlang::enquos(...)
     prob_cols <- fastml_prob_cols_from_dots(data, dots)
@@ -1708,7 +1824,22 @@ fastml_configured_brier_score <- function(event_class = NULL) {
 
 fastml_configured_ece <- function(event_class = NULL) {
   ece_fun <- function(data, truth, ..., estimator = NULL) {
-    truth_col <- rlang::as_string(rlang::ensym(truth))
+    truth_sym <- NULL
+    if (!missing(truth) && !is.null(truth)) {
+      truth_sym <- tryCatch(rlang::ensym(truth), error = function(e) NULL)
+    }
+    truth_col <- if (!is.null(truth_sym)) {
+      tryCatch(rlang::as_string(truth_sym), error = function(e) NULL)
+    } else {
+      NULL
+    }
+    if (is.null(truth_col) || !nzchar(truth_col) || !is.data.frame(data)) {
+      return(tibble::tibble(
+        .metric = "ece",
+        .estimator = NA_character_,
+        .estimate = NA_real_
+      ))
+    }
     truth_vec <- data[[truth_col]]
     dots <- rlang::enquos(...)
     prob_cols <- fastml_prob_cols_from_dots(data, dots)

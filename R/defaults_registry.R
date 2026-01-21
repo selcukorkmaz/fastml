@@ -28,7 +28,7 @@ get_parsnip_default_engine <- function(algo, task = NULL) {
   parsnip_defaults <- list(
     # Classification/Regression models
     logistic_reg = "glm",
-    multinom_reg = "nnet",
+    multinom_reg = "glmnet",
     linear_reg = "lm",
     decision_tree = "rpart",
     rand_forest = "ranger",
@@ -40,7 +40,7 @@ get_parsnip_default_engine <- function(algo, task = NULL) {
     svm_poly = "kernlab",
     nearest_neighbor = "kknn",
     naive_Bayes = "klaR",
-    mlp = "nnet",
+    mlp = "keras",
     bag_tree = "rpart",
     C5_rules = "C5.0",
     discrim_linear = "MASS",

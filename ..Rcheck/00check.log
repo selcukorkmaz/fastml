@@ -1,12 +1,12 @@
 * using log directory 'C:/Users/Selçuk/Documents/GitHub/fastml/..Rcheck'
-* using R version 4.5.1 (2025-06-13 ucrt)
+* using R version 4.4.2 (2024-10-31 ucrt)
 * using platform: x86_64-w64-mingw32
 * R was compiled by
-    gcc.exe (GCC) 14.2.0
-    GNU Fortran (GCC) 14.2.0
+    gcc.exe (GCC) 13.3.0
+    GNU Fortran (GCC) 13.3.0
 * running under: Windows 11 x64 (build 26100)
 * using session charset: UTF-8
-* using options '--no-manual --no-build-vignettes'
+* using options '--no-examples --no-tests --no-manual --no-vignettes'
 * checking for file './DESCRIPTION' ... ERROR
 Required fields missing or empty:
   'Author' 'Maintainer'

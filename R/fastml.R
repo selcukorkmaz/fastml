@@ -151,6 +151,9 @@
 #' @param adaptive Logical indicating whether to use adaptive/racing methods for tuning. Default is \code{FALSE}.
 #' @param learning_curve Logical. If TRUE, generate learning curves (performance vs. training size).
 #' @param seed An integer value specifying the random seed for reproducibility.
+#'   fastml also configures parallel backends for deterministic RNG streams when
+#'   possible; some external engines (e.g., h2o, spark, keras) may still be
+#'   nondeterministic and will emit a warning.
 #' @param verbose Logical; if TRUE, prints progress messages during the training
 #'   and evaluation process.
 #' @param eval_times Optional numeric vector of evaluation horizons for survival
@@ -167,7 +170,8 @@
 #' @param bootstrap_samples Integer giving the number of bootstrap resamples to
 #'   use when \code{bootstrap_ci = TRUE}. Defaults to 500.
 #' @param bootstrap_seed Optional seed passed to the bootstrap procedure used to
-#'   estimate confidence intervals.
+#'   estimate confidence intervals. When omitted, defaults to `seed` for
+#'   reproducible intervals; set to `NULL` to allow random bootstrap draws.
 #' @param at_risk_threshold Numeric value between 0 and 1 used for survival
 #'   metrics to determine the last follow-up time (\eqn{t_{max}}). The maximum
 #'   time is set to the largest observed time where at least this proportion of
@@ -182,8 +186,6 @@
 #' @importFrom dplyr filter pull rename_with mutate across where select all_of
 #' @importFrom rlang sym .data
 #' @importFrom stats as.formula complete.cases
-#' @importFrom doFuture registerDoFuture
-#' @importFrom future plan multisession sequential
 #' @importFrom janitor make_clean_names
 #' @importFrom stringr str_detect
 #' @importFrom purrr flatten
@@ -333,9 +335,13 @@ fastml <- function(data = NULL,
                    multiclass_auc = "macro") {
 
   resampling_method_missing <- missing(resampling_method)
+  bootstrap_seed_missing <- missing(bootstrap_seed)
   audit_env <- fastml_init_audit_env(audit_mode)
 
   set.seed(seed)
+  if (bootstrap_seed_missing) {
+    bootstrap_seed <- seed
+  }
 
   task <- match.arg(task, c("auto", "classification", "regression", "survival"))
   tuning_strategy <- match.arg(tuning_strategy, c("grid", "bayes", "none"))
@@ -594,6 +600,10 @@ fastml <- function(data = NULL,
   }
 
   split_holdout <- function(df, use_strata = FALSE) {
+    seed_val <- fastml_normalize_seed(seed)
+    if (!is.null(seed_val)) {
+      set.seed(seed_val)
+    }
     if (use_strata && !identical(holdout_mode, "random")) {
       warning(
         "Stratified holdout is only supported for random splitting; proceeding without stratification.",
@@ -1061,23 +1071,9 @@ fastml <- function(data = NULL,
   ensure_columns_present(reference_resample_data, block_col, "`block_col`")
   ###############################################################################
 
-  # Set up parallel processing using future
-  if (n_cores > 1) {
-    if (!requireNamespace("doFuture", quietly = TRUE)) {
-      stop("The 'doFuture' package is required for parallel processing but is not installed.")
-    }
-    if (!requireNamespace("future", quietly = TRUE)) {
-      stop("The 'future' package is required but is not installed.")
-    }
-    registerDoFuture()
-    plan(multisession, workers = n_cores)
-    on.exit(plan(sequential), add = TRUE)
-  } else {
-    if (!requireNamespace("future", quietly = TRUE)) {
-      stop("The 'future' package is required but is not installed.")
-    }
-    plan(sequential)
-  }
+  # Set up parallel processing using future and restore it on exit.
+  parallel_ctx <- fastml_setup_parallel(n_cores = n_cores, seed = seed)
+  on.exit(parallel_ctx$restore(), add = TRUE)
 
   ########################################################################
   # Build or use recipe if user hasn't provided it
@@ -1184,49 +1180,53 @@ fastml <- function(data = NULL,
 
   if (verbose) message("Training models: ", paste(algorithms, collapse = ", "))
 
-  models <- train_models(
-    train_data = train_data,
-    label = label,
-    task = task,
-    algorithms = algorithms,
-    resampling_method = resampling_method,
-    folds = folds,
-    repeats = repeats,
-    group_cols = group_cols,
-    block_col = block_col,
-    block_size = block_size,
-    initial_window = initial_window,
-    assess_window = assess_window,
-    skip = skip,
-    outer_folds = outer_folds,
-    resamples = resamples,
-    tune_params = tune_params,
-    engine_params = engine_params,
-    metric = metric,
-    summaryFunction = summaryFunction,
-    seed = seed,
-    recipe = recipe,
-    use_default_tuning = use_default_tuning,
-    tuning_strategy = tuning_strategy,
-    tuning_iterations = tuning_iterations,
-    tuning_complexity = tuning_complexity,
-    grid_levels = grid_levels,
-    early_stopping = early_stopping,
-    adaptive = adaptive,
-    algorithm_engines = algorithm_engines,
-    use_parsnip_defaults = use_parsnip_defaults,
-    warn_engine_defaults = warn_engine_defaults,
-    verbose = verbose,
-    event_class = event_class,
-    class_threshold = class_threshold,
-    start_col = start_col,
-    time_col = time_col,
-    status_col = status_col,
-    eval_times = eval_times,
-    at_risk_threshold = at_risk_threshold,
-    survival_metric_convention = survival_metric_convention,
-    audit_env = audit_env,
-    multiclass_auc = multiclass_auc
+  models <- withCallingHandlers(
+    train_models(
+      train_data = train_data,
+      label = label,
+      task = task,
+      algorithms = algorithms,
+      resampling_method = resampling_method,
+      folds = folds,
+      repeats = repeats,
+      group_cols = group_cols,
+      block_col = block_col,
+      block_size = block_size,
+      initial_window = initial_window,
+      assess_window = assess_window,
+      skip = skip,
+      outer_folds = outer_folds,
+      resamples = resamples,
+      tune_params = tune_params,
+      engine_params = engine_params,
+      metric = metric,
+      summaryFunction = summaryFunction,
+      seed = seed,
+      recipe = recipe,
+      use_default_tuning = use_default_tuning,
+      tuning_strategy = tuning_strategy,
+      tuning_iterations = tuning_iterations,
+      tuning_complexity = tuning_complexity,
+      grid_levels = grid_levels,
+      early_stopping = early_stopping,
+      adaptive = adaptive,
+      algorithm_engines = algorithm_engines,
+      use_parsnip_defaults = use_parsnip_defaults,
+      warn_engine_defaults = warn_engine_defaults,
+      n_cores = n_cores,
+      verbose = verbose,
+      event_class = event_class,
+      class_threshold = class_threshold,
+      start_col = start_col,
+      time_col = time_col,
+      status_col = status_col,
+      eval_times = eval_times,
+      at_risk_threshold = at_risk_threshold,
+      survival_metric_convention = survival_metric_convention,
+      audit_env = audit_env,
+      multiclass_auc = multiclass_auc
+    ),
+    warning = fastml_muffle_foreach_warning
   )
 
   resampling_results <- attr(models, "guarded_resampling")
@@ -1573,48 +1573,52 @@ fastml <- function(data = NULL,
       }
 
       # Train models on the subset
-      sub_models <- train_models(
-        train_data = sub_train,
-        label = label,
-        task = task,
-        algorithms = algorithms,
-        resampling_method = resampling_method,
-        folds = folds,
-        repeats = repeats,
-        group_cols = group_cols,
-        block_col = block_col,
-        block_size = block_size,
-        initial_window = initial_window,
-        assess_window = assess_window,
-        skip = skip,
-        outer_folds = outer_folds,
-        resamples = resamples,
-        tune_params = tune_params,
-        engine_params = engine_params,
-        metric = metric,
-        summaryFunction = summaryFunction,
-        seed = seed,
-        recipe = recipe,
-        use_default_tuning = use_default_tuning,
-        tuning_strategy = tuning_strategy,
-        tuning_iterations = tuning_iterations,
-        tuning_complexity = tuning_complexity,
-        grid_levels = grid_levels,
-        early_stopping = early_stopping,
-        adaptive = adaptive,
-        algorithm_engines = algorithm_engines,
-        use_parsnip_defaults = use_parsnip_defaults,
-        warn_engine_defaults = warn_engine_defaults,
-        verbose = verbose,
-        event_class = event_class,
-        start_col = start_col,
-        time_col = time_col,
-        status_col = status_col,
-        eval_times = eval_times,
-        at_risk_threshold = at_risk_threshold,
-        survival_metric_convention = survival_metric_convention,
-        audit_env = audit_env,
-        multiclass_auc = multiclass_auc
+      sub_models <- withCallingHandlers(
+        train_models(
+          train_data = sub_train,
+          label = label,
+          task = task,
+          algorithms = algorithms,
+          resampling_method = resampling_method,
+          folds = folds,
+          repeats = repeats,
+          group_cols = group_cols,
+          block_col = block_col,
+          block_size = block_size,
+          initial_window = initial_window,
+          assess_window = assess_window,
+          skip = skip,
+          outer_folds = outer_folds,
+          resamples = resamples,
+          tune_params = tune_params,
+          engine_params = engine_params,
+          metric = metric,
+          summaryFunction = summaryFunction,
+          seed = seed,
+          recipe = recipe,
+          use_default_tuning = use_default_tuning,
+          tuning_strategy = tuning_strategy,
+          tuning_iterations = tuning_iterations,
+          tuning_complexity = tuning_complexity,
+          grid_levels = grid_levels,
+          early_stopping = early_stopping,
+          adaptive = adaptive,
+          algorithm_engines = algorithm_engines,
+          use_parsnip_defaults = use_parsnip_defaults,
+          warn_engine_defaults = warn_engine_defaults,
+          n_cores = n_cores,
+          verbose = verbose,
+          event_class = event_class,
+          start_col = start_col,
+          time_col = time_col,
+          status_col = status_col,
+          eval_times = eval_times,
+          at_risk_threshold = at_risk_threshold,
+          survival_metric_convention = survival_metric_convention,
+          audit_env = audit_env,
+          multiclass_auc = multiclass_auc
+        ),
+        warning = fastml_muffle_foreach_warning
       )
 
 
