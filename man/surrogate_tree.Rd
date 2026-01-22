@@ -4,12 +4,14 @@
 \alias{surrogate_tree}
 \title{Fit a surrogate decision tree for a fastml model}
 \usage{
-surrogate_tree(object, maxdepth = 3, ...)
+surrogate_tree(object, maxdepth = 3, data = c("train", "test"), ...)
 }
 \arguments{
 \item{object}{A `fastml` object.}
 
 \item{maxdepth}{Maximum depth of the surrogate tree. Default 3.}
+
+\item{data}{Character string specifying which data to use: \code{"train"} (default) or \code{"test"}.}
 
 \item{...}{Additional arguments passed to `iml::TreeSurrogate`.}
 }

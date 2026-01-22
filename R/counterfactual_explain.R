@@ -8,6 +8,8 @@
 #'   counterfactuals for.
 #' @param variables Optional character vector of candidate variables to vary.
 #'   Only numeric variables are used for counterfactual profiling.
+#' @param data Character string specifying which data to use for the explainer background:
+#'   \code{"train"} (default) or \code{"test"}.
 #' @param positive_class Optional string used to filter lines/points in the
 #'   resulting profiles for classification tasks.
 #' @param event_class Optional event class indicator propagated from
@@ -24,6 +26,7 @@
 counterfactual_explain <- function(object,
                                    observation,
                                    variables = NULL,
+                                   data = c("train", "test"),
                                    positive_class = NULL,
                                    event_class = NULL,
                                    label_levels = NULL,
@@ -38,13 +41,14 @@ counterfactual_explain <- function(object,
     stop("The 'DALEX' package is required for counterfactual explanations.")
   }
 
+  data <- match.arg(data)
   obs_raw <- observation
   explainer <- NULL
   prep <- NULL
 
   # 1. Build/Extract Explainer
   if (inherits(object, "fastml")) {
-    prep <- fastml_prepare_explainer_inputs(object)
+    prep <- fastml_prepare_explainer_inputs(object, data = data)
     # align observation with explainer input schema (raw predictors, no label)
     if (!is.null(prep$label) && prep$label %in% names(obs_raw)) {
       obs_raw[[prep$label]] <- NULL
@@ -88,22 +92,6 @@ counterfactual_explain <- function(object,
   }
 
   # 2. Filter Variables: Keep ONLY Numerics
-  # Identify all numeric columns in the explainer's data
-  all_vars <- colnames(explainer$data)
-  numeric_vars <- names(explainer$data)[sapply(explainer$data, is.numeric)]
-
-  # Check if user requested specific variables in '...'
-  # Check if user requested specific variables in '...'
-  args <- list(...)
-  user_vars <- NULL
-
-  if ("variables" %in% names(args)) {
-    user_vars <- args$variables
-    # Remove it from args so it isn't passed twice
-    args$variables <- NULL
-  }
-
-  # Filter Variables: Keep ONLY Numerics
   all_numeric <- names(explainer$data)[sapply(explainer$data, is.numeric)]
 
   final_vars <- all_numeric

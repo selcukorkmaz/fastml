@@ -8,6 +8,7 @@ counterfactual_explain(
   object,
   observation,
   variables = NULL,
+  data = c("train", "test"),
   positive_class = NULL,
   event_class = NULL,
   label_levels = NULL,
@@ -22,6 +23,9 @@ counterfactuals for.}
 
 \item{variables}{Optional character vector of candidate variables to vary.
 Only numeric variables are used for counterfactual profiling.}
+
+\item{data}{Character string specifying which data to use for the explainer background:
+\code{"train"} (default) or \code{"test"}.}
 
 \item{positive_class}{Optional string used to filter lines/points in the
 resulting profiles for classification tasks.}

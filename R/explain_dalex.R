@@ -7,13 +7,15 @@
 #' @return Invisibly returns a list with variable importance, optional model profiles and SHAP values.
 #' @export
 explain_dalex <- function(object,
+                          data = c("train", "test"),
                           features = NULL,
                           grid_size = 20,
                           shap_sample = 5,
                           vi_iterations = 10,
                           seed = 123,
                           loss_function = NULL) {
-  prep <- fastml_prepare_explainer_inputs(object)
+  data <- match.arg(data)
+  prep <- fastml_prepare_explainer_inputs(object, data = data)
   explainers <- fastml_build_dalex_explainers(prep)$explainers
   explain_dalex_internal(
     explainers = explainers,
@@ -27,7 +29,6 @@ explain_dalex <- function(object,
   )
 }
 
-#' @keywords internal
 #' @keywords internal
 fastml_build_dalex_explainers <- function(prep) {
   if (!requireNamespace("DALEX", quietly = TRUE)) {
@@ -133,8 +134,11 @@ fastml_build_dalex_explainers <- function(prep) {
     if (prep$task == "classification") {
       p <- predict(m, new_data = newdata_processed, type = "prob")
       colnames(p) <- sub("^\\.pred_", "", colnames(p))
-      p <- as.data.frame(p)
+      if (ncol(p) > 2) {
+        return(as.matrix(p))
+      }
 
+      p <- as.data.frame(p)
       prob_cols <- colnames(p)
       match_idx <- NA_integer_
       chosen_class <- NULL
@@ -251,7 +255,6 @@ fastml_build_dalex_explainers <- function(prep) {
   list(explainers = explainers)
 }
 
-#' @keywords internal
 #' @keywords internal
 explain_dalex_internal <- function(explainers,
                                    prep,

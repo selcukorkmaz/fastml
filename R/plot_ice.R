@@ -6,6 +6,7 @@
 #'
 #' @param object A `fastml` object.
 #' @param features Character vector of feature names to plot.
+#' @param data Character string specifying which data to use: \code{"train"} (default) or \code{"test"}.
 #' @param ... Additional arguments passed to `pdp::partial`.
 #'
 #' @return A list with two elements: `data` (the ICE data frame) and `plot` (the ggplot object).
@@ -20,7 +21,7 @@
 #' model <- fastml(data = iris, label = "Species")
 #' plot_ice(model, features = "Sepal.Length")
 #' }
-plot_ice <- function(object, features, ...) {
+plot_ice <- function(object, features, data = c("train", "test"), ...) {
   if (!inherits(object, "fastml")) {
     stop("The input must be a 'fastml' object.")
   }
@@ -31,12 +32,23 @@ plot_ice <- function(object, features, ...) {
     stop("The 'pdp' package is required for ICE plots.")
   }
 
-  train_data <- object$processed_train_data
-  if (is.null(train_data) || !(object$label %in% names(train_data))) {
-    stop("Processed training data not available for ICE plots.")
+  data <- match.arg(data)
+
+  # Select data source based on parameter
+  if (data == "test") {
+    if (is.null(object$processed_test_data)) {
+      stop("Processed test data not available for ICE plots. Use data = 'train' instead.")
+    }
+    selected_data <- object$processed_test_data
+  } else {
+    selected_data <- object$processed_train_data
   }
 
-  x <- train_data[, setdiff(names(train_data), object$label), drop = FALSE]
+  if (is.null(selected_data) || !(object$label %in% names(selected_data))) {
+    stop(sprintf("Processed %s data not available for ICE plots.", data))
+  }
+
+  x <- selected_data[, setdiff(names(selected_data), object$label), drop = FALSE]
 
   parsnip_fit <- tryCatch(tune::extract_fit_parsnip(object$best_model[[1]]),
                           error = function(e) NULL)

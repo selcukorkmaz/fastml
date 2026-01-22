@@ -4,10 +4,12 @@
 \alias{interaction_strength}
 \title{Compute feature interaction strengths for a fastml model}
 \usage{
-interaction_strength(object, ...)
+interaction_strength(object, data = c("train", "test"), ...)
 }
 \arguments{
 \item{object}{A `fastml` object.}
+
+\item{data}{Character string specifying which data to use: \code{"train"} (default) or \code{"test"}.}
 
 \item{...}{Additional arguments passed to `iml::Interaction`.}
 }

@@ -5,6 +5,7 @@
 #' @param object A `fastml` object.
 #' @param ... Additional arguments passed to `iml::Interaction`.
 #'
+#' @param data Character string specifying which data to use: \code{"train"} (default) or \code{"test"}.
 #' @return An `iml::Interaction` object.
 #' @importFrom iml Predictor Interaction
 #' @importFrom recipes bake
@@ -17,7 +18,7 @@
 #' model <- fastml(data = iris, label = "Species")
 #' interaction_strength(model)
 #' }
-interaction_strength <- function(object, ...) {
+interaction_strength <- function(object, data = c("train", "test"), ...) {
   if (!inherits(object, "fastml")) {
     stop("The input must be a 'fastml' object.")
   }
@@ -25,7 +26,8 @@ interaction_strength <- function(object, ...) {
     stop("The 'iml' package is required for interaction strength.")
   }
 
-  prep <- fastml_prepare_explainer_inputs(object)
+  data <- match.arg(data)
+  prep <- fastml_prepare_explainer_inputs(object, data = data)
   train_data <- prep$train_data
   if (is.null(train_data) || !(prep$label %in% names(train_data))) {
     stop("Training data not available for interaction strength.")

@@ -1,16 +1,47 @@
 #' Internal helper to prepare explainer inputs from a fastml object
 #'
+#' @param object A fastml object.
+#' @param data Character string specifying which data to use: "train" (default) or "test".
 #' @keywords internal
-fastml_prepare_explainer_inputs <- function(object) {
+fastml_prepare_explainer_inputs <- function(object, data = c("train", "test")) {
   if (!inherits(object, "fastml")) {
     stop("The input must be a 'fastml' object.")
   }
+
+  data <- match.arg(data)
 
   if (is.null(object$processed_train_data) || is.null(object$label) ||
       !(object$label %in% names(object$processed_train_data))) {
     stop("Processed training data with the target column is required to build an explainer.")
   }
 
+  # Select data source based on parameter
+
+  if (data == "test") {
+    if (is.null(object$raw_test_data)) {
+      stop("Test data is not available in this fastml object. Use data = 'train' instead.")
+    }
+    raw_data <- as.data.frame(object$raw_test_data)
+    processed_data <- if (!is.null(object$processed_test_data)) {
+      as.data.frame(object$processed_test_data)
+    } else {
+      # Bake test data if processed version not stored
+      if (!is.null(object$preprocessor)) {
+        as.data.frame(recipes::bake(object$preprocessor, new_data = object$raw_test_data))
+      } else {
+        raw_data
+      }
+    }
+  } else {
+    raw_data <- if (!is.null(object$raw_train_data)) {
+      as.data.frame(object$raw_train_data)
+    } else {
+      as.data.frame(object$processed_train_data)
+    }
+    processed_data <- as.data.frame(object$processed_train_data)
+  }
+
+  # Keep references to training data for preprocessing alignment
   raw_train_data <- if (!is.null(object$raw_train_data)) {
     as.data.frame(object$raw_train_data)
   } else {
@@ -18,24 +49,27 @@ fastml_prepare_explainer_inputs <- function(object) {
   }
   processed_train_data <- as.data.frame(object$processed_train_data)
 
-  train_data <- raw_train_data
-  rownames(train_data) <- NULL
+  # Use selected data source (train or test) for explanations
+  selected_data <- raw_data
+  rownames(selected_data) <- NULL
 
   label <- object$label
-  x_raw <- train_data[, setdiff(names(train_data), label), drop = FALSE]
+  x_raw <- selected_data[, setdiff(names(selected_data), label), drop = FALSE]
   x_raw <- as.data.frame(x_raw)
   rownames(x_raw) <- NULL
-  y_raw <- train_data[[label]]
+  y_raw <- selected_data[[label]]
 
   # Use processed predictors for actually scoring models
-  x_processed <- as.data.frame(processed_train_data[, setdiff(names(processed_train_data), label), drop = FALSE])
+  x_processed <- as.data.frame(processed_data[, setdiff(names(processed_data), label), drop = FALSE])
   rownames(x_processed) <- NULL
-  y_processed <- processed_train_data[[label]]
+  y_processed <- processed_data[[label]]
 
   best_model <- object$best_model
   fits <- list()
   model_names <- character()
-  label_levels <- if (is.factor(y_raw)) levels(y_raw) else NULL
+  # Use training data labels for factor levels to ensure consistency
+  train_y <- raw_train_data[[label]]
+  label_levels <- if (is.factor(train_y)) levels(train_y) else if (is.factor(y_raw)) levels(y_raw) else NULL
 
   add_fit <- function(name, mod) {
     if (is.null(mod)) {
@@ -94,7 +128,8 @@ fastml_prepare_explainer_inputs <- function(object) {
   }
 
   list(
-    train_data = train_data,
+    data_source = data,
+    train_data = selected_data,
     raw_train_data = raw_train_data,
     processed_train_data = processed_train_data,
     x = x_processed,

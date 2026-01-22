@@ -11,10 +11,11 @@
 #'
 #' @details
 #'  \itemize{
-#'    \item \bold{Training data explanations:} All explanations (variable importance, SHAP values,
-#'    partial dependence profiles) are computed on the training data and reflect in-sample model behavior.
-#'    These indicate how the model uses features on data it has seen, not necessarily how it will
-#'    generalize to new data.
+#'    \item \bold{Data source selection:} By default, explanations are computed on training data
+#'    (\code{data = "train"}), which reflects in-sample model behavior and may be influenced by
+
+#'    overfitting. Set \code{data = "test"} to compute explanations on held-out test data for
+#'    a more realistic assessment of how the model uses features on unseen data.
 #'    \item \bold{Method dispatch:} \code{method} can route to LIME, ICE, ALE, surrogate tree, interaction strengths,
 #'    DALEX/modelStudio dashboards, fairness diagnostics, iBreakDown contributions, or counterfactual search.
 #'    \item \bold{Variable importance controls:} Use \code{vi_iterations} to tune permutation stability and \code{loss_function}
@@ -23,23 +24,27 @@
 #'    for \code{method = "breakdown"} or \code{method = "counterfactual"}. Observations are aligned to the explainer data before scoring.
 #'  }
 #'
-#' @note Variable importance, SHAP values, and partial dependence profiles are computed using
-#' training data. These reflect the model's behavior on data it has seen, not generalization
-#' performance. For unbiased feature importance estimates, consider using held-out test data
-#' or nested cross-validation approaches.
+#' @note By default, explanations use training data. For unbiased feature importance estimates
+#' that better reflect model generalization, use \code{data = "test"} to compute explanations
+#' on held-out test data.
 #'
 #' @param object A \code{fastml} object.
+#' @param data Character string specifying which data to use for explanations:
+#'   \code{"train"} (default) uses training data, \code{"test"} uses held-out test data.
+#'   Using test data provides explanations that better reflect model generalization,
+#'   while training data explanations may be influenced by overfitting.
 #' @param method Character string specifying the explanation method.
 #'   Supported values are \code{"dalex"}, \code{"lime"}, \code{"ice"},
 #'   \code{"ale"}, \code{"surrogate"}, \code{"interaction"}, \code{"studio"},
 #'   \code{"fairness"}, \code{"breakdown"}, and \code{"counterfactual"}.
 #'   Defaults to \code{"dalex"}.
 #' @param features Character vector of feature names for partial dependence (model profiles). Default NULL.
+#' @param n_features Number of features to show in the explanation (used for lime). Default 5.
 #' @param variables Character vector. Variable names to compute explanations for (used for counterfactuals).
 #' @param observation A single observation for methods that need a new data point
-#'   (\code{method = "counterfactual"} or \code{method = "breakdown"}). Default NULL.
+#'   (\code{method = "lime"}, \code{method = "counterfactual"}, or \code{method = "breakdown"}). Default NULL.
 #' @param grid_size Number of grid points for partial dependence. Default 20.
-#' @param shap_sample Integer number of observations from processed training data to compute SHAP values for. Default 5.
+#' @param shap_sample Integer number of observations from the selected data source to compute SHAP values for. Default 5.
 #' @param vi_iterations Integer. Number of permutations for variable importance (B). Default 10.
 #' @param seed Integer. A value specifying the random seed.
 #' @param loss_function Function. The loss function for \code{model_parts}.
@@ -67,7 +72,9 @@
 #' @export
 fastexplain <- function(object,
                           method = "dalex",
+                          data = c("train", "test"),
                           features = NULL,
+                          n_features = 5,
                           variables = NULL,
                           observation = NULL,
                           grid_size = 20,
@@ -82,7 +89,14 @@ fastexplain <- function(object,
     stop("The input must be a 'fastml' object.")
   }
 
-  message("Note: Explanations are computed on training data and reflect in-sample model behavior.")
+  data <- match.arg(data)
+
+  if (data == "train") {
+    message("Note: Explanations are computed on TRAINING data and reflect in-sample model behavior.")
+    message("      Use data = 'test' for held-out explanations that better reflect generalization.")
+  } else {
+    message("Note: Explanations are computed on TEST (held-out) data.")
+  }
 
   method <- tolower(method)
 
@@ -100,18 +114,23 @@ fastexplain <- function(object,
   }
 
   # Legacy/specific methods
-  if (method == "lime") return(explain_lime(object, ...))
-  if (method == "ice") return(plot_ice(object, features = features, ...))
+  if (method == "lime") {
+    if (is.null(observation)) {
+      stop("'observation' must be provided for method = 'lime'.")
+    }
+    return(explain_lime(object, new_observation = observation, data = data, n_features = n_features, ...))
+  }
+  if (method == "ice") return(plot_ice(object, features = features, data = data, ...))
   if (method == "ale") {
     if (is.null(features) || length(features) == 0) {
       stop("'features' must contain a feature name for ALE explanations.")
     }
-    return(explain_ale(object, feature = features[1], ...))
+    return(explain_ale(object, feature = features[1], data = data, ...))
   }
-  if (method == "surrogate") return(surrogate_tree(object, ...))
-  if (method == "interaction") return(interaction_strength(object, ...))
+  if (method == "surrogate") return(surrogate_tree(object, data = data, ...))
+  if (method == "interaction") return(interaction_strength(object, data = data, ...))
   # DALEX ecosystem methods reuse centralized explainer builder
-  prep <- fastml_prepare_explainer_inputs(object)
+  prep <- fastml_prepare_explainer_inputs(object, data = data)
   dalex_res <- fastml_build_dalex_explainers(prep)
   explainer <- dalex_res$explainers[[1]]
 

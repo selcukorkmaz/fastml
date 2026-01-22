@@ -4,12 +4,14 @@
 \alias{plot_ice}
 \title{Plot ICE curves for a fastml model}
 \usage{
-plot_ice(object, features, ...)
+plot_ice(object, features, data = c("train", "test"), ...)
 }
 \arguments{
 \item{object}{A `fastml` object.}
 
 \item{features}{Character vector of feature names to plot.}
+
+\item{data}{Character string specifying which data to use: \code{"train"} (default) or \code{"test"}.}
 
 \item{...}{Additional arguments passed to `pdp::partial`.}
 }

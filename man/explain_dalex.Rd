@@ -6,6 +6,7 @@
 \usage{
 explain_dalex(
   object,
+  data = c("train", "test"),
   features = NULL,
   grid_size = 20,
   shap_sample = 5,
@@ -17,11 +18,16 @@ explain_dalex(
 \arguments{
 \item{object}{A \code{fastml} object.}
 
+\item{data}{Character string specifying which data to use for explanations:
+\code{"train"} (default) uses training data, \code{"test"} uses held-out test data.
+Using test data provides explanations that better reflect model generalization,
+while training data explanations may be influenced by overfitting.}
+
 \item{features}{Character vector of feature names for partial dependence (model profiles). Default NULL.}
 
 \item{grid_size}{Number of grid points for partial dependence. Default 20.}
 
-\item{shap_sample}{Integer number of observations from processed training data to compute SHAP values for. Default 5.}
+\item{shap_sample}{Integer number of observations from the selected data source to compute SHAP values for. Default 5.}
 
 \item{vi_iterations}{Integer. Number of permutations for variable importance (B). Default 10.}
 

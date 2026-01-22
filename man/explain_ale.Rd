@@ -4,12 +4,14 @@
 \alias{explain_ale}
 \title{Compute Accumulated Local Effects (ALE) for a fastml model}
 \usage{
-explain_ale(object, feature, ...)
+explain_ale(object, feature, data = c("train", "test"), ...)
 }
 \arguments{
 \item{object}{A `fastml` object.}
 
 \item{feature}{Character string specifying the feature name.}
+
+\item{data}{Character string specifying which data to use: \code{"train"} (default) or \code{"test"}.}
 
 \item{...}{Additional arguments passed to `iml::FeatureEffect`.}
 }

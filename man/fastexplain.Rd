@@ -7,7 +7,9 @@
 fastexplain(
   object,
   method = "dalex",
+  data = c("train", "test"),
   features = NULL,
+  n_features = 5,
   variables = NULL,
   observation = NULL,
   grid_size = 20,
@@ -28,16 +30,23 @@ Supported values are \code{"dalex"}, \code{"lime"}, \code{"ice"},
 \code{"fairness"}, \code{"breakdown"}, and \code{"counterfactual"}.
 Defaults to \code{"dalex"}.}
 
+\item{data}{Character string specifying which data to use for explanations:
+\code{"train"} (default) uses training data, \code{"test"} uses held-out test data.
+Using test data provides explanations that better reflect model generalization,
+while training data explanations may be influenced by overfitting.}
+
 \item{features}{Character vector of feature names for partial dependence (model profiles). Default NULL.}
+
+\item{n_features}{Number of features to show in the explanation (used for lime). Default 5.}
 
 \item{variables}{Character vector. Variable names to compute explanations for (used for counterfactuals).}
 
 \item{observation}{A single observation for methods that need a new data point
-(\code{method = "counterfactual"} or \code{method = "breakdown"}). Default NULL.}
+(\code{method = "lime"}, \code{method = "counterfactual"}, or \code{method = "breakdown"}). Default NULL.}
 
 \item{grid_size}{Number of grid points for partial dependence. Default 20.}
 
-\item{shap_sample}{Integer number of observations from processed training data to compute SHAP values for. Default 5.}
+\item{shap_sample}{Integer number of observations from the selected data source to compute SHAP values for. Default 5.}
 
 \item{vi_iterations}{Integer. Number of permutations for variable importance (B). Default 10.}
 
@@ -73,10 +82,10 @@ Provides model explainability across several backends. With \code{method = "dale
 }
 \details{
 \itemize{
-   \item \bold{Training data explanations:} All explanations (variable importance, SHAP values,
-   partial dependence profiles) are computed on the training data and reflect in-sample model behavior.
-   These indicate how the model uses features on data it has seen, not necessarily how it will
-   generalize to new data.
+   \item \bold{Data source selection:} By default, explanations are computed on training data
+   (\code{data = "train"}), which reflects in-sample model behavior and may be influenced by
+   overfitting. Set \code{data = "test"} to compute explanations on held-out test data for
+   a more realistic assessment of how the model uses features on unseen data.
    \item \bold{Method dispatch:} \code{method} can route to LIME, ICE, ALE, surrogate tree, interaction strengths,
    DALEX/modelStudio dashboards, fairness diagnostics, iBreakDown contributions, or counterfactual search.
    \item \bold{Variable importance controls:} Use \code{vi_iterations} to tune permutation stability and \code{loss_function}
@@ -86,8 +95,7 @@ Provides model explainability across several backends. With \code{method = "dale
  }
 }
 \note{
-Variable importance, SHAP values, and partial dependence profiles are computed using
-training data. These reflect the model's behavior on data it has seen, not generalization
-performance. For unbiased feature importance estimates, consider using held-out test data
-or nested cross-validation approaches.
+By default, explanations use training data. For unbiased feature importance estimates
+that better reflect model generalization, use \code{data = "test"} to compute explanations
+on held-out test data.
 }

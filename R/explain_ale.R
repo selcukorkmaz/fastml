@@ -11,6 +11,7 @@
 #' @importFrom ggplot2 ggplot aes geom_line geom_col geom_rug labs
 #' @importFrom rlang sym
 #' @importFrom recipes bake
+#' @param data Character string specifying which data to use: \code{"train"} (default) or \code{"test"}.
 #' @export
 #' @examples
 #' \dontrun{
@@ -20,7 +21,7 @@
 #' model <- fastml(data = iris, label = "Species")
 #' explain_ale(model, feature = "Sepal.Length")
 #' }
-explain_ale <- function(object, feature, ...) {
+explain_ale <- function(object, feature, data = c("train", "test"), ...) {
   if (!inherits(object, "fastml")) {
     stop("The input must be a 'fastml' object.")
   }
@@ -31,7 +32,8 @@ explain_ale <- function(object, feature, ...) {
     stop("The 'iml' package is required for ALE explanations.")
   }
 
-  prep <- fastml_prepare_explainer_inputs(object)
+  data <- match.arg(data)
+  prep <- fastml_prepare_explainer_inputs(object, data = data)
   train_data <- prep$train_data
   if (is.null(train_data) || !(prep$label %in% names(train_data))) {
     stop("Training data not available for ALE.")

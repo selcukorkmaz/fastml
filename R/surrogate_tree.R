@@ -7,6 +7,7 @@
 #' @param maxdepth Maximum depth of the surrogate tree. Default 3.
 #' @param ... Additional arguments passed to `iml::TreeSurrogate`.
 #'
+#' @param data Character string specifying which data to use: \code{"train"} (default) or \code{"test"}.
 #' @return An `iml::TreeSurrogate` object.
 #' @importFrom iml Predictor TreeSurrogate
 #' @importFrom recipes bake
@@ -19,7 +20,7 @@
 #' model <- fastml(data = iris, label = "Species")
 #' surrogate_tree(model)
 #' }
-surrogate_tree <- function(object, maxdepth = 3, ...) {
+surrogate_tree <- function(object, maxdepth = 3, data = c("train", "test"), ...) {
   if (!inherits(object, "fastml")) {
     stop("The input must be a 'fastml' object.")
   }
@@ -27,7 +28,8 @@ surrogate_tree <- function(object, maxdepth = 3, ...) {
     stop("The 'iml' package is required for surrogate models.")
   }
 
-  prep <- fastml_prepare_explainer_inputs(object)
+  data <- match.arg(data)
+  prep <- fastml_prepare_explainer_inputs(object, data = data)
   raw_data <- prep$train_data
   if (is.null(raw_data) || !(prep$label %in% names(raw_data))) {
     stop("Training data not available for surrogate models.")

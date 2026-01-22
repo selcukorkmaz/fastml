@@ -4,12 +4,24 @@
 \alias{explain_lime}
 \title{Generate LIME explanations for a fastml model}
 \usage{
-explain_lime(object, new_observation, n_features = 5, n_labels = 1, ...)
+explain_lime(
+  object,
+  new_observation,
+  data = c("train", "test"),
+  n_features = 5,
+  n_labels = 1,
+  ...
+)
 }
 \arguments{
 \item{object}{A `fastml` object.}
 
-\item{new_observation}{A data frame containing the new observation(s) to explain.}
+\item{new_observation}{A data frame containing the new observation(s) to explain.
+Must contain the same columns as the original training data (before preprocessing).
+The function will apply the stored preprocessor to transform it.}
+
+\item{data}{Character string specifying which data to use for the LIME explainer background:
+\code{"train"} (default) or \code{"test"}.}
 
 \item{n_features}{Number of features to show in the explanation. Default 5.}
 
@@ -21,8 +33,9 @@ explain_lime(object, new_observation, n_features = 5, n_labels = 1, ...)
 An object produced by `lime::explain`.
 }
 \description{
-Creates a `lime` explainer using the processed training data stored in the
-`fastml` object and returns feature explanations for new observations.
+Creates a `lime` explainer using processed (encoded, scaled) data and returns
+feature explanations for new observations. The new observation is automatically
+preprocessed using the same recipe to ensure alignment with the explainer background.
 }
 \examples{
 \dontrun{

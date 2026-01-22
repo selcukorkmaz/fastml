@@ -4,7 +4,12 @@
 \alias{fastml_prepare_explainer_inputs}
 \title{Internal helper to prepare explainer inputs from a fastml object}
 \usage{
-fastml_prepare_explainer_inputs(object)
+fastml_prepare_explainer_inputs(object, data = c("train", "test"))
+}
+\arguments{
+\item{object}{A fastml object.}
+
+\item{data}{Character string specifying which data to use: "train" (default) or "test".}
 }
 \description{
 Internal helper to prepare explainer inputs from a fastml object
