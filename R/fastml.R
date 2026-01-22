@@ -1381,6 +1381,8 @@ fastml <- function(data = NULL,
       }
       folds_tbl <- entry$folds
       if (!is.null(folds_tbl) && is.data.frame(folds_tbl) && nrow(folds_tbl) > 0) {
+        # Always recompute aggregated from folds to ensure proper CV statistics
+        # (mean and SD across folds) instead of pooled metrics
         agg <- fastml_aggregate_resample_metrics(folds_tbl, task)
         if (!is.null(agg) && is.data.frame(agg) && nrow(agg) > 0) {
           entry$aggregated <- agg

@@ -126,11 +126,16 @@ summary.fastml <- function(object,
       cv_fold_lookup <- cv_fold_lookup[!vapply(cv_fold_lookup, is.null, logical(1))]
     }
     # DEBUG: Print CV metrics structure
-    if (getOption("fastml.debug", TRUE)) {
+    if (getOption("fastml.debug", FALSE)) {
       message("DEBUG cv_metrics_lookup keys: ", paste(names(cv_metrics_lookup), collapse = ", "))
-      if (length(cv_metrics_lookup) > 0) {
-        message("DEBUG first entry columns: ", paste(names(cv_metrics_lookup[[1]]), collapse = ", "))
-        message("DEBUG first entry:\n")
+      message("DEBUG cv_fold_lookup keys: ", paste(names(cv_fold_lookup), collapse = ", "))
+      if (length(cv_fold_lookup) > 0) {
+        message("DEBUG cv_fold_lookup first entry columns: ", paste(names(cv_fold_lookup[[1]]), collapse = ", "))
+        message("DEBUG cv_fold_lookup first entry:\n")
+        print(cv_fold_lookup[[1]])
+      } else if (length(cv_metrics_lookup) > 0) {
+        message("DEBUG cv_metrics_lookup first entry columns: ", paste(names(cv_metrics_lookup[[1]]), collapse = ", "))
+        message("DEBUG cv_metrics_lookup first entry:\n")
         print(cv_metrics_lookup[[1]])
       }
     }
@@ -629,27 +634,38 @@ summary.fastml <- function(object,
   has_cv_metrics <- length(cv_metrics_lookup) > 0 || length(cv_fold_lookup) > 0
 
   if (has_cv_metrics) {
-    # Extract CV metric values for each model
-    # Note: cv_metrics_lookup keys are "algorithm (engine)" format
-    performance_wide[[cv_metric_col]] <- mapply(function(m, e) {
-      # Try combined key first (e.g., "rand_forest (ranger)")
+    # Helper function to find CV data with flexible key matching
+    find_cv_data <- function(m, e, fold_lookup, metrics_lookup) {
       combined_key <- paste0(m, " (", e, ")")
-      cv_df <- cv_fold_lookup[[combined_key]]
-      # Fallback to just model name
-      if (is.null(cv_df)) cv_df <- cv_fold_lookup[[m]]
-      if (is.null(cv_df)) cv_df <- cv_metrics_lookup[[combined_key]]
-      if (is.null(cv_df)) cv_df <- cv_metrics_lookup[[m]]
+      # Try multiple key formats in cv_fold_lookup first (preferred source)
+      cv_df <- fold_lookup[[combined_key]]
+      if (is.null(cv_df)) cv_df <- fold_lookup[[m]]
+      # Try partial matching if exact match fails
+      if (is.null(cv_df) && length(fold_lookup) > 0) {
+        matching_keys <- grep(paste0("^", m), names(fold_lookup), value = TRUE)
+        if (length(matching_keys) > 0) cv_df <- fold_lookup[[matching_keys[1]]]
+      }
+      # Fall back to cv_metrics_lookup only if fold_lookup has nothing
+      if (is.null(cv_df)) cv_df <- metrics_lookup[[combined_key]]
+      if (is.null(cv_df)) cv_df <- metrics_lookup[[m]]
+      if (is.null(cv_df) && length(metrics_lookup) > 0) {
+        matching_keys <- grep(paste0("^", m), names(metrics_lookup), value = TRUE)
+        if (length(matching_keys) > 0) cv_df <- metrics_lookup[[matching_keys[1]]]
+      }
+      cv_df
+    }
+
+    # Extract CV metric values for each model
+    performance_wide[[cv_metric_col]] <- mapply(function(m, e) {
+      cv_df <- find_cv_data(m, e, cv_fold_lookup, cv_metrics_lookup)
       if (is.null(cv_df)) return(NA_real_)
       row <- cv_df[cv_df$.metric == main_metric, , drop = FALSE]
       if (nrow(row) == 0) return(NA_real_)
       as.numeric(row$.estimate[1])
     }, performance_wide$Model, performance_wide$Engine)
+
     performance_wide[[cv_se_col]] <- mapply(function(m, e) {
-      combined_key <- paste0(m, " (", e, ")")
-      cv_df <- cv_fold_lookup[[combined_key]]
-      if (is.null(cv_df)) cv_df <- cv_fold_lookup[[m]]
-      if (is.null(cv_df)) cv_df <- cv_metrics_lookup[[combined_key]]
-      if (is.null(cv_df)) cv_df <- cv_metrics_lookup[[m]]
+      cv_df <- find_cv_data(m, e, cv_fold_lookup, cv_metrics_lookup)
       if (is.null(cv_df)) return(NA_real_)
       row <- cv_df[cv_df$.metric == main_metric, , drop = FALSE]
       if (nrow(row) == 0) return(NA_real_)

@@ -563,13 +563,12 @@ fastml_run_nested_cv <- function(workflow_spec,
         }
       }
 
-      tuning_args <- c(
-        list(
-          object = workflow_spec,
-          resamples = inner_resamples,
-          metrics = if (!is.null(my_metrics)) my_metrics else metrics
-        ),
-        engine_args
+      # Note: engine_args are already embedded in workflow_spec via set_engine(),
+      # so we don't pass them here. Tuning functions don't accept extra arguments.
+      tuning_args <- list(
+        object = workflow_spec,
+        resamples = inner_resamples,
+        metrics = if (!is.null(my_metrics)) my_metrics else metrics
       )
 
       if (tuning_strategy == "bayes") {
@@ -802,71 +801,39 @@ fastml_attach_fold_sizes <- function(res_summary, resamples, task) {
 }
 
 fastml_collect_tune_resample_summary <- function(tune_results, best_params, task) {
-  metrics_tbl <- tryCatch(
-    tune::collect_metrics(tune_results, summarize = TRUE),
-    error = function(e) NULL
-  )
-  if (is.null(metrics_tbl) || nrow(metrics_tbl) == 0) {
-    return(NULL)
-  }
-
-  metrics_tbl <- fastml_filter_tune_metrics(metrics_tbl, best_params)
-  if (is.null(metrics_tbl) || nrow(metrics_tbl) == 0) {
-    return(NULL)
-  }
-
-  if (!".estimator" %in% names(metrics_tbl)) {
-    metrics_tbl$.estimator <- NA_character_
-  }
-  estimate_col <- if ("mean" %in% names(metrics_tbl)) {
-    "mean"
-  } else if (".estimate" %in% names(metrics_tbl)) {
-    ".estimate"
-  } else {
-    NULL
-  }
-  if (is.null(estimate_col)) {
-    return(NULL)
-  }
-
-  n_vals <- if ("n" %in% names(metrics_tbl)) metrics_tbl$n else rep(NA_real_, nrow(metrics_tbl))
-  std_err_vals <- if ("std_err" %in% names(metrics_tbl)) metrics_tbl$std_err else rep(NA_real_, nrow(metrics_tbl))
-  std_dev_vals <- if ("std_dev" %in% names(metrics_tbl)) {
-    metrics_tbl$std_dev
-  } else {
-    std_err_vals * sqrt(n_vals)
-  }
-
-  aggregated <- dplyr::transmute(
-    metrics_tbl,
-    .metric = .data$.metric,
-    .estimator = .data$.estimator,
-    .estimate = .data[[estimate_col]],
-    n = n_vals,
-    std_dev = std_dev_vals,
-    std_err = std_err_vals
-  )
-  if (identical(task, "survival")) {
-    aggregated <- aggregated[, setdiff(names(aggregated), ".estimator"), drop = FALSE]
-  }
-
+  # First, collect per-fold metrics (unsummarized)
   folds_tbl <- tryCatch(
     tune::collect_metrics(tune_results, summarize = FALSE),
     error = function(e) NULL
   )
-  if (!is.null(folds_tbl) && nrow(folds_tbl) > 0) {
-    folds_tbl <- fastml_filter_tune_metrics(folds_tbl, best_params)
-    if ("id" %in% names(folds_tbl)) {
-      folds_tbl <- dplyr::rename(folds_tbl, fold = .data$id)
-    }
-    drop_cols <- intersect(names(folds_tbl), c(".config", ".iter", ".order"))
-    if (length(drop_cols) > 0) {
-      folds_tbl <- folds_tbl[, setdiff(names(folds_tbl), drop_cols), drop = FALSE]
-    }
-    if (identical(task, "survival") && ".estimator" %in% names(folds_tbl)) {
-      folds_tbl <- folds_tbl[, setdiff(names(folds_tbl), ".estimator"), drop = FALSE]
-    }
+
+  if (is.null(folds_tbl) || nrow(folds_tbl) == 0) {
+    return(NULL)
   }
+
+  folds_tbl <- fastml_filter_tune_metrics(folds_tbl, best_params)
+  if (is.null(folds_tbl) || nrow(folds_tbl) == 0) {
+    return(NULL)
+  }
+
+  # Rename id to fold for consistency
+ if ("id" %in% names(folds_tbl)) {
+    folds_tbl <- dplyr::rename(folds_tbl, fold = .data$id)
+  }
+
+  # Drop unnecessary columns
+  drop_cols <- intersect(names(folds_tbl), c(".config", ".iter", ".order"))
+  if (length(drop_cols) > 0) {
+    folds_tbl <- folds_tbl[, setdiff(names(folds_tbl), drop_cols), drop = FALSE]
+  }
+
+  if (identical(task, "survival") && ".estimator" %in% names(folds_tbl)) {
+    folds_tbl <- folds_tbl[, setdiff(names(folds_tbl), ".estimator"), drop = FALSE]
+  }
+
+  # Compute aggregated metrics (mean, SD, SE) from fold-level data
+  # This ensures proper CV statistics instead of using pooled metrics
+  aggregated <- fastml_aggregate_resample_metrics(folds_tbl, task)
 
   list(aggregated = aggregated, folds = folds_tbl)
 }
@@ -2551,13 +2518,24 @@ train_models <- function(train_data,
       stop("'resamples' must be an 'rset' object or a fastml resampling plan")
     }
   } else if (resampling_method == "cv") {
-    if (nrow(resample_data) < folds) {
+    n_data <- nrow(resample_data)
+    if (n_data < 3) {
       stop(
         sprintf(
-          "You requested %d-fold cross-validation, but your training set only has %d rows. \nThis prevents each fold from having at least one row. \nEither reduce 'folds', increase data, or use a different resampling method (e.g. 'boot').",
-          folds,
-          nrow(resample_data)
+          "Cross-validation requires at least 3 rows, but your training set only has %d rows. \nUse a different resampling method (e.g. 'boot') or provide more data.",
+          n_data
         )
+      )
+    }
+    if (folds >= n_data) {
+      old_folds <- folds
+      folds <- max(2L, n_data - 1L)
+      warning(
+        sprintf(
+          "Reducing folds from %d to %d because the training set has only %d rows (folds >= n would trigger leave-one-out CV, which is not supported by vfold_cv).",
+          old_folds, folds, n_data
+        ),
+        call. = FALSE
       )
     }
     resamples_obj <- vfold_cv(
@@ -2587,13 +2565,24 @@ train_models <- function(train_data,
       params = list(times = folds, strata = if (task == "classification") label else NULL)
     )
   } else if (resampling_method == "repeatedcv") {
-
-    if (nrow(resample_data) < folds) {
+    n_data <- nrow(resample_data)
+    if (n_data < 3) {
       stop(
         sprintf(
-          "You requested %d-fold cross-validation, but your training set only has %d rows. \nThis prevents each fold from having at least one row. \nEither reduce 'folds', increase data, or use a different resampling method (e.g. 'boot').",
-          folds, nrow(resample_data)
+          "Cross-validation requires at least 3 rows, but your training set only has %d rows. \nUse a different resampling method (e.g. 'boot') or provide more data.",
+          n_data
         )
+      )
+    }
+    if (folds >= n_data) {
+      old_folds <- folds
+      folds <- max(2L, n_data - 1L)
+      warning(
+        sprintf(
+          "Reducing folds from %d to %d because the training set has only %d rows (folds >= n would trigger leave-one-out CV, which is not supported by vfold_cv).",
+          old_folds, folds, n_data
+        ),
+        call. = FALSE
       )
     }
     repeats_val <- if (is.null(repeats)) 1L else repeats
@@ -3341,7 +3330,7 @@ train_models <- function(train_data,
               eval_times = eval_times,
               at_risk_threshold = at_risk_threshold,
               survival_metric_convention = survival_metric_convention,
-              engine_args = engine_args,
+              engine_args = list(),  # engine_args already embedded in workflow via set_engine()
               seed = tuning_seed_base,
               summaryFunction = summaryFunction,
               multiclass_auc = multiclass_auc

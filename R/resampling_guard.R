@@ -6,7 +6,8 @@
 #' @param split An `rsample` split object representing a single resample.
 #' @param total_rows Integer; total number of rows in the original dataset.
 #'
-#' @importFrom dplyr bind_rows group_by summarise
+#' @importFrom dplyr bind_rows group_by summarise mutate rename ungroup n
+#' @importFrom tibble as_tibble
 #' @importFrom rsample analysis assessment
 fastml_guard_validate_indices <- function(indices, label) {
   if (!is.atomic(indices) || length(dim(indices)) > 0) {
@@ -245,29 +246,49 @@ fastml_guarded_resample_fit <- function(workflow_spec,
   keep_cols <- setdiff(names(fold_metrics_df), ci_cols)
   fold_metrics_df <- fold_metrics_df[, keep_cols, drop = FALSE]
 
+  # Explicitly ungroup and convert to plain tibble to strip any lingering
+
+  # grouping attributes that may have carried over from the fold processing
+  fold_metrics_df <- dplyr::ungroup(fold_metrics_df)
+  fold_metrics_df <- tibble::as_tibble(fold_metrics_df)
+
   if (identical(task, "survival")) {
     fold_metrics_df <- fold_metrics_df[, setdiff(names(fold_metrics_df), ".estimator"), drop = FALSE]
     aggregated <- fold_metrics_df %>%
-      dplyr::group_by(.data$.metric) %>%
+      dplyr::group_by(.metric) %>%
       dplyr::summarise(
-        .estimate = mean(.data$.estimate, na.rm = TRUE),
-        n = sum(is.finite(.data$.estimate)),
-        std_dev = stats::sd(.data$.estimate, na.rm = TRUE),
-        std_err = ifelse(n > 0, std_dev / sqrt(n), NA_real_),
+        mean_est = mean(.estimate, na.rm = TRUE),
+        n_valid = sum(!is.na(.estimate)),
+        sd_est = stats::sd(.estimate, na.rm = TRUE),
         .groups = "drop"
+      ) %>%
+      dplyr::mutate(
+        std_err = ifelse(n_valid > 0, sd_est / sqrt(n_valid), NA_real_)
+      ) %>%
+      dplyr::rename(
+        .estimate = mean_est,
+        n = n_valid,
+        std_dev = sd_est
       )
   } else {
     if (!".estimator" %in% names(fold_metrics_df)) {
       fold_metrics_df$.estimator <- NA_character_
     }
     aggregated <- fold_metrics_df %>%
-      dplyr::group_by(.data$.metric, .data$.estimator) %>%
+      dplyr::group_by(.metric, .estimator) %>%
       dplyr::summarise(
-        .estimate = mean(.data$.estimate, na.rm = TRUE),
-        n = sum(is.finite(.data$.estimate)),
-        std_dev = stats::sd(.data$.estimate, na.rm = TRUE),
-        std_err = ifelse(n > 0, std_dev / sqrt(n), NA_real_),
+        mean_est = mean(.estimate, na.rm = TRUE),
+        n_valid = sum(!is.na(.estimate)),
+        sd_est = stats::sd(.estimate, na.rm = TRUE),
         .groups = "drop"
+      ) %>%
+      dplyr::mutate(
+        std_err = ifelse(n_valid > 0, sd_est / sqrt(n_valid), NA_real_)
+      ) %>%
+      dplyr::rename(
+        .estimate = mean_est,
+        n = n_valid,
+        std_dev = sd_est
       )
   }
 

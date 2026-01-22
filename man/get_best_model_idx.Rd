@@ -6,19 +6,6 @@
 \usage{
 get_best_model_idx(df, metric, group_cols = c("Model", "Engine"))
 }
-\arguments{
-\item{df}{A data frame containing model performance metrics and grouping columns.}
-
-\item{metric}{A character string specifying the name of the metric column in \code{df}. The metric values are converted to numeric for comparison.}
-
-\item{group_cols}{A character vector of column names used for grouping. Defaults to \code{c("Model", "Engine")}.}
-}
-\value{
-A numeric vector of row indices in \code{df} corresponding to groups whose maximum metric equals the overall best metric value.
-}
 \description{
-Identifies and returns the indices of rows in a data frame where the specified metric reaches the overall maximum within groups defined by one or more columns.
-}
-\details{
-The function converts the metric values to numeric and creates a combined grouping factor using the specified \code{group_cols}. It then computes the maximum metric value within each group and determines the overall best metric value across the entire data frame. Finally, it returns the indices of rows belonging to groups that achieve this overall maximum.
+Get Best Model Indices by Metric and Group
 }
