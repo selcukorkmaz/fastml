@@ -75,7 +75,6 @@ Here's a simple workflow to get you started with fastml:
 library(fastml)
 library(dplyr)
 
-
 # Example dataset
 data(iris)
 
