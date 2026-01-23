@@ -71,9 +71,8 @@ fastml_build_dalex_explainers <- function(prep) {
   bake_newdata <- function(newdata) {
     if (is.null(prep$preprocessor)) return(newdata)
     processed_cols <- colnames(prep$x_processed)
-    if (!is.null(processed_cols) && length(processed_cols) && all(processed_cols %in% colnames(newdata))) {
-      return(newdata[, processed_cols, drop = FALSE])
-    }
+    # Always bake when preprocessor exists - column names matching does NOT mean
+    # data is already transformed (e.g., centering/scaling keeps names but changes values)
     baked <- tryCatch(
       recipes::bake(prep$preprocessor, new_data = newdata),
       error = function(e) {
@@ -341,8 +340,8 @@ explain_dalex_internal <- function(explainers,
 
     # Plotting: Since we fixed the math, values are now Positive Cross Entropy.
     # We can label it clearly.
-    print(plot(vi, show_boxplots = TRUE) +
-            ggplot2::labs(y = "Mean Cross Entropy Loss"))
+    suppressWarnings(print(plot(vi, show_boxplots = TRUE) +
+            ggplot2::labs(y = "Mean Cross Entropy Loss")))
 
     # ... (Rest of your code for model_profile and SHAP is fine) ...
     if (!is.null(features)) {
@@ -355,7 +354,7 @@ explain_dalex_internal <- function(explainers,
         })
         names(mp) <- model_names
       }
-      print(plot(mp))
+      suppressWarnings(print(plot(mp)))
     }
 
     cat("\n=== DALEX Shapley Values (SHAP) ===\n")
