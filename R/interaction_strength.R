@@ -36,13 +36,13 @@ interaction_strength <- function(object, data = c("train", "test"), ...) {
   y <- prep$y_raw
 
   # Convert factor/character targets to numeric (0/1) for iml
-  positive_class <- prep$positive_class
+  # Use resolve_positive_class to respect event_class settings from fastml()
   if (is.factor(y) || is.character(y)) {
     y_factor <- if (is.factor(y)) y else factor(y)
-    if (is.null(positive_class) || !(positive_class %in% levels(y_factor))) {
-      positive_class <- levels(y_factor)[1]
-    }
+    positive_class <- resolve_positive_class(prep, levels(y_factor))
     y <- as.numeric(y_factor == positive_class)
+  } else {
+    positive_class <- prep$positive_class
   }
 
   parsnip_fit <- prep$fits[[1]]

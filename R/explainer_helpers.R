@@ -148,3 +148,56 @@ fastml_prepare_explainer_inputs <- function(object, data = c("train", "test")) {
     model_names = model_names
   )
 }
+
+#' Resolve the positive class for binary classification
+#'
+#' Determines the positive class respecting event_class settings from fastml().
+#' This ensures consistency across all explainer functions.
+#'
+#' @param prep A list from fastml_prepare_explainer_inputs containing:
+#'   positive_class, event_class, label_levels
+#' @param y_levels Character vector of actual levels from the target variable
+#' @return Character string of the resolved positive class name
+#' @keywords internal
+resolve_positive_class <- function(prep, y_levels) {
+  # 1. Use explicit positive_class if set and valid
+  if (!is.null(prep$positive_class) && prep$positive_class %in% y_levels) {
+    return(prep$positive_class)
+  }
+
+  # 2. Use label_levels with event_class to determine positive class
+  if (!is.null(prep$label_levels) && length(prep$label_levels) >= 2) {
+    if (!is.null(prep$event_class) && prep$event_class %in% c("first", "second")) {
+      # Respect explicit event_class setting
+      idx <- if (prep$event_class == "second") {
+        min(2L, length(prep$label_levels))
+      } else {
+        1L
+      }
+      candidate <- prep$label_levels[idx]
+      if (candidate %in% y_levels) {
+        return(candidate)
+      }
+    } else {
+      # Default: second level is typically the positive class
+      # (e.g., "Yes" > "No", "True" > "False" alphabetically)
+      candidate <- prep$label_levels[min(2L, length(prep$label_levels))]
+      if (candidate %in% y_levels) {
+        return(candidate)
+      }
+    }
+  }
+
+  # 3. Fallback: use event_class directly on y_levels
+  if (!is.null(prep$event_class) && prep$event_class %in% c("first", "second") &&
+      length(y_levels) >= 2) {
+    idx <- if (prep$event_class == "second") min(2L, length(y_levels)) else 1L
+    return(y_levels[idx])
+  }
+
+  # 4. Last resort: second level if available, else first
+  if (length(y_levels) >= 2) {
+    return(y_levels[2L])
+  }
+  y_levels[1L]
+}
