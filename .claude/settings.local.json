@@ -26,7 +26,24 @@
       "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" -e \"devtools::load_all\\(\\); testthat::test_file\\(''tests/testthat/test-resampling.R''\\)\")",
       "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" -e \"devtools::load_all\\(\\); testthat::test_file\\(''tests/testthat/test-survival.R''\\)\")",
       "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" -e \"\ndevtools::load_all\\(\\)\nset.seed\\(123\\)\ndata\\(iris\\)\niris2 <- iris[iris$Species != ''setosa'', ]\niris2$Species <- factor\\(iris2$Species\\)\nresult <- fastml\\(\n  data = iris2,\n  label = ''Species'',\n  algorithms = c\\(''logistic_reg'', ''rand_forest''\\),\n  resampling_method = ''cv'',\n  cv_folds = 3,\n  test_size = 0.3,\n  seed = 42,\n  verbose = FALSE\n\\)\nsummary\\(result\\)\n\")",
-      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\":*)"
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\":*)",
+      "Bash(\"/c/Program Files/R/R-4.5.1/bin/Rscript.exe\" -e \"devtools::load_all\\(\\); cat\\(''Package loaded successfully\\\\n''\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.5.1/bin/Rscript.exe\" -e \"source\\(''C:/Users/Selçuk/Documents/GitHub/fastml/R/parallel_utils.R''\\); cat\\(''Syntax OK\\\\n''\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.5.1/bin/Rscript.exe\":*)",
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" -e \"library\\(doFuture\\); adaptor <- registerDoFuture\\(local = FALSE\\); cat\\(''disable method exists:'', ''disable'' %in% names\\(adaptor\\), ''\\\\n''\\); adaptor[[''disable'']]\\(\\); cat\\(''Success\\\\n''\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" -e \"packageVersion\\(''doFuture''\\)\")",
+      "WebFetch(domain:dofuture.futureverse.org)",
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" -e \"library\\(doFuture\\); adaptor <- registerDoFuture\\(\\); cat\\(''Class:'', class\\(adaptor\\), ''\\\\n''\\); cat\\(''Methods:'', names\\(adaptor\\), ''\\\\n''\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" -e \"library\\(doFuture\\); adaptor <- registerDoFuture\\(\\); cat\\(''with method exists:'', !is.null\\(getS3method\\(''with'', class\\(adaptor\\)[1], optional=TRUE\\)\\), ''\\\\n''\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" -e \"library\\(doFuture\\); methods\\(''with''\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" -e \"doFuture:::with.DoPar\")",
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" -e \"source\\(''C:/Users/Selçuk/Documents/GitHub/fastml/R/parallel_utils.R''\\); cat\\(''Syntax OK\\\\n''\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" --vanilla -e \"\nlibrary\\(foreach\\)\nlibrary\\(doFuture\\)\nlibrary\\(future\\)\n\n# Helper functions needed\nfastml_normalize_threads <- function\\(n\\) if \\(is.numeric\\(n\\) && n >= 1\\) as.integer\\(n\\) else 1L\nfastml_normalize_seed <- function\\(s\\) if \\(is.numeric\\(s\\)\\) as.integer\\(s\\) else NULL\n\n# Load the function\nsource\\(''C:/Users/Selcuk/Documents/GitHub/fastml/R/parallel_utils.R''\\)\n\n# Check initial backend\ncat\\(''Initial backend:'', getDoParName\\(\\), ''\\\\n''\\)\n\n# Setup parallel\nctx <- fastml_setup_parallel\\(n_cores = 2, seed = 123\\)\ncat\\(''After setup:'', getDoParName\\(\\), ''\\\\n''\\)\n\n# Restore\nctx[[''restore'']]\\(\\)\ncat\\(''After restore:'', getDoParName\\(\\), ''\\\\n''\\)\n\ncat\\(''\\\\nTest passed\\\\n''\\)\n\")",
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" --vanilla -e \"\n# Just check that the code parses correctly\nparse\\(''C:/Users/Selcuk/Documents/GitHub/fastml/R/parallel_utils.R''\\)\ncat\\(''File parses correctly\\\\n''\\)\n\n# Also verify registerDoFuture returns what we expect \\(without running parallel\\)\nlibrary\\(doFuture\\)\n# Check the function''s return value documentation\ncat\\(''\\\\nregisterDoFuture returns:'', class\\(doFuture::registerDoFuture\\(\\)\\), ''\\\\n''\\)\n\")",
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" --vanilla -e \"parse\\(''C:/Users/Selcuk/Documents/GitHub/fastml/R/parallel_utils.R''\\); cat\\(''File parses correctly\\\\n''\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" --vanilla -e \"parse\\(''R/parallel_utils.R''\\); cat\\(''File parses correctly\\\\n''\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" --vanilla -e \"parse\\(''R/parallel_utils.R''\\); cat\\(''Syntax OK\\\\n''\\)\")",
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" --vanilla -e \"parse\\(''R/parallel_utils.R''\\); parse\\(''R/fastml.R''\\); cat\\(''Syntax OK\\\\n''\\)\")"
     ]
   }
 }

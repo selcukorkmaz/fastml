@@ -76,6 +76,7 @@ library(fastml)
 
 # Example dataset
 data(iris)
+library(dplyr)
 
 iris_binary <- iris %>%
   filter(Species != "setosa") %>%
@@ -110,13 +111,15 @@ Hyperparameter tuning is supported via:
 - `bayes` - Bayesian optimization
 
 ```r
-fastml(
+fit <- fastml(
   data = iris_binary,
   label = "Species",
   algorithms = c("rand_forest", "logistic_reg"),
   tuning_strategy = "bayes",
   tuning_iterations = 20
 )
+
+summary(fit)
 ```
 
 `tuning_iterations` is used only for Bayesian optimization.
