@@ -73,10 +73,11 @@ Here's a simple workflow to get you started with fastml:
 
 ```r
 library(fastml)
+library(dplyr)
+
 
 # Example dataset
 data(iris)
-library(dplyr)
 
 iris_binary <- iris %>%
   filter(Species != "setosa") %>%
