@@ -40,3 +40,4 @@ test_that("custom summaryFunction metric is included in holdout performance", {
   }
   expect_true("custom_metric" %in% perf$.metric)
 })
+

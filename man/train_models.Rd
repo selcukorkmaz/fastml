@@ -47,7 +47,8 @@ train_models(
   at_risk_threshold = 0.1,
   survival_metric_convention = "fastml",
   audit_env = NULL,
-  multiclass_auc = "macro"
+  multiclass_auc = "macro",
+  store_fold_models = FALSE
 )
 }
 \arguments{

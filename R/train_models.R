@@ -1002,7 +1002,8 @@ train_models <- function(train_data,
                          at_risk_threshold = 0.1,
                          survival_metric_convention = "fastml",
                          audit_env = NULL,
-                         multiclass_auc = "macro") {
+                         multiclass_auc = "macro",
+                         store_fold_models = FALSE) {
   survival_metric_convention <- fastml_normalize_survival_convention(survival_metric_convention)
 
   set.seed(seed)
@@ -2389,7 +2390,8 @@ train_models <- function(train_data,
             engine_args = fit_engine_args,
             seed = seed,
             summaryFunction = summaryFunction,
-            multiclass_auc = multiclass_auc
+            multiclass_auc = multiclass_auc,
+            store_fold_models = store_fold_models
           )
           res_summary_best <- fastml_attach_fold_sizes(
             res_summary_best,
@@ -3333,7 +3335,8 @@ train_models <- function(train_data,
               engine_args = list(),  # engine_args already embedded in workflow via set_engine()
               seed = tuning_seed_base,
               summaryFunction = summaryFunction,
-              multiclass_auc = multiclass_auc
+              multiclass_auc = multiclass_auc,
+              store_fold_models = store_fold_models
             )
             res_summary <- fastml_attach_fold_sizes(
               res_summary,
@@ -3373,7 +3376,8 @@ train_models <- function(train_data,
               survival_metric_convention = survival_metric_convention,
               seed = tuning_seed_base,
               summaryFunction = summaryFunction,
-              multiclass_auc = multiclass_auc
+              multiclass_auc = multiclass_auc,
+              store_fold_models = store_fold_models
             )
             res_summary <- fastml_attach_fold_sizes(
               res_summary,

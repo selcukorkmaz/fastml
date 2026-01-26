@@ -26,7 +26,7 @@ test_that("plot.fastml type='bar' works for classification", {
   )
 
   # Use pdf device to capture plot
-  grDevices::pdf(file = tempfile())
+  grDevices::pdf(file = NULL)
   on.exit(grDevices::dev.off(), add = TRUE)
 
   expect_error(plot(model, type = "bar"), NA)
@@ -44,7 +44,7 @@ test_that("plot.fastml type='bar' works for regression", {
     use_default_tuning = FALSE
   )
 
-  grDevices::pdf(file = tempfile())
+  grDevices::pdf(file = NULL)
   on.exit(grDevices::dev.off(), add = TRUE)
 
   expect_error(plot(model, type = "bar"), NA)
@@ -61,7 +61,7 @@ test_that("plot.fastml type='roc' works for binary classification", {
     use_default_tuning = FALSE
   )
 
-  grDevices::pdf(file = tempfile())
+  grDevices::pdf(file = NULL)
   on.exit(grDevices::dev.off(), add = TRUE)
 
   expect_error(plot(model, type = "roc"), NA)
@@ -79,7 +79,7 @@ test_that("plot.fastml type='calibration' works for classification", {
     use_default_tuning = FALSE
   )
 
-  grDevices::pdf(file = tempfile())
+  grDevices::pdf(file = NULL)
   on.exit(grDevices::dev.off(), add = TRUE)
 
   expect_error(plot(model, type = "calibration"), NA)
@@ -97,7 +97,7 @@ test_that("plot.fastml type='residual' works for regression", {
     use_default_tuning = FALSE
   )
 
-  grDevices::pdf(file = tempfile())
+  grDevices::pdf(file = NULL)
   on.exit(grDevices::dev.off(), add = TRUE)
 
   output <- capture.output(plot(model, type = "residual"))
@@ -115,7 +115,7 @@ test_that("plot.fastml type='all' generates multiple plots", {
     use_default_tuning = FALSE
   )
 
-  grDevices::pdf(file = tempfile())
+  grDevices::pdf(file = NULL)
   on.exit(grDevices::dev.off(), add = TRUE)
 
   expect_error(plot(model, type = "all"), NA)
@@ -132,7 +132,7 @@ test_that("plot.fastml returns invisible object", {
     use_default_tuning = FALSE
   )
 
-  grDevices::pdf(file = tempfile())
+  grDevices::pdf(file = NULL)
   on.exit(grDevices::dev.off(), add = TRUE)
 
   result <- plot(model, type = "bar")
@@ -150,7 +150,7 @@ test_that("plot.fastml handles multiple algorithms", {
     use_default_tuning = FALSE
   )
 
-  grDevices::pdf(file = tempfile())
+  grDevices::pdf(file = NULL)
   on.exit(grDevices::dev.off(), add = TRUE)
 
   expect_error(plot(model, type = "bar"), NA)
@@ -167,7 +167,7 @@ test_that("plot.fastml algorithm parameter filters ROC curves", {
     use_default_tuning = FALSE
   )
 
-  grDevices::pdf(file = tempfile())
+  grDevices::pdf(file = NULL)
   on.exit(grDevices::dev.off(), add = TRUE)
 
   expect_error(plot(model, type = "roc", algorithm = "logistic_reg"), NA)
@@ -184,7 +184,7 @@ test_that("plot.fastml prints message for residual on classification", {
     use_default_tuning = FALSE
   )
 
-  grDevices::pdf(file = tempfile())
+  grDevices::pdf(file = NULL)
   on.exit(grDevices::dev.off(), add = TRUE)
 
   output <- capture.output(plot(model, type = "residual"))
@@ -203,7 +203,7 @@ test_that("plot.fastml prints message for calibration on regression", {
     use_default_tuning = FALSE
   )
 
-  grDevices::pdf(file = tempfile())
+  grDevices::pdf(file = NULL)
   on.exit(grDevices::dev.off(), add = TRUE)
 
   output <- capture.output(plot(model, type = "calibration"))
@@ -221,7 +221,7 @@ test_that("plot.fastml handles learning_curve type gracefully", {
     use_default_tuning = FALSE
   )
 
-  grDevices::pdf(file = tempfile())
+  grDevices::pdf(file = NULL)
   on.exit(grDevices::dev.off(), add = TRUE)
 
   output <- capture.output(plot(model, type = "learning_curve"))

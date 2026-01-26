@@ -180,6 +180,10 @@
 #'   preprocessing hooks and records potentially unsafe behaviour (such as global
 #'   environment access or file I/O) while flagging the run as potentially
 #'   unsafe.
+#' @param store_fold_models Logical. If \code{TRUE}, stores the models trained
+#'   on each cross-validation fold (memory intensive). This enables
+#'   \code{\link{explain_stability}} to compute feature importance across folds
+#'   and assess explanation stability. Default is \code{FALSE}.
 #' @importFrom magrittr %>%
 #' @importFrom rsample initial_split training testing
 #' @importFrom recipes recipe step_impute_median step_impute_knn step_impute_bag step_naomit step_dummy step_center step_scale prep bake all_numeric_predictors all_predictors all_nominal_predictors all_outcomes step_zv step_rm step_novel step_unknown
@@ -332,7 +336,8 @@ fastml <- function(data = NULL,
                    bootstrap_seed = NULL,
                    at_risk_threshold = 0.1,
                    audit_mode = FALSE,
-                   multiclass_auc = "macro") {
+                   multiclass_auc = "macro",
+                   store_fold_models = FALSE) {
 
   resampling_method_missing <- missing(resampling_method)
   bootstrap_seed_missing <- missing(bootstrap_seed)
@@ -1224,7 +1229,8 @@ fastml <- function(data = NULL,
       at_risk_threshold = at_risk_threshold,
       survival_metric_convention = survival_metric_convention,
       audit_env = audit_env,
-      multiclass_auc = multiclass_auc
+      multiclass_auc = multiclass_auc,
+      store_fold_models = store_fold_models
     ),
     warning = fastml_muffle_foreach_warning
   )

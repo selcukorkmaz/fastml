@@ -6,7 +6,8 @@
 #'   \item Computes permutation-based variable importance with \code{vi_iterations} permutations and displays the table and plot.
 #'   \item Computes partial dependence-like model profiles when \code{features} are supplied.
 #'   \item Computes Shapley values (SHAP) for \code{shap_sample} training rows, displays the SHAP table,
-#'   and plots a summary bar chart of \eqn{\text{mean}(\vert \text{SHAP value} \vert)} per feature. For classification, separate bars per class are shown.
+#'   and plots a canonical SHAP summary (beeswarm) plot colored by raw feature values and ordered by
+#'   \eqn{\text{mean}(\vert \text{SHAP value} \vert)} per feature. For classification, separate panels per class are shown.
 #' }
 #'
 #' @details

@@ -57,7 +57,8 @@ fastml(
   bootstrap_seed = NULL,
   at_risk_threshold = 0.1,
   audit_mode = FALSE,
-  multiclass_auc = "macro"
+  multiclass_auc = "macro",
+  store_fold_models = FALSE
 )
 }
 \arguments{
@@ -285,6 +286,11 @@ unsafe.}
 `"macro"` (default, tidymodels) or `"macro_weighted"`. Macro weights each
 class equally, while macro_weighted weights by class prevalence and can
 change model rankings on imbalanced data.}
+
+\item{store_fold_models}{Logical. If \code{TRUE}, stores the models trained
+on each cross-validation fold (memory intensive). This enables
+\code{\link{explain_stability}} to compute feature importance across folds
+and assess explanation stability. Default is \code{FALSE}.}
 }
 \value{
 An object of class \code{fastml} containing the best model, performance metrics, and other information.

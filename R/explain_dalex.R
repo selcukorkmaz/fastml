@@ -30,7 +30,7 @@ explain_dalex <- function(object,
 }
 
 #' @keywords internal
-fastml_build_dalex_explainers <- function(prep) {
+fastml_build_dalex_explainers <- function(prep, classification_output = c("prob", "logit")) {
   if (!requireNamespace("DALEX", quietly = TRUE)) {
     stop("The 'DALEX' package is required.")
   }
@@ -38,6 +38,7 @@ fastml_build_dalex_explainers <- function(prep) {
     stop("The 'ggplot2' package is required for plotting.")
   }
 
+  classification_output <- match.arg(classification_output)
   model_info <- if (prep$task == "classification") list(type = "classification") else list(type = "regression")
 
   normalize_class_name <- function(x) {
@@ -161,6 +162,12 @@ fastml_build_dalex_explainers <- function(prep) {
   }
 
   # --- PREDICT FUNCTION ---
+  logit_transform <- function(p) {
+    eps <- 1e-7
+    p <- pmin(pmax(p, eps), 1 - eps)
+    log(p / (1 - p))
+  }
+
   predict_function <- function(m, newdata) {
     newdata_processed <- bake_newdata(newdata)
 
@@ -201,7 +208,11 @@ fastml_build_dalex_explainers <- function(prep) {
       p <- predict(m, new_data = newdata_processed, type = "prob")
       colnames(p) <- sub("^\\.pred_", "", colnames(p))
       if (ncol(p) > 2) {
-        return(as.matrix(p))
+        p_mat <- as.matrix(p)
+        if (classification_output == "logit") {
+          p_mat <- logit_transform(p_mat)
+        }
+        return(p_mat)
       }
 
       p <- as.data.frame(p)
@@ -241,7 +252,11 @@ fastml_build_dalex_explainers <- function(prep) {
         warned_missing_prob <<- TRUE
       }
 
-      return(p[[match_idx]])
+      p_vec <- p[[match_idx]]
+      if (classification_output == "logit") {
+        p_vec <- logit_transform(p_vec)
+      }
+      return(p_vec)
 
     } else if (prep$task == "survival") {
       try_type <- function(tp) {
@@ -509,7 +524,15 @@ explain_dalex_internal <- function(explainers,
 
   shap_data <- prep$x_raw[sample_indices, , drop = FALSE]
 
-  exp_try <- try({
+  abort_shap <- function(message) {
+    cond <- structure(
+      list(message = message, call = sys.call(-1)),
+      class = c("fastml_shap_value_error", "error", "condition")
+    )
+    stop(cond)
+  }
+
+  exp_try <- tryCatch({
     explainer <- if (length(explainers) == 1) explainers[[1]] else NULL
     explainer_list <- if (length(explainers) > 1) explainers else NULL
 
@@ -527,9 +550,66 @@ explain_dalex_internal <- function(explainers,
     }
 
     # Plotting: Since we fixed the math, values are now Positive Cross Entropy.
-    # We can label it clearly.
-    suppressWarnings(print(plot(vi, show_boxplots = TRUE) +
-            ggplot2::labs(y = "Mean Cross Entropy Loss")))
+    # We can label it clearly. Add explicit whiskers based on permutation draws
+    # to ensure variability is visible even when boxplot whiskers collapse.
+
+    # Helper to fix DALEX boxplot linewidth issue (ggplot2 3.4+ uses linewidth, not size)
+    fix_boxplot_linewidth <- function(p, linewidth = 0.4, colour = "#371ea3") {
+      for (i in seq_along(p$layers)) {
+        if (inherits(p$layers[[i]]$geom, "GeomBoxplot")) {
+          p$layers[[i]]$aes_params$linewidth <- linewidth
+          p$layers[[i]]$aes_params$colour <- colour
+        }
+      }
+      p
+    }
+
+    build_vi_plot <- function(vi_obj) {
+      if (is.list(vi_obj) && !inherits(vi_obj, "data.frame")) {
+        do.call(plot, c(vi_obj, list(show_boxplots = TRUE)))
+      } else {
+        plot(vi_obj, show_boxplots = TRUE)
+      }
+    }
+
+    p_vi <- build_vi_plot(vi) + ggplot2::labs(y = "Mean Cross Entropy Loss")
+    p_vi <- fix_boxplot_linewidth(p_vi)
+
+    vi_df <- if (is.list(vi) && !inherits(vi, "data.frame")) {
+      do.call(rbind, vi)
+    } else {
+      vi
+    }
+
+    if (inherits(vi_df, "data.frame") &&
+        "permutation" %in% names(vi_df) &&
+        "dropout_loss" %in% names(vi_df) &&
+        any(vi_df$permutation > 0, na.rm = TRUE)) {
+      vi_perm <- vi_df[vi_df$permutation > 0 & !grepl("^_", vi_df$variable), , drop = FALSE]
+      if (nrow(vi_perm) > 0) {
+        vi_stats <- stats::aggregate(
+          dropout_loss ~ variable + label,
+          data = vi_perm,
+          FUN = function(x) c(min = min(x, na.rm = TRUE), max = max(x, na.rm = TRUE))
+        )
+        vi_stats <- do.call(data.frame, vi_stats)
+        names(vi_stats) <- gsub("^dropout_loss\\.", "", names(vi_stats))
+
+        if (!is.null(p_vi$data$variable) && is.factor(p_vi$data$variable)) {
+          vi_stats$variable <- factor(vi_stats$variable, levels = levels(p_vi$data$variable))
+        }
+
+        p_vi <- p_vi + ggplot2::geom_linerange(
+          data = vi_stats,
+          ggplot2::aes(x = variable, ymin = min, ymax = max),
+          inherit.aes = FALSE,
+          linewidth = 0.4,
+          color = "#371ea3"
+        )
+      }
+    }
+
+    suppressWarnings(print(p_vi))
 
     # ... (Rest of your code for model_profile and SHAP is fine) ...
     if (!is.null(features)) {
@@ -546,21 +626,29 @@ explain_dalex_internal <- function(explainers,
     }
 
     cat("\n=== DALEX Shapley Values (SHAP) ===\n")
-    # ... (Rest of SHAP code) ...
     if (length(explainers) == 1) {
       shap <- DALEX::predict_parts(explainer, new_observation = shap_data, type = "shap")
-      suppressWarnings(print(plot(shap) + ggplot2::labs(title = "SHAP Values")))
+      p_shap <- plot(shap) + ggplot2::labs(title = "SHAP Values")
+      p_shap <- fix_boxplot_linewidth(p_shap)
+      suppressWarnings(print(p_shap))
     } else {
       shap <- lapply(explainer_list, function(expl) {
         DALEX::predict_parts(expl, new_observation = shap_data, type = "shap")
       })
       names(shap) <- model_names
       invisible(lapply(names(shap), function(nm) {
-        suppressWarnings(print(plot(shap[[nm]]) + ggplot2::labs(title = paste("SHAP:", nm))))
+        p_shap <- plot(shap[[nm]]) + ggplot2::labs(title = paste("SHAP:", nm))
+        p_shap <- fix_boxplot_linewidth(p_shap)
+        suppressWarnings(print(p_shap))
       }))
     }
 
-  }, silent = TRUE)
+  }, error = function(e) {
+    if (inherits(e, "fastml_shap_value_error")) {
+      stop(e)
+    }
+    structure(e, class = c("try-error", class(e)))
+  })
 
   if (inherits(exp_try, "try-error")) {
     cat("DALEX explanations not available for this model.\n")

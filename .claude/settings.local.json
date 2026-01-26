@@ -43,7 +43,12 @@
       "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" --vanilla -e \"parse\\(''C:/Users/Selcuk/Documents/GitHub/fastml/R/parallel_utils.R''\\); cat\\(''File parses correctly\\\\n''\\)\")",
       "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" --vanilla -e \"parse\\(''R/parallel_utils.R''\\); cat\\(''File parses correctly\\\\n''\\)\")",
       "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" --vanilla -e \"parse\\(''R/parallel_utils.R''\\); cat\\(''Syntax OK\\\\n''\\)\")",
-      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" --vanilla -e \"parse\\(''R/parallel_utils.R''\\); parse\\(''R/fastml.R''\\); cat\\(''Syntax OK\\\\n''\\)\")"
+      "Bash(\"/c/Program Files/R/R-4.4.2/bin/Rscript.exe\" --vanilla -e \"parse\\(''R/parallel_utils.R''\\); parse\\(''R/fastml.R''\\); cat\\(''Syntax OK\\\\n''\\)\")",
+      "Bash(R --vanilla -e \"source\\('R/resampling_guard.R', echo=FALSE\\)\":*)",
+      "Bash(R --vanilla --slave -e:*)",
+      "WebSearch",
+      "WebFetch(domain:github.com)",
+      "WebFetch(domain:raw.githubusercontent.com)"
     ]
   }
 }

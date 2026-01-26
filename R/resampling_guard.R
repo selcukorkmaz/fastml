@@ -159,7 +159,8 @@ fastml_guarded_resample_fit <- function(workflow_spec,
                                         engine_args = list(),
                                         seed = NULL,
                                         summaryFunction = NULL,
-                                        multiclass_auc = "macro") {
+                                        multiclass_auc = "macro",
+                                        store_fold_models = FALSE) {
   survival_metric_convention <- fastml_normalize_survival_convention(survival_metric_convention)
   plan <- NULL
   if (fastml_is_resample_plan(resamples)) {
@@ -180,6 +181,8 @@ fastml_guarded_resample_fit <- function(workflow_spec,
   bootstrap_resamples <- fastml_guard_is_bootstrap_resamples(resamples, plan)
 
   fold_metrics <- vector("list", length(splits))
+  fold_models <- if (store_fold_models) vector("list", length(splits)) else NULL
+  fold_train_data <- if (store_fold_models) vector("list", length(splits)) else NULL
 
   for (i in seq_along(splits)) {
     split <- splits[[i]]
@@ -235,8 +238,14 @@ fastml_guarded_resample_fit <- function(workflow_spec,
 
     fold_metrics[[i]] <- fold_result$performance
 
-    rm(fold_fit)
-    rm(analysis_data)
+    # Optionally store fold models for stability analysis
+    if (store_fold_models) {
+      fold_models[[i]] <- fold_fit
+      fold_train_data[[i]] <- analysis_data
+    } else {
+      rm(fold_fit)
+      rm(analysis_data)
+    }
     rm(assessment_data)
     gc(verbose = FALSE)
   }
@@ -296,6 +305,12 @@ fastml_guarded_resample_fit <- function(workflow_spec,
     aggregated = aggregated,
     folds = fold_metrics_df
   )
+
+  # Add fold models for stability analysis if requested
+  if (store_fold_models && !is.null(fold_models)) {
+    result$fold_models <- fold_models
+    result$fold_train_data <- fold_train_data
+  }
 
   if (!is.null(plan)) {
     result$metadata <- fastml_resample_metadata(plan)

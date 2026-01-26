@@ -27,7 +27,7 @@ test_that("fastml runs a minimal classification path", {
   expect_s3_class(fit, "fastml")
   expect_true("logistic_reg (glm)" %in% names(fit$models))
 
-  grDevices::pdf(file = tempfile())
+  grDevices::pdf(file = NULL)
   on.exit(grDevices::dev.off(), add = TRUE)
   expect_error(plot(fit, type = "bar"), NA)
 })
