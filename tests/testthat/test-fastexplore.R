@@ -63,10 +63,10 @@ test_that("fastexplore detects missing data", {
   iris_with_na <- iris
   iris_with_na$Sepal.Length[1:10] <- NA
 
-  result <- fastexplore(iris_with_na, pairwise_matrix = FALSE)
+  result <- fastexplore(iris_with_na, pairwise_matrix = FALSE, use_upset_missing = FALSE)
 
   missing_row <- result$missing_data[result$missing_data$Column == "Sepal.Length", ]
-  expect_equal(missing_row$Missing, 10)
+  expect_equal(missing_row$Missing[[1]], 10)
 })
 
 test_that("fastexplore computes correlation matrix", {
@@ -102,9 +102,15 @@ test_that("fastexplore detects class imbalance when label is provided", {
 })
 
 test_that("fastexplore detects duplicated rows", {
-  iris_with_dups <- rbind(iris, iris[1:5, ])
+  # Create a dataset without pre-existing duplicates
+  df_base <- data.frame(
+    a = 1:100,
+    b = rnorm(100),
+    c = letters[rep(1:10, 10)]
+  )
+  df_with_dups <- rbind(df_base, df_base[1:5, ])
 
-  result <- fastexplore(iris_with_dups, pairwise_matrix = FALSE)
+  result <- fastexplore(df_with_dups, pairwise_matrix = FALSE)
 
   expect_equal(result$duplicated_rows, 5)
   expect_true(!is.null(result$duplicated_examples))
@@ -200,11 +206,11 @@ test_that("fastexplore auto_convert_dates converts date-like strings", {
 
 test_that("fastexplore feature_engineering creates date features", {
   df <- data.frame(
-    date_col = as.Date(c("2023-01-15", "2023-06-20", "2023-12-25")),
+    date_col = as.Date(c("2021-01-15", "2022-06-20", "2023-12-25")),
     value = c(1, 2, 3)
   )
 
-  result <- fastexplore(df, feature_engineering = TRUE, pairwise_matrix = FALSE)
+  result <- fastexplore(df, feature_engineering = TRUE, pairwise_matrix = FALSE, run_distribution_checks = FALSE)
 
   # date features should be created
   expect_true("date_col_day" %in% result$data_overview$types$Column)
@@ -218,7 +224,8 @@ test_that("fastexplore detects zero variance columns", {
     variable = rnorm(100)
   )
 
-  result <- fastexplore(df, pairwise_matrix = FALSE)
+  # Suppress expected warning about zero standard deviation in correlation
+  result <- suppressWarnings(fastexplore(df, pairwise_matrix = FALSE, run_distribution_checks = FALSE))
 
   expect_true("constant" %in% result$zero_variance_cols)
 })

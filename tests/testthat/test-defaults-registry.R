@@ -9,12 +9,13 @@ test_that("validate_defaults_registry returns a list", {
 })
 
 test_that("validate_defaults_registry mismatches have correct structure", {
-  skip_if_not_installed("parsnip")
 
   result <- validate_defaults_registry()
 
-  # If there are mismatches, verify their structure
+  # Result should always be a list (even if empty)
+  expect_type(result, "list")
 
+  # If there are mismatches, verify their structure
   if (length(result) > 0) {
     for (mismatch in result) {
       expect_true("algorithm" %in% names(mismatch))

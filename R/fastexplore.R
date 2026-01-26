@@ -189,7 +189,7 @@ fastexplore <- function(
     head = utils::head(data, 6)
   )
 
-  potential_id_cols <- names(Filter(function(col) dplyr::n_distinct(data[[col]]) == nrow(data), names(data)))
+  potential_id_cols <- Filter(function(col) dplyr::n_distinct(data[[col]]) == nrow(data), names(data))
   date_time_cols <- names(Filter(function(x) inherits(data[[x]], c("Date", "POSIXct", "POSIXt")), names(data)))
 
   summary_stats <- NULL

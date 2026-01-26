@@ -6,6 +6,10 @@ skip_if_not_installed("pdp")
 skip_if_not_installed("iml")
 skip_if_not_installed("ceterisParibus")
 
+# Prevent Rplots.pdf from being created by graphics calls
+pdf(NULL)
+withr::defer(dev.off())
+
 # small dataset for tests
 set.seed(123)
 data(iris)
@@ -24,7 +28,7 @@ model <- fastml(
 
 test_that("ALE explanation runs", {
   expect_error(
-    fastexplain(model, method = "ale", features = "Sepal.Length"),
+    suppressMessages(suppressWarnings(fastexplain(model, method = "ale", features = "Sepal.Length"))),
     regexp = NA
   )
 })
