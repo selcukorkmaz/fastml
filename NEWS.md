@@ -1,3 +1,31 @@
+# fastml version 0.7.7
+
+## New features
+
+* **Feature Importance Stability Analysis**: Added `explain_stability()` function to analyze feature importance stability across cross-validation folds. This helps identify features that are consistently important vs. those whose importance varies across different data subsets.
+* **Store Fold Models**: Added `store_fold_models` parameter to `fastml()` to optionally store models trained on each CV fold, enabling stability analysis with `explain_stability()`.
+* **S3 Methods for Stability Objects**: Added `print.fastml_stability()` and `plot.fastml_stability()` methods for convenient display of stability analysis results.
+
+## Improvements
+
+* **Unified Explainer Infrastructure**: Added `fastml_prepare_explainer_inputs()` helper function providing consistent data preparation across all explainer methods (`explain_dalex()`, `explain_ale()`, `plot_ice()`, `interaction_strength()`, `surrogate_tree()`).
+* **Positive Class Resolution**: Added `resolve_positive_class()` helper for consistent positive class handling across explainer functions, respecting `event_class` settings.
+* **Enhanced `explain_dalex()`**: Major refactoring with robust preprocessing ("baking") helper that handles three scenarios: no preprocessor, successful baking, and fallback validation for already-processed data.
+* **Enhanced `plot_ice()`**: Added `target_class` parameter for classification, improved feature validation with informative error messages, and added warnings for multiclass problems.
+* **Improved Resampling Metrics Aggregation**: Resampling results now properly compute CV statistics (mean and SD across folds) instead of pooled metrics. Fixed grouping attributes that could carry over from fold processing.
+* **Better Model Validation in Predictions**: Added `valid_model()` helper to properly validate workflow and native survival model types during prediction.
+
+## Bug fixes
+
+* Fixed algorithm name matching in `predict.fastml()` to correctly resolve base algorithm names to their full "algorithm (engine)" format.
+* Fixed fold metrics aggregation in guarded resampling to properly ungroup and convert results to plain tibbles.
+* Fixed various edge cases in explainer functions when preprocessing pipelines are absent or data is already processed.
+* Fixed unit tests across multiple test files for improved reliability and stability.
+* Prevented `Rplots.pdf` files from being created during test execution by adding graphics device suppression to plotting tests.
+* Added `Rplots.pdf` to `.gitignore` to prevent accidental tracking.
+
+---
+
 # fastml version 0.7.5
 
 ## Breaking changes

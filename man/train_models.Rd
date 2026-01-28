@@ -194,6 +194,9 @@ custom preprocessing hooks are executed. Typically supplied by
 `"macro"` (default, tidymodels) or `"macro_weighted"`. Macro weights each
 class equally, while macro_weighted weights by class prevalence and can
 change model rankings on imbalanced data.}
+
+\item{store_fold_models}{Logical. If \code{TRUE}, store the fitted fold models
+during resampling for later inspection or stability analysis.}
 }
 \value{
 A list of trained model objects.

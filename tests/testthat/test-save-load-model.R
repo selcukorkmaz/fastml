@@ -81,8 +81,8 @@ test_that("loaded model can make predictions", {
   preds_original <- suppressWarnings(predict(model, new_data))
   preds_loaded <- suppressWarnings(predict(loaded_model, new_data))
 
-  expect_equal(nrow(preds_original), 5)
-  expect_equal(nrow(preds_loaded), 5)
+  expect_equal(length(preds_original), 5)
+  expect_equal(length(preds_loaded), 5)
 })
 
 test_that("save.fastml overwrites existing file", {

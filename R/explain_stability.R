@@ -224,26 +224,40 @@ explain_stability <- function(object,
 
     # Coerce target for DALEX
     y_target <- if (task == "classification") {
-      if (is.factor(y_data) || is.character(y_data)) {
+      if (is.factor(y_data) || is.character(y_data) || is.logical(y_data)) {
         y_chr <- as.character(y_data)
-        # Determine positive class for binary
-        pos_class <- NULL
-        if (!is.null(positive_class)) {
-          pos_class <- positive_class
-        } else if (!is.null(label_levels) && length(label_levels) == 2) {
-          pos_class <- if (!is.null(event_class) && event_class == "first") {
-            label_levels[1]
+        class_levels <- if (!is.null(label_levels)) label_levels else unique(y_chr)
+        n_classes <- length(unique(class_levels))
+
+        if (n_classes > 2) {
+          # Multiclass: keep labels to align with probability column names
+          factor(y_chr, levels = class_levels)
+        } else {
+          # Binary: map to 0/1 using positive class when available
+          pos_class <- NULL
+          if (!is.null(positive_class)) {
+            pos_class <- positive_class
+          } else if (!is.null(label_levels) && length(label_levels) == 2) {
+            pos_class <- if (!is.null(event_class) && event_class == "first") {
+              label_levels[1]
+            } else {
+              label_levels[2]
+            }
+          }
+          if (!is.null(pos_class)) {
+            as.numeric(tolower(trimws(y_chr)) == tolower(trimws(pos_class)))
           } else {
-            label_levels[2]
+            as.numeric(as.factor(y_chr)) - 1
           }
         }
-        if (!is.null(pos_class)) {
-          as.numeric(tolower(trimws(y_chr)) == tolower(trimws(pos_class)))
-        } else {
-          as.numeric(as.factor(y_chr)) - 1
-        }
       } else {
-        as.numeric(y_data)
+        y_num <- as.numeric(y_data)
+        unique_vals <- unique(stats::na.omit(y_num))
+        if (length(unique_vals) > 2) {
+          as.character(y_num)
+        } else {
+          y_num
+        }
       }
     } else {
       as.numeric(y_data)
@@ -322,18 +336,48 @@ explain_stability <- function(object,
 
   # Aggregate results across folds
   # Extract dropout_loss for each feature from each fold
-  all_importance <- lapply(valid_folds, function(i) {
-    vi <- fold_vi_results[[i]]
-    # DALEX model_parts returns a data frame with columns: variable, dropout_loss, ...
-    # Aggregate by variable (excluding _baseline_ and _full_model_)
+  extract_vi_agg <- function(vi, fold_id) {
+    if (!inherits(vi, "data.frame") ||
+        !all(c("variable", "dropout_loss") %in% names(vi))) {
+      return(NULL)
+    }
+    vi_sub <- vi[!vi$variable %in% c("_baseline_", "_full_model_"), , drop = FALSE]
+    if (nrow(vi_sub) == 0) {
+      return(NULL)
+    }
+    vi_sub <- vi_sub[
+      !is.na(vi_sub$variable) &
+        !is.na(vi_sub$dropout_loss) &
+        is.finite(vi_sub$dropout_loss),
+      ,
+      drop = FALSE
+    ]
+    if (nrow(vi_sub) == 0) {
+      return(NULL)
+    }
     vi_agg <- stats::aggregate(
       dropout_loss ~ variable,
-      data = vi[!vi$variable %in% c("_baseline_", "_full_model_"), ],
+      data = vi_sub,
       FUN = mean
     )
-    vi_agg$fold <- i
+    if (nrow(vi_agg) == 0) {
+      return(NULL)
+    }
+    vi_agg$fold <- fold_id
     vi_agg
+  }
+
+  all_importance <- lapply(valid_folds, function(i) {
+    extract_vi_agg(fold_vi_results[[i]], i)
   })
+  all_importance <- Filter(Negate(is.null), all_importance)
+
+  if (length(all_importance) < 2) {
+    stop(
+      "Insufficient variable-level importance results for stability analysis. ",
+      "Ensure the model supports variable importance and DALEX returns per-feature values."
+    )
+  }
 
   importance_df <- do.call(rbind, all_importance)
 
@@ -373,16 +417,21 @@ explain_stability <- function(object,
   # Compute rank stability
   # Get ranks for each fold
   rank_data <- lapply(valid_folds, function(i) {
-    vi <- fold_vi_results[[i]]
-    vi_agg <- stats::aggregate(
-      dropout_loss ~ variable,
-      data = vi[!vi$variable %in% c("_baseline_", "_full_model_"), ],
-      FUN = mean
-    )
+    vi_agg <- extract_vi_agg(fold_vi_results[[i]], i)
+    if (is.null(vi_agg)) {
+      return(NULL)
+    }
     vi_agg$rank <- rank(-vi_agg$dropout_loss, ties.method = "average")
-    vi_agg$fold <- i
     vi_agg[, c("variable", "rank", "fold")]
   })
+  rank_data <- Filter(Negate(is.null), rank_data)
+
+  if (length(rank_data) < 2) {
+    stop(
+      "Insufficient variable-level importance results for rank stability. ",
+      "Ensure the model supports variable importance and DALEX returns per-feature values."
+    )
+  }
 
   rank_df <- do.call(rbind, rank_data)
 

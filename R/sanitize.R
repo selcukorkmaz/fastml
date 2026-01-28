@@ -31,6 +31,10 @@ sanitize <- function(x) {
 
   # Helper function that cleans a vector of names
   clean_names_vector <- function(name_vec) {
+    # Handle empty vector case - sapply returns list() for empty input
+    if (length(name_vec) == 0) {
+      return(character(0))
+    }
     # Use make_clean_names() with a custom 'replace' to handle mu, colons, slashes, and spaces
     sapply(name_vec, function(n) {
       make_clean_names(

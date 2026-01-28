@@ -7,8 +7,12 @@
 ^\.Renviron
 .Renviron
 
+
 # MAC OS System files
 .DS_Store
+
+# R plot files (generated during tests)
+Rplots.pdf
 
 # Ignored files and folders to push GitHup repository.
 IgnoredFiles/

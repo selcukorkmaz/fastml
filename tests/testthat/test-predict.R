@@ -10,13 +10,13 @@ iris_binary$Species <- factor(iris_binary$Species)
 test_that("predict.fastml errors when newdata is missing", {
   skip_on_cran()
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = iris_binary,
     label = "Species",
     algorithms = "logistic_reg",
     resampling_method = "none",
     use_default_tuning = FALSE
-  )
+  ))
 
   expect_error(
     predict(model),
@@ -27,13 +27,13 @@ test_that("predict.fastml errors when newdata is missing", {
 test_that("predict.fastml returns class predictions for classification", {
   skip_on_cran()
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = iris_binary,
     label = "Species",
     algorithms = "logistic_reg",
     resampling_method = "none",
     use_default_tuning = FALSE
-  )
+  ))
 
   new_data <- iris_binary[1:10, ]
   new_data$Species <- NULL
@@ -47,13 +47,13 @@ test_that("predict.fastml returns class predictions for classification", {
 test_that("predict.fastml returns probabilities for classification", {
   skip_on_cran()
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = iris_binary,
     label = "Species",
     algorithms = "logistic_reg",
     resampling_method = "none",
     use_default_tuning = FALSE
-  )
+  ))
 
   new_data <- iris_binary[1:10, ]
   new_data$Species <- NULL
@@ -89,13 +89,13 @@ test_that("predict.fastml returns numeric predictions for regression", {
 test_that("predict.fastml auto type selects appropriately for classification", {
   skip_on_cran()
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = iris_binary,
     label = "Species",
     algorithms = "logistic_reg",
     resampling_method = "none",
     use_default_tuning = FALSE
-  )
+  ))
 
   new_data <- iris_binary[1:5, ]
   new_data$Species <- NULL
@@ -151,13 +151,13 @@ test_that("predict.fastml applies postprocess_fn", {
 test_that("predict.fastml handles model_name parameter", {
   skip_on_cran()
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = iris_binary,
     label = "Species",
     algorithms = c("logistic_reg", "rand_forest"),
     resampling_method = "none",
     use_default_tuning = FALSE
-  )
+  ))
 
   new_data <- iris_binary[1:5, ]
   new_data$Species <- NULL
@@ -172,13 +172,13 @@ test_that("predict.fastml handles model_name parameter", {
 test_that("predict.fastml errors on invalid model_name", {
   skip_on_cran()
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = iris_binary,
     label = "Species",
     algorithms = "logistic_reg",
     resampling_method = "none",
     use_default_tuning = FALSE
-  )
+  ))
 
   new_data <- iris_binary[1:5, ]
   new_data$Species <- NULL
@@ -192,13 +192,13 @@ test_that("predict.fastml errors on invalid model_name", {
 test_that("predict.fastml verbose prints messages", {
   skip_on_cran()
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = iris_binary,
     label = "Species",
     algorithms = "logistic_reg",
     resampling_method = "none",
     use_default_tuning = FALSE
-  )
+  ))
 
   new_data <- iris_binary[1:5, ]
   new_data$Species <- NULL
@@ -240,20 +240,21 @@ test_that("predict.fastml handles integer columns in newdata", {
     y = factor(rep(c("A", "B"), 25))
   )
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = df,
     label = "y",
     algorithms = "logistic_reg",
     resampling_method = "none",
     use_default_tuning = FALSE
-  )
+  ))
 
   new_data <- data.frame(
     x1 = as.integer(1:5),
     x2 = as.integer(5:1)
   )
 
-  preds <- predict(model, newdata = new_data)
+  # Suppress rank-deficient prediction warnings
+  preds <- suppressWarnings(predict(model, newdata = new_data))
 
   expect_equal(length(preds), 5)
 })

@@ -144,8 +144,16 @@ predict.fastml <- function(object, newdata,
     avail_set <- unique(available)
     base_map <- stats::setNames(avail_set, sub(" \\(.*\\)$", "", avail_set))
     vapply(requested, function(nm) {
-      if (nm %in% avail_set) nm else if (!is.null(base_map[[nm]])) base_map[[nm]] else NA_character_
+      if (nm %in% avail_set) nm else if (nm %in% names(base_map)) base_map[[nm]] else NA_character_
     }, character(1))
+  }
+
+  # Helper: check if object is a valid model type for prediction
+
+  valid_model <- function(x) {
+    inherits(x, "workflow") ||
+      inherits(x, "fastml_native_survival") ||
+      inherits(x, "fastml_royston")
   }
 
   # 4. choose which workflows to use ---------------------------------------

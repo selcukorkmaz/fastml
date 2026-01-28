@@ -490,7 +490,8 @@ fastml_run_nested_cv <- function(workflow_spec,
                                  at_risk_threshold,
                                  seed,
                                  update_params_fn,
-                                 multiclass_auc = "macro") {
+                                 multiclass_auc = "macro",
+                                 grid_levels = 3L) {
   if (!inherits(nested_resamples, "rset") ||
       is.null(nested_resamples$inner_resamples)) {
     stop("'nested_resamples' must be a nested resampling object with inner resamples.")
@@ -939,6 +940,8 @@ fastml_collect_tune_resample_summary <- function(tune_results, best_params, task
 #'   `eval_times` as the explicit evaluation grid and applies yardstick-style
 #'   Brier/IBS normalization; when `eval_times` is `NULL`, time-dependent Brier
 #'   metrics are omitted.
+#' @param store_fold_models Logical. If \code{TRUE}, store the fitted fold models
+#'   during resampling for later inspection or stability analysis.
 #' @param audit_env Internal environment that tracks security audit findings when
 #'   custom preprocessing hooks are executed. Typically supplied by
 #'   \code{fastml()} and should be left as \code{NULL} when calling
@@ -3152,7 +3155,8 @@ train_models <- function(train_data,
             at_risk_threshold = at_risk_threshold,
             seed = tuning_seed_base,
             update_params_fn = update_params,
-            multiclass_auc = multiclass_auc
+            multiclass_auc = multiclass_auc,
+            grid_levels = grid_levels
           )
 
           model <- nested_fit$final_model

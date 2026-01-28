@@ -67,6 +67,7 @@ Imports:
     fairmodels
 Suggests:
     testthat (>= 3.0.0),
+    withr,
     C50,
     ranger,
     aorsf,
@@ -98,7 +99,7 @@ Suggests:
     skimr,
     sparsediscrim,
     knitr,
-    rmarkdown
+    rmarkdown,
+    pec
 RoxygenNote: 7.3.3
 Config/testthat/edition: 3
-

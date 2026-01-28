@@ -2,6 +2,7 @@
 ^renv\.lock$
 ^.*\.Rproj$
 ^\.Rproj\.user$
+^\.claude$
 ^\.Rprofile
 ^.Renviron
 ^\.Renviron

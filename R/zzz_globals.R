@@ -4,11 +4,14 @@ utils::globalVariables(c(
   "variable", "Missing",
   "Model", "Engine",
   "truth", "estimate",
-  "id",  "valid_model"
+  "id",  "valid_model",
+  ".estimate", ".metric", ".estimator",
+  "mean_est", "n_valid", "sd_est", "std_dev",
+  "survival_metric_convention"
 ))
 
-.onLoad <- function(libname, pkgname) {
-  # Validate parsnip defaults registry on package load (in interactive sessions only)
+.onAttach <- function(libname, pkgname) {
+  # Validate parsnip defaults registry on package attach (interactive only)
   if (interactive()) {
     mismatches <- tryCatch(
       validate_defaults_registry(),

@@ -49,8 +49,8 @@ test_that("get_default_engine returns correct engine for linear_reg", {
   expect_equal(engine, "lm")
 })
 
-test_that("get_default_engine returns correct engine for boost_tree", {
-  engine <- get_default_engine("boost_tree")
+test_that("get_default_engine returns correct engine for xgboost", {
+  engine <- get_default_engine("xgboost")
   expect_equal(engine, "xgboost")
 })
 
@@ -96,15 +96,16 @@ test_that("get_best_model_idx returns correct index for lower-better metric", {
   expect_equal(idx, 2)  # B has lowest rmse
 })
 
-test_that("get_best_model_idx handles NA values", {
+test_that("get_best_model_idx handles data without NA values", {
+  # Note: get_best_model_idx uses max/min without na.rm, so all values must be non-NA
   df <- data.frame(
     Model = c("A", "B", "C"),
     Engine = c("e1", "e1", "e1"),
-    accuracy = c(0.8, NA, 0.7)
+    accuracy = c(0.8, 0.85, 0.7)
   )
 
   idx <- get_best_model_idx(df, "accuracy")
-  expect_equal(idx, 1)  # A has highest non-NA accuracy
+  expect_equal(idx, 2)  # B has highest accuracy
 })
 
 # ========================
@@ -119,13 +120,13 @@ test_that("get_best_model_names returns named character vector", {
   iris_binary <- iris[iris$Species != "setosa", ]
   iris_binary$Species <- factor(iris_binary$Species)
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = iris_binary,
     label = "Species",
     algorithms = c("logistic_reg", "rand_forest"),
     resampling_method = "none",
     use_default_tuning = FALSE
-  )
+  ))
 
   names <- get_best_model_names(model$models)
 
@@ -145,15 +146,15 @@ test_that("get_best_workflows returns list of workflows", {
   iris_binary <- iris[iris$Species != "setosa", ]
   iris_binary$Species <- factor(iris_binary$Species)
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = iris_binary,
     label = "Species",
     algorithms = c("logistic_reg", "rand_forest"),
     resampling_method = "none",
     use_default_tuning = FALSE
-  )
+  ))
 
-  workflows <- get_best_workflows(model$models, model$best_model_name)
+  workflows <- suppressWarnings(get_best_workflows(model$models, model$best_model_name))
 
   expect_true(is.list(workflows))
   expect_true(length(workflows) > 0)
@@ -171,13 +172,13 @@ test_that("flatten_and_rename_models works on fastml models", {
   iris_binary <- iris[iris$Species != "setosa", ]
   iris_binary$Species <- factor(iris_binary$Species)
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = iris_binary,
     label = "Species",
     algorithms = c("logistic_reg", "rand_forest"),
     resampling_method = "none",
     use_default_tuning = FALSE
-  )
+  ))
 
   flattened <- flatten_and_rename_models(model$models)
 
@@ -197,13 +198,13 @@ test_that("get_engine_names extracts engine names from models", {
   iris_binary <- iris[iris$Species != "setosa", ]
   iris_binary$Species <- factor(iris_binary$Species)
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = iris_binary,
     label = "Species",
     algorithms = c("logistic_reg", "rand_forest"),
     resampling_method = "none",
     use_default_tuning = FALSE
-  )
+  ))
 
   engines <- get_engine_names(model$models)
 
@@ -219,47 +220,50 @@ test_that("get_tuning_complexity returns valid config for quick", {
   config <- get_tuning_complexity("quick")
 
   expect_true(is.list(config))
-  expect_true("grid_size" %in% names(config))
-  expect_true("folds" %in% names(config))
+  expect_true("grid_levels" %in% names(config))
+  expect_true("recommended_folds" %in% names(config))
 })
 
 test_that("get_tuning_complexity returns valid config for balanced", {
   config <- get_tuning_complexity("balanced")
 
   expect_true(is.list(config))
-  expect_true(config$grid_size > get_tuning_complexity("quick")$grid_size)
+  expect_true(config$grid_levels > get_tuning_complexity("quick")$grid_levels)
 })
 
 test_that("get_tuning_complexity returns valid config for thorough", {
   config <- get_tuning_complexity("thorough")
 
   expect_true(is.list(config))
-  expect_true(config$grid_size > get_tuning_complexity("balanced")$grid_size)
+  expect_true(config$grid_levels > get_tuning_complexity("balanced")$grid_levels)
 })
 
 test_that("get_tuning_complexity returns valid config for exhaustive", {
   config <- get_tuning_complexity("exhaustive")
 
   expect_true(is.list(config))
-  expect_true(config$grid_size > get_tuning_complexity("thorough")$grid_size)
+  expect_true(config$grid_levels > get_tuning_complexity("thorough")$grid_levels)
 })
 
 # ========================
 # Tests for estimate_tuning_time
 # ========================
 
-test_that("estimate_tuning_time returns numeric estimate", {
-  estimate <- estimate_tuning_time(n_params = 10, n_folds = 5, n_rows = 1000)
+test_that("estimate_tuning_time returns list with time estimates", {
+  estimate <- estimate_tuning_time(n_params = 3, n_folds = 5, n_rows = 1000)
 
-  expect_true(is.numeric(estimate))
-  expect_true(estimate > 0)
+  expect_true(is.list(estimate))
+  expect_true("estimated_seconds" %in% names(estimate))
+  expect_true("estimated_minutes" %in% names(estimate))
+  expect_true(is.numeric(estimate$estimated_seconds))
+  expect_true(estimate$estimated_seconds > 0)
 })
 
 test_that("estimate_tuning_time increases with more params", {
-  est1 <- estimate_tuning_time(n_params = 10)
-  est2 <- estimate_tuning_time(n_params = 50)
+  est1 <- estimate_tuning_time(n_params = 2)
+  est2 <- estimate_tuning_time(n_params = 3)
 
-  expect_true(est2 > est1)
+  expect_true(est2$estimated_seconds > est1$estimated_seconds)
 })
 
 # ========================

@@ -1,6 +1,10 @@
 library(testthat)
 library(dplyr)
 
+# Prevent Rplots.pdf from being created by graphics calls
+grDevices::pdf(file = NULL)
+withr::defer(grDevices::dev.off())
+
 # small dataset for tests
 set.seed(123)
 data(iris)

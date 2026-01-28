@@ -184,9 +184,10 @@ test_that("nested CV tuning uses inner folds and outer metrics match manual eval
   skip_if_not_installed("tune")
   skip_if_not_installed("dials")
   skip_if_not_installed("rpart")
-  # Skip this test as fastml_run_nested_cv is an internal function that
-  # relies on grid_levels being in the calling environment from train_models
-  skip("Internal function test requires grid_levels in calling scope")
+  if (requireNamespace("censored", quietly = TRUE) &&
+      !requireNamespace("pec", quietly = TRUE)) {
+    skip("Package 'pec' is required for decision_tree when censored is installed.")
+  }
 
   set.seed(101)
   tuning_data <- tibble::tibble(
@@ -217,9 +218,6 @@ test_that("nested CV tuning uses inner folds and outer metrics match manual eval
 
   metrics <- yardstick::metric_set(yardstick::rmse)
 
-  # Set grid_levels in the environment where fastml_run_nested_cv will look for it
-  grid_levels <- 3
-
   nested_fit <- fastml:::fastml_run_nested_cv(
     workflow_spec = workflow_spec,
     nested_resamples = nested_resamples,
@@ -245,6 +243,7 @@ test_that("nested CV tuning uses inner folds and outer metrics match manual eval
     my_metrics = NULL,
     do_tuning = TRUE,
     event_class = NULL,
+    class_threshold = 0.5,
     start_col = NULL,
     time_col = NULL,
     status_col = NULL,
@@ -252,7 +251,8 @@ test_that("nested CV tuning uses inner folds and outer metrics match manual eval
     at_risk_threshold = 0.1,
     seed = 202,
     update_params_fn = function(params, new) params,
-    multiclass_auc = "macro"
+    multiclass_auc = "macro",
+    grid_levels = 3L
   )
 
   inner_results <- nested_fit$details$inner_results
@@ -389,12 +389,17 @@ test_that("grouped stratified CV handles imbalanced groups", {
   )
 
   # When stratifying grouped CV, should handle uneven strata distribution
-  resamples <- fastml:::make_grouped_cv(
-    grouped_imbalanced,
-    group_cols = "group",
-    v = 3,
-    strata = "strata",
-    repeats = 1
+
+  # Expect a warning because strata is not constant within groups
+  resamples <- expect_warning(
+    fastml:::make_grouped_cv(
+      grouped_imbalanced,
+      group_cols = "group",
+      v = 3,
+      strata = "strata",
+      repeats = 1
+    ),
+    "Proceeding without stratification"
   )
 
   # Verify groups remain intact

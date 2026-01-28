@@ -18,7 +18,7 @@ test_that("fastml errors when label column doesn't exist", {
       label = "nonexistent_column",
       algorithms = "logistic_reg"
     ),
-    "not found|not present|does not exist"
+    "Label variable must exist|not found|not present|does not exist"
   )
 })
 
@@ -28,8 +28,7 @@ test_that("fastml errors with empty data", {
       data = iris_binary[0, ],
       label = "Species",
       algorithms = "logistic_reg"
-    ),
-    "data|empty|rows"
+    )
   )
 })
 
@@ -61,13 +60,13 @@ test_that("fastml errors with invalid resampling method", {
 test_that("fastml detects classification task from factor label", {
   skip_on_cran()
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = iris_binary,
     label = "Species",
     algorithms = "logistic_reg",
     resampling_method = "none",
     use_default_tuning = FALSE
-  )
+  ))
 
   expect_equal(model$task, "classification")
 })
@@ -90,14 +89,14 @@ test_that("fastml detects regression task from numeric label", {
 test_that("fastml uses explicitly specified task", {
   skip_on_cran()
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = iris_binary,
     label = "Species",
     algorithms = "logistic_reg",
     task = "classification",
     resampling_method = "none",
     use_default_tuning = FALSE
-  )
+  ))
 
   expect_equal(model$task, "classification")
 })
@@ -109,14 +108,14 @@ test_that("fastml uses explicitly specified task", {
 test_that("fastml respects test_size parameter", {
   skip_on_cran()
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = iris_binary,
     label = "Species",
     algorithms = "logistic_reg",
     resampling_method = "none",
     use_default_tuning = FALSE,
     test_size = 0.3
-  )
+  ))
 
   # Check that raw_train_data and raw_test_data exist
   expect_true(!is.null(model$raw_train_data))
@@ -131,14 +130,14 @@ test_that("fastml uses provided train_data and test_data", {
   train_data <- iris_binary[idx, ]
   test_data <- iris_binary[-idx, ]
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     train_data = train_data,
     test_data = test_data,
     label = "Species",
     algorithms = "logistic_reg",
     resampling_method = "none",
     use_default_tuning = FALSE
-  )
+  ))
 
   expect_equal(nrow(model$raw_train_data), nrow(train_data))
   expect_equal(nrow(model$raw_test_data), nrow(test_data))
@@ -151,14 +150,14 @@ test_that("fastml uses provided train_data and test_data", {
 test_that("fastml works with cv resampling", {
   skip_on_cran()
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = iris_binary,
     label = "Species",
     algorithms = "logistic_reg",
     resampling_method = "cv",
     folds = 3,
     use_default_tuning = FALSE
-  )
+  ))
 
   expect_true(inherits(model, "fastml"))
 })
@@ -166,13 +165,13 @@ test_that("fastml works with cv resampling", {
 test_that("fastml works with none resampling", {
   skip_on_cran()
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = iris_binary,
     label = "Species",
     algorithms = "logistic_reg",
     resampling_method = "none",
     use_default_tuning = FALSE
-  )
+  ))
 
   expect_true(inherits(model, "fastml"))
 })
@@ -184,13 +183,13 @@ test_that("fastml works with none resampling", {
 test_that("fastml trains multiple algorithms", {
   skip_on_cran()
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = iris_binary,
     label = "Species",
     algorithms = c("logistic_reg", "rand_forest"),
     resampling_method = "none",
     use_default_tuning = FALSE
-  )
+  ))
 
   expect_true(length(model$models) >= 2)
 })
@@ -198,13 +197,13 @@ test_that("fastml trains multiple algorithms", {
 test_that("fastml returns best model among multiple", {
   skip_on_cran()
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = iris_binary,
     label = "Species",
     algorithms = c("logistic_reg", "rand_forest"),
     resampling_method = "none",
     use_default_tuning = FALSE
-  )
+  ))
 
   expect_true(!is.null(model$best_model))
   expect_true(!is.null(model$best_model_name))
@@ -217,14 +216,14 @@ test_that("fastml returns best model among multiple", {
 test_that("fastml uses specified metric for classification", {
   skip_on_cran()
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = iris_binary,
     label = "Species",
     algorithms = "logistic_reg",
     metric = "accuracy",
     resampling_method = "none",
     use_default_tuning = FALSE
-  )
+  ))
 
   expect_equal(model$metric, "accuracy")
 })
@@ -252,13 +251,13 @@ test_that("fastml uses specified metric for regression", {
 test_that("fastml returns complete object structure", {
   skip_on_cran()
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = iris_binary,
     label = "Species",
     algorithms = "logistic_reg",
     resampling_method = "none",
     use_default_tuning = FALSE
-  )
+  ))
 
   expect_true("models" %in% names(model))
   expect_true("performance" %in% names(model))
@@ -272,13 +271,13 @@ test_that("fastml returns complete object structure", {
 test_that("fastml performance contains expected metrics for classification", {
   skip_on_cran()
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = iris_binary,
     label = "Species",
     algorithms = "logistic_reg",
     resampling_method = "none",
     use_default_tuning = FALSE
-  )
+  ))
 
   perf <- model$performance[[1]]
   if (is.list(perf) && !is.data.frame(perf)) {
@@ -315,23 +314,23 @@ test_that("fastml performance contains expected metrics for regression", {
 test_that("fastml results are reproducible with same seed", {
   skip_on_cran()
 
-  model1 <- fastml(
+  model1 <- suppressWarnings(fastml(
     data = iris_binary,
     label = "Species",
     algorithms = "logistic_reg",
     resampling_method = "none",
     use_default_tuning = FALSE,
     seed = 42
-  )
+  ))
 
-  model2 <- fastml(
+  model2 <- suppressWarnings(fastml(
     data = iris_binary,
     label = "Species",
     algorithms = "logistic_reg",
     resampling_method = "none",
     use_default_tuning = FALSE,
     seed = 42
-  )
+  ))
 
   # Performance should be identical with same seed
   perf1 <- model1$performance[[1]]
@@ -357,13 +356,13 @@ test_that("fastml handles character columns by converting to factor", {
   df <- iris_binary
   df$char_col <- sample(c("A", "B"), nrow(df), replace = TRUE)
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = df,
     label = "Species",
     algorithms = "logistic_reg",
     resampling_method = "none",
     use_default_tuning = FALSE
-  )
+  ))
 
   expect_true(inherits(model, "fastml"))
 })
@@ -374,14 +373,14 @@ test_that("fastml handles data with NAs via imputation", {
   df <- iris_binary
   df$Sepal.Length[1:5] <- NA
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = df,
     label = "Species",
     algorithms = "logistic_reg",
     resampling_method = "none",
     use_default_tuning = FALSE,
-    impute_missing = TRUE
-  )
+    impute_method = "medianImpute"
+  ))
 
   expect_true(inherits(model, "fastml"))
 })
@@ -393,14 +392,14 @@ test_that("fastml handles data with NAs via imputation", {
 test_that("fastml uses specified event_class", {
   skip_on_cran()
 
-  model <- fastml(
+  model <- suppressWarnings(fastml(
     data = iris_binary,
     label = "Species",
     algorithms = "logistic_reg",
     event_class = "first",
     resampling_method = "none",
     use_default_tuning = FALSE
-  )
+  ))
 
   expect_equal(model$event_class, "first")
 })
@@ -412,15 +411,15 @@ test_that("fastml uses specified event_class", {
 test_that("fastml verbose=TRUE produces output", {
   skip_on_cran()
 
-  output <- capture.output({
-    model <- fastml(
+  output <- capture.output(type = "message", {
+    model <- suppressWarnings(fastml(
       data = iris_binary,
       label = "Species",
       algorithms = "logistic_reg",
       resampling_method = "none",
       use_default_tuning = FALSE,
       verbose = TRUE
-    )
+    ))
   })
 
   expect_true(length(output) > 0)

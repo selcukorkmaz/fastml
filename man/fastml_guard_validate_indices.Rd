@@ -7,9 +7,9 @@
 fastml_guard_validate_indices(indices, label)
 }
 \arguments{
-\item{split}{An `rsample` split object representing a single resample.}
+\item{indices}{Numeric vector of row indices for a resample split.}
 
-\item{total_rows}{Integer; total number of rows in the original dataset.}
+\item{label}{Character string used to identify the index source in errors.}
 }
 \description{
 Internal helpers that enforce the Guarded Resampling Principle by

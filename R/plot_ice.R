@@ -108,8 +108,10 @@ plot_ice <- function(object, features, data = c("train", "test"), target_class =
   }
 
   # Custom predict function that preprocesses raw data before prediction
-
   # This ensures consistency with other explainer methods (ALE, interaction, surrogate)
+  # Note: pdp::partial may pass either a parsnip model_fit or the raw underlying model,
+
+  # so we need to handle both cases
   pred_fun <- function(object, newdata) {
     # Preprocess raw data using the stored recipe
     newdata_processed <- tryCatch(
@@ -123,26 +125,69 @@ plot_ice <- function(object, features, data = c("train", "test"), target_class =
       error = function(e) newdata
     )
 
-    # Try probabilities first (classification)
-    prob <- tryCatch(
-      predict(object, new_data = newdata_processed, type = "prob"),
-      error = function(e) NULL
-    )
-    if (!is.null(prob)) {
-      # Prefer column that matches the positive class; otherwise fall back to first numeric column
-      prob_col <- paste0(".pred_", positive_class)
-      if (!is.null(positive_class) && prob_col %in% names(prob)) {
-        return(as.numeric(prob[[prob_col]]))
+    # Check if object is a parsnip model_fit or raw model
+    is_parsnip <- inherits(object, "model_fit")
+
+    if (is_parsnip) {
+      # Try probabilities first (classification) using parsnip's predict
+      prob <- tryCatch(
+        predict(object, new_data = newdata_processed, type = "prob"),
+        error = function(e) NULL
+      )
+      if (!is.null(prob)) {
+        # Prefer column that matches the positive class; otherwise fall back to first numeric column
+        prob_col <- paste0(".pred_", positive_class)
+        if (!is.null(positive_class) && prob_col %in% names(prob)) {
+          return(as.numeric(prob[[prob_col]]))
+        }
+        num_cols <- names(prob)[vapply(prob, is.numeric, logical(1))]
+        if (length(num_cols) > 0) {
+          return(as.numeric(prob[[num_cols[1]]]))
+        }
       }
-      num_cols <- names(prob)[vapply(prob, is.numeric, logical(1))]
-      if (length(num_cols) > 0) {
-        return(as.numeric(prob[[num_cols[1]]]))
-      }
+
+      # Fallback to standard predictions (regression)
+      preds <- predict(object, new_data = newdata_processed)
+      return(as.numeric(preds[[1]]))
     }
 
-    # Fallback to standard predictions (regression)
-    preds <- predict(object, new_data = newdata_processed)
-    as.numeric(preds[[1]])
+    # Handle raw model objects (e.g., rpart, glm, lm, ranger)
+    # Try classification (probabilities) first
+    prob <- tryCatch({
+      p <- predict(object, newdata = newdata_processed, type = "prob")
+      if (is.matrix(p) || is.data.frame(p)) {
+        # Return probability for positive class or second column
+        if (!is.null(positive_class) && positive_class %in% colnames(p)) {
+          as.numeric(p[, positive_class])
+        } else if (ncol(p) >= 2) {
+          as.numeric(p[, 2])
+        } else {
+          as.numeric(p[, 1])
+        }
+      } else {
+        as.numeric(p)
+      }
+    }, error = function(e) NULL)
+
+    if (!is.null(prob)) {
+      return(prob)
+    }
+
+    # Try response predictions
+    preds <- tryCatch({
+      p <- predict(object, newdata = newdata_processed)
+      if (is.matrix(p) || is.data.frame(p)) {
+        as.numeric(p[, 1])
+      } else {
+        as.numeric(p)
+      }
+    }, error = function(e) {
+      # Last resort: try without type argument
+      p <- predict(object, newdata_processed)
+      as.numeric(if (is.matrix(p) || is.data.frame(p)) p[, 1] else p)
+    })
+
+    preds
   }
 
   # Compute ICE data using raw data and custom predict function
