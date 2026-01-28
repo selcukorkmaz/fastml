@@ -6,6 +6,7 @@
 ^.Renviron
 ^\.Renviron
 .Renviron
+^\.claude$
 
 
 # MAC OS System files
