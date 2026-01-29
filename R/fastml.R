@@ -72,10 +72,11 @@
 #'   classification, options include \code{"accuracy"}, \code{"roc_auc"},
 #'   \code{"logloss"}, \code{"brier_score"}, and \code{"ece"} (plus other class metrics).
 #' @param class_threshold For binary classification, controls how class probabilities
-#'   are converted into hard class predictions during holdout evaluation. Numeric
-#'   values in (0, 1) set a fixed threshold. The default \code{"auto"} tunes a
-#'   threshold on the training data to maximize F1; use \code{"model"} to keep
-#'   the model's default threshold.
+#'   are converted into hard class predictions during holdout evaluation. The default
+#'   is \code{0.5} (standard threshold). Numeric values in (0, 1) set a fixed threshold.
+#'   Use \code{"auto"} to tune a threshold on training data to maximize F1, or specify
+#'   a metric name (e.g., \code{"sens"}, \code{"spec"}, \code{"youden"}) to optimize
+#'   for that metric. Use \code{"model"} to keep the model's default predictions.
 #' @param algorithm_engines A named list specifying the engine to use for each algorithm.
 #' @param use_parsnip_defaults Logical. If \code{TRUE}, fastml uses parsnip's default
 #'   engines instead of fastml's optimized defaults. This provides compatibility with
@@ -307,7 +308,7 @@ fastml <- function(data = NULL,
                    tune_params = NULL,
                    engine_params = list(),
                    metric = NULL,
-                   class_threshold = "auto",
+                   class_threshold = 0.5,
                    algorithm_engines = NULL,
                    use_parsnip_defaults = FALSE,
                    warn_engine_defaults = TRUE,

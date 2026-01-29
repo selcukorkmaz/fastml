@@ -21,9 +21,9 @@
 #' @param metric The performance metric to optimize (e.g., "accuracy", "rmse").
 #' @param event_class A single string. Either "first" or "second" to specify which level of truth to consider as the "event".
 #' @param class_threshold For binary classification, controls how class probabilities
-#'   are converted into hard class predictions. Numeric values in (0, 1) set a fixed
-#'   threshold. The default `"auto"` tunes a threshold on the training data to maximize
-#'   F1; use `"model"` to keep the model's default threshold.
+#'   are converted into hard class predictions. The default is `0.5` (standard threshold).
+#'   Numeric values in (0, 1) set a fixed threshold. Use `"auto"` to tune a threshold
+#'   on training data to maximize F1; use `"model"` to keep the model's default predictions.
 #' @param multiclass_auc For multiclass ROC AUC, the averaging method to use:
 #'   `"macro"` (default, tidymodels) or `"macro_weighted"`. Macro weights each
 #'   class equally, while macro_weighted weights by class prevalence and can
@@ -73,7 +73,7 @@ fastml_compute_holdout_results <- function(models,
                                            task,
                                            metric = NULL,
                                            event_class,
-                                           class_threshold = "auto",
+                                           class_threshold = 0.5,
                                            eval_times = NULL,
                                            bootstrap_ci = TRUE,
                                            bootstrap_samples = 500,
@@ -229,7 +229,7 @@ evaluate_models <- function(models,
                             task,
                             metric = NULL,
                             event_class,
-                            class_threshold = "auto",
+                            class_threshold = 0.5,
                             eval_times = NULL,
                             bootstrap_ci = TRUE,
                             bootstrap_samples = 500,

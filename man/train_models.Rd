@@ -39,7 +39,7 @@ train_models(
   n_cores = 1,
   verbose = FALSE,
   event_class = "first",
-  class_threshold = "auto",
+  class_threshold = 0.5,
   start_col = NULL,
   time_col = NULL,
   status_col = NULL,
@@ -162,9 +162,10 @@ engine selection and parameter overrides.}
 classification metrics ("first" or "second").}
 
 \item{class_threshold}{For binary classification, controls how class probabilities
-are converted into hard class predictions during evaluation. Numeric values in
-(0, 1) set a fixed threshold. The default `"auto"` tunes a threshold on the
-training data to maximize F1; use `"model"` to keep the model's default threshold.}
+are converted into hard class predictions during evaluation. The default is `0.5`
+(standard threshold). Numeric values in (0, 1) set a fixed threshold. Use `"auto"`
+to tune a threshold on training data to maximize F1; use `"model"` to keep the
+model's default predictions.}
 
 \item{start_col}{Optional name of the survival start time column passed through
 to downstream evaluation helpers.}

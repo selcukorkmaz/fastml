@@ -205,13 +205,18 @@ explain_stability <- function(object,
       next
     }
 
-    # Extract model fit
-    model_fit <- tryCatch(
-      tune::extract_fit_parsnip(fold_model),
-      error = function(e) {
-        if (inherits(fold_model, c("model_fit", "workflow"))) fold_model else NULL
-      }
-    )
+    # Use the full workflow (includes preprocessing) rather than just the model fit
+    # This ensures predictions work correctly with raw data that needs preprocessing
+    model_fit <- if (inherits(fold_model, "workflow")) {
+      fold_model
+    } else {
+      tryCatch(
+        tune::extract_fit_parsnip(fold_model),
+        error = function(e) {
+          if (inherits(fold_model, "model_fit")) fold_model else NULL
+        }
+      )
+    }
 
     if (is.null(model_fit)) {
       warning(sprintf("Could not extract model fit for fold %d, skipping.", i))

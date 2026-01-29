@@ -11,7 +11,7 @@ process_model(
   test_data,
   label,
   event_class,
-  class_threshold = "auto",
+  class_threshold = 0.5,
   start_col = NULL,
   time_col = NULL,
   status_col = NULL,
@@ -46,9 +46,9 @@ process_model(
 `"first"` or `"second"`.}
 
 \item{class_threshold}{For binary classification, controls how class probabilities
-are converted into hard class predictions. Numeric values in (0, 1) set a
-fixed threshold. The default `"auto"` tunes a threshold on the training data
-to maximize F1; use `"model"` to keep the model's default threshold.}
+are converted into hard class predictions. The default is `0.5` (standard threshold).
+Numeric values in (0, 1) set a fixed threshold. Use `"auto"` to tune a threshold
+on training data to maximize F1; use `"model"` to keep the model's default predictions.}
 
 \item{start_col}{Optional string. The name of the column specifying the
 start time in counting process (e.g., `(start, stop, event)`) survival
