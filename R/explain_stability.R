@@ -12,8 +12,8 @@
 #' @param vi_iterations Integer. Number of permutations for variable importance
 #'   per fold. Default is 10 for faster computation across many folds.
 #' @param seed Integer. Random seed for reproducibility.
-#' @param plot Logical. If TRUE (default), displays a stability plot showing
-#'   mean importance with confidence intervals.
+#' @param plot Logical. If TRUE, displays a stability plot showing
+#'   mean importance with confidence intervals. Default is FALSE.
 #' @param conf_level Numeric. Confidence level for intervals. Default is 0.95.
 #'
 #' @return A list with class \code{"fastml_stability"} containing:
@@ -57,12 +57,15 @@
 #' # Analyze stability
 #' stability <- explain_stability(model)
 #' print(stability)
+#' plot(stability)
 #' }
 #'
 #' @importFrom rlang .data
 #' @importFrom stats aggregate qnorm sd
 #' @importFrom utils head
 #' @importFrom tune extract_fit_parsnip
+#' @importFrom workflows extract_recipe extract_fit_parsnip
+#' @importFrom recipes bake
 #' @importFrom DALEX explain model_parts loss_root_mean_square
 #' @importFrom ggplot2 ggplot aes geom_point geom_errorbarh labs theme_minimal theme element_text
 #' @export
@@ -70,7 +73,7 @@ explain_stability <- function(object,
                               model_name = NULL,
                               vi_iterations = 10,
                               seed = 123,
-                              plot = TRUE,
+                              plot = FALSE,
                               conf_level = 0.95) {
   if (!inherits(object, "fastml")) {
     stop("The input must be a 'fastml' object.")
@@ -82,6 +85,14 @@ explain_stability <- function(object,
 
   if (!requireNamespace("ggplot2", quietly = TRUE)) {
     stop("Package 'ggplot2' is required for plotting.")
+  }
+
+  if (!requireNamespace("workflows", quietly = TRUE)) {
+    stop("Package 'workflows' is required for stability analysis.")
+  }
+
+  if (!requireNamespace("recipes", quietly = TRUE)) {
+    stop("Package 'recipes' is required for stability analysis.")
   }
 
   # Check if fold models are available
@@ -205,12 +216,14 @@ explain_stability <- function(object,
       next
     }
 
-    # Use the full workflow (includes preprocessing) rather than just the model fit
-    # This ensures predictions work correctly with raw data that needs preprocessing
-    model_fit <- if (inherits(fold_model, "workflow")) {
-      fold_model
-    } else {
-      tryCatch(
+    # Use the workflow directly with raw data, similar to fastexplain()
+    # The predict_function will handle preprocessing internally
+    # This ensures DALEX permutes raw features (original feature names)
+    model_fit <- fold_model
+
+    # For non-workflow models, extract the parsnip fit
+    if (!inherits(fold_model, "workflow")) {
+      model_fit <- tryCatch(
         tune::extract_fit_parsnip(fold_model),
         error = function(e) {
           if (inherits(fold_model, "model_fit")) fold_model else NULL
@@ -223,9 +236,18 @@ explain_stability <- function(object,
       next
     }
 
-    # Prepare data
+    # Use raw data (without label) for DALEX - it will permute original features
     x_data <- fold_data[, setdiff(names(fold_data), label), drop = FALSE]
     y_data <- fold_data[[label]]
+
+    # Extract preprocessor for use in predict_function (workflows only)
+    fold_preprocessor <- NULL
+    if (inherits(fold_model, "workflow")) {
+      fold_preprocessor <- tryCatch(
+        workflows::extract_recipe(fold_model),
+        error = function(e) NULL
+      )
+    }
 
     # Coerce target for DALEX
     y_target <- if (task == "classification") {
@@ -268,10 +290,30 @@ explain_stability <- function(object,
       as.numeric(y_data)
     }
 
-    # Build predict function
+    # Build predict function that handles preprocessing internally
+    # This allows DALEX to permute raw features while still getting correct predictions
+    # Capture fold_preprocessor in closure for use during prediction
+    local_preprocessor <- fold_preprocessor
+
     predict_function <- function(m, newdata) {
+      # For workflows: predict handles baking internally, so pass data directly
+      # For non-workflows with preprocessor: bake first, then predict
+      processed_data <- newdata
+
+      if (!inherits(m, "workflow") && !is.null(local_preprocessor)) {
+        # Bake the permuted data before prediction
+        processed_data <- tryCatch(
+          recipes::bake(local_preprocessor, new_data = newdata),
+          error = function(e) newdata  # Fall back to original if baking fails
+        )
+        # Remove label if present in baked data
+        if (label %in% names(processed_data)) {
+          processed_data[[label]] <- NULL
+        }
+      }
+
       if (task == "classification") {
-        p <- predict(m, new_data = newdata, type = "prob")
+        p <- predict(m, new_data = processed_data, type = "prob")
         colnames(p) <- sub("^\\.pred_", "", colnames(p))
         if (ncol(p) > 2) {
           return(as.matrix(p))
@@ -279,7 +321,7 @@ explain_stability <- function(object,
         # Binary: return probability of positive class
         return(as.numeric(p[[ncol(p)]]))
       } else {
-        p <- predict(m, new_data = newdata, type = "numeric")
+        p <- predict(m, new_data = processed_data, type = "numeric")
         return(as.numeric(p$.pred))
       }
     }

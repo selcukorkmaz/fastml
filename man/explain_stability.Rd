@@ -9,7 +9,7 @@ explain_stability(
   model_name = NULL,
   vi_iterations = 10,
   seed = 123,
-  plot = TRUE,
+  plot = FALSE,
   conf_level = 0.95
 )
 }
@@ -25,8 +25,8 @@ per fold. Default is 10 for faster computation across many folds.}
 
 \item{seed}{Integer. Random seed for reproducibility.}
 
-\item{plot}{Logical. If TRUE (default), displays a stability plot showing
-mean importance with confidence intervals.}
+\item{plot}{Logical. If TRUE, displays a stability plot showing
+mean importance with confidence intervals. Default is FALSE.}
 
 \item{conf_level}{Numeric. Confidence level for intervals. Default is 0.95.}
 }
@@ -78,6 +78,7 @@ model <- fastml(
 # Analyze stability
 stability <- explain_stability(model)
 print(stability)
+plot(stability)
 }
 
 }
