@@ -1,4 +1,4 @@
-<img src="man/figures/fastml_hex.png" align="right" width="65"/>
+<img src="man/figures/fastml_hex.png" align="right" width="85"/>
 
 # fastml: Guarded Resampling Workflows for Safe and Automated Machine Learning in R
 
