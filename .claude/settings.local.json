@@ -21,7 +21,15 @@
       "Bash(Rscript -e \"cat\\(Sys.getenv\\('R_LIBS'\\)\\)\")",
       "Bash(for pkg:*)",
       "Bash(Rscript -e \"cat\\(packageVersion\\('fastml'\\) |> as.character\\(\\)\\)\" 2>&1 | tail -1)",
-      "Bash(Rscript -e \"options\\(repos=c\\(CRAN='https://cloud.r-project.org'\\)\\); cat\\(available.packages\\(\\)['fastml','Version']\\)\" 2>&1 | tail -1)"
+      "Bash(Rscript -e \"options\\(repos=c\\(CRAN='https://cloud.r-project.org'\\)\\); cat\\(available.packages\\(\\)['fastml','Version']\\)\" 2>&1 | tail -1)",
+      "Bash(wc:*)",
+      "Bash(Rscript -e 'devtools::document\\(\\)' 2>&1)",
+      "Bash(Rscript -e 'devtools::load_all\\(\\)' 2>&1)",
+      "Bash(Rscript -e 'testthat::test_dir\\(\"tests/testthat\"\\)' 2>&1)",
+      "Bash(Rscript -e 'devtools::load_all\\(\\); testthat::test_dir\\(\"tests/testthat\", stop_on_failure = FALSE\\)' 2>&1 | tail -40)",
+      "Bash(Rscript -e 'devtools::load_all\\(\\); testthat::test_file\\(\"tests/testthat/test-bugfixes-round2.R\"\\)' 2>&1)",
+      "Bash(Rscript -e 'devtools::load_all\\(\\); testthat::test_dir\\(\"tests/testthat\", stop_on_failure = FALSE\\)' 2>&1 | tail -30)",
+      "Bash(Rscript -e 'devtools::load_all\\(\\); testthat::test_dir\\(\"tests/testthat\", stop_on_failure = FALSE\\)' 2>&1 | tail -50)"
     ]
   }
 }

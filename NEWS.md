@@ -1,3 +1,33 @@
+# fastml version 0.7.8
+
+## New features
+
+* **Validation Split Resampling**: Added `resampling_method = "validation_split"` to `fastml()` and `train_models()`. The holdout proportion is derived from `folds` as `1 - 1 / folds`, with stratification support where applicable.
+* **Explicit Save Helper**: Added exported `save_fastml()` as the primary helper for persisting fitted `fastml` objects.
+
+## Improvements
+
+* **Nested CV Parameter Tracking**: Improved nested cross-validation selection so the chosen outer split better follows the final hyperparameter configuration selected from inner results.
+* **Survival Holdout Plumbing**: Holdout evaluation now forwards survival-specific column metadata (`start_col`, `time_col`, `status_col`) through the evaluation path.
+* **Prediction Model Validation**: `predict.fastml()` now treats native survival and Royston-Parmar model objects as valid prediction targets when flattening and selecting fitted models.
+* **Safer Task Detection**: Survival auto-detection now ignores missing status values when checking for two-level event coding, and numeric auto-detection only upgrades clearly binary numeric outcomes to classification.
+* **RNG State Restoration**: `fastml()`, `train_models()`, and bootstrap confidence interval computations now restore the caller's `.Random.seed` after execution.
+* **Documentation Updates**: Expanded documentation for `folds`, `flatten_and_rename_models()`, and `get_best_model_idx()` for clearer usage and cleaner package checks.
+
+## Bug fixes
+
+* Fixed `event_class` validation in both `fastml()` and `train_models()` so invalid values are rejected consistently.
+* Fixed multiclass handling so `logistic_reg` is converted to `multinom_reg` before the training loop, avoiding per-iteration mutation and preserving engine parameter transfer.
+* Fixed discriminant model specification helpers to use `parsnip::discrim_linear()` and `parsnip::discrim_quad()`, resolving dependency warnings caused by referencing unexported `discrim` objects.
+* Fixed default engine resolution by removing duplicate switch entries for survival algorithms such as `survreg` and `royston_parmar`.
+* Removed package-owned restoration of deleted objects into `.GlobalEnv` inside sandboxed preprocessing guards, resolving the corresponding `R CMD check` NOTE about global environment assignments.
+* Deprecated `save.fastml()` in favour of `save_fastml()` to avoid confusion with a non-generic S3-style naming pattern.
+* Removed dead internal statements in model evaluation and selection paths, including unused holdout label handling and stray performance-value expressions.
+* Added missing Rd argument documentation for `flatten_and_rename_models()` and `get_best_model_idx()`, resolving `R CMD check` `\usage` warnings.
+* Added regression tests covering event class validation, engine lookup, nested CV parameter selection, multiclass algorithm swapping, and sandbox global-environment protections.
+
+---
+
 # fastml version 0.7.7
 
 ## New features

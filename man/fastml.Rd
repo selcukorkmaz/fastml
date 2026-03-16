@@ -90,7 +90,11 @@ Native survival engines (flexsurv/rstpm2/custom xgboost) ignore resampling and w
 are supplied. When the task auto-detects survival and \code{resampling_method} is omitted, it defaults to
 \code{"none"} so native engines continue to run; set it explicitly to enable resampling for parsnip survival fits.}
 
-\item{folds}{An integer specifying the number of folds for cross-validation. Default is \code{10} for methods containing "cv" and \code{25} otherwise.}
+\item{folds}{An integer specifying the number of folds for cross-validation
+(default \code{10} for methods containing "cv", \code{25} otherwise).
+When \code{resampling_method = "boot"}, this controls the number of
+bootstrap resamples.  When \code{resampling_method = "validation_split"},
+the proportion held out for validation is derived as \code{1 - 1/folds}.}
 
 \item{repeats}{Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").}
 

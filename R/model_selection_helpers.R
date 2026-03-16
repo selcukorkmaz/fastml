@@ -63,6 +63,12 @@ get_best_workflows <- function(models, best_model_name) {
 
 #' Flatten and Rename Models
 #'
+#' @param models A named list of model objects or nested named lists of model
+#'   objects. Nested entries are flattened and renamed using the pattern
+#'   `algorithm (engine)`.
+#'
+#' @return A flat named list of model objects.
+#'
 #' @importFrom stats setNames
 #' @export
 flatten_and_rename_models <- function(models) {
@@ -80,6 +86,16 @@ flatten_and_rename_models <- function(models) {
 }
 
 #' Get Best Model Indices by Metric and Group
+#'
+#' @param df A data frame containing model performance summaries.
+#' @param metric A single character string naming the column in `df` used to
+#'   identify the best model.
+#' @param group_cols Character vector of column names used to define model
+#'   groups before selecting the best metric value. Defaults to
+#'   `c("Model", "Engine")`.
+#'
+#' @return Integer vector of row indices in `df` corresponding to the best
+#'   model group or groups.
 #'
 #' @importFrom stats ave
 #' @export

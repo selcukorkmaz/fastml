@@ -6,6 +6,20 @@
 \usage{
 get_best_model_idx(df, metric, group_cols = c("Model", "Engine"))
 }
+\arguments{
+\item{df}{A data frame containing model performance summaries.}
+
+\item{metric}{A single character string naming the column in `df` used to
+identify the best model.}
+
+\item{group_cols}{Character vector of column names used to define model
+groups before selecting the best metric value. Defaults to
+`c("Model", "Engine")`.}
+}
+\value{
+Integer vector of row indices in `df` corresponding to the best
+  model group or groups.
+}
 \description{
 Get Best Model Indices by Metric and Group
 }

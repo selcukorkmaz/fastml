@@ -17,7 +17,7 @@ define_discrim_quad_spec <- function(task, engine = "sparsediscrim") {
     )
   }
 
-  model_spec <- discrim::discrim_quad() %>%
+  model_spec <- parsnip::discrim_quad() %>%
     set_mode("classification")
 
   if (identical(engine, "sparsediscrim")) {
@@ -43,7 +43,7 @@ define_discrim_linear_spec <- function(task, engine = "MASS") {
   if (!requireNamespace("discrim", quietly = TRUE)) {
     stop("Package 'discrim' is required for discriminant analysis models. Install it with: install.packages('discrim')")
   }
-  model_spec <- discrim::discrim_linear() %>%
+  model_spec <- parsnip::discrim_linear() %>%
     set_mode("classification") %>%
     set_engine(engine)
   list(model_spec = model_spec)

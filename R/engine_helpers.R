@@ -160,8 +160,6 @@ get_default_engine <- function(algo, task = NULL) {
          "royston_parmar" = "rstpm2",
          "deep_learning" = "keras",
          "cox_ph" = "survival",
-         "survreg" = "survival",
-         "royston_parmar" = "rstpm2",
          stop("No default engine defined for algorithm: ", algo)
   )
 }

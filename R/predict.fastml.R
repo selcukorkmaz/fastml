@@ -113,12 +113,12 @@ predict.fastml <- function(object, newdata,
   # Helper: normalize nested model lists into a flat, named list ----------
   normalize_models <- function(mods, engine_names = NULL) {
     if (!is.list(mods)) return(list())
-    if (all(vapply(mods, inherits, logical(1), what = "workflow"))) return(mods)
+    if (all(vapply(mods, valid_model, logical(1)))) return(mods)
 
     out <- list()
     for (algo in names(mods)) {
       entry <- mods[[algo]]
-      if (inherits(entry, "workflow")) {
+      if (inherits(entry, "workflow") || inherits(entry, "fastml_native_survival") || inherits(entry, "fastml_royston")) {
         eng <- tryCatch(engine_names[[algo]], error = function(e) NULL)
         eng <- if (is.null(eng) || length(eng) == 0 || is.na(eng[1])) NULL else eng[1]
         nm  <- if (!is.null(eng)) paste0(algo, " (", eng, ")") else algo
@@ -129,7 +129,7 @@ predict.fastml <- function(object, newdata,
         inner_names <- names(entry)
         for (j in seq_along(entry)) {
           wf <- entry[[j]]
-          if (!inherits(wf, "workflow")) next
+          if (!(inherits(wf, "workflow") || inherits(wf, "fastml_native_survival") || inherits(wf, "fastml_royston"))) next
           eng <- if (!is.null(inner_names) && !is.na(inner_names[j]) && nzchar(inner_names[j])) inner_names[j] else NULL
           nm <- if (!is.null(eng)) paste0(algo, " (", eng, ")") else algo
           out[[nm]] <- wf
@@ -158,7 +158,7 @@ predict.fastml <- function(object, newdata,
 
   # 4. choose which workflows to use ---------------------------------------
   all_mods <- normalize_models(object$models, object$engine_names)
-  if (!length(all_mods) || !all(vapply(all_mods, inherits, logical(1), what = "workflow"))) {
+  if (!length(all_mods) || !all(vapply(all_mods, valid_model, logical(1)))) {
     stop("No valid `models` slot in fastml object.")
   }
 

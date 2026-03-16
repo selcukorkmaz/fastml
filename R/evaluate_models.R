@@ -102,11 +102,6 @@ fastml_compute_holdout_results <- function(models,
   performance <- list()
   predictions_list <- list()
 
-  if (task != "survival") {
-    true_labels <- test_data[[label]]
-  }
-
-
   reuse_prediction <- function(algo_name, engine_name) {
     if (is.null(precomputed_predictions)) {
       return(NULL)
@@ -142,6 +137,9 @@ fastml_compute_holdout_results <- function(models,
                                 label = label,
                                 event_class = event_class,
                                 class_threshold = class_threshold,
+                                start_col = start_col,
+                                time_col = time_col,
+                                status_col = status_col,
                                 engine = eng,
                                 train_data = train_data,
                                 metric = metric,

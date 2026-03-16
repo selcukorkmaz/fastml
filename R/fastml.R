@@ -28,7 +28,11 @@
 #'   Native survival engines (flexsurv/rstpm2/custom xgboost) ignore resampling and will error if custom resamples
 #'   are supplied. When the task auto-detects survival and \code{resampling_method} is omitted, it defaults to
 #'   \code{"none"} so native engines continue to run; set it explicitly to enable resampling for parsnip survival fits.
-#' @param folds An integer specifying the number of folds for cross-validation. Default is \code{10} for methods containing "cv" and \code{25} otherwise.
+#' @param folds An integer specifying the number of folds for cross-validation
+#'   (default \code{10} for methods containing "cv", \code{25} otherwise).
+#'   When \code{resampling_method = "boot"}, this controls the number of
+#'   bootstrap resamples.  When \code{resampling_method = "validation_split"},
+#'   the proportion held out for validation is derived as \code{1 - 1/folds}.
 #' @param repeats Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").
 #' @param group_cols Character vector naming one or more grouping columns used when
 #'   \code{resampling_method = "grouped_cv"} or when grouped nested cross-validation is desired.
@@ -344,12 +348,23 @@ fastml <- function(data = NULL,
   bootstrap_seed_missing <- missing(bootstrap_seed)
   audit_env <- fastml_init_audit_env(audit_mode)
 
+  .fastml_old_seed <- if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE))
+    get(".Random.seed", envir = .GlobalEnv, inherits = FALSE) else NULL
+  .fastml_had_seed <- !is.null(.fastml_old_seed)
+  on.exit({
+    if (.fastml_had_seed) {
+      assign(".Random.seed", .fastml_old_seed, envir = .GlobalEnv)
+    } else if (exists(".Random.seed", envir = .GlobalEnv, inherits = FALSE)) {
+      rm(".Random.seed", envir = .GlobalEnv)
+    }
+  }, add = TRUE)
   set.seed(seed)
   if (bootstrap_seed_missing) {
     bootstrap_seed <- seed
   }
 
   task <- match.arg(task, c("auto", "classification", "regression", "survival"))
+  event_class <- match.arg(event_class, c("first", "second"))
   tuning_strategy <- match.arg(tuning_strategy, c("grid", "bayes", "none"))
   tuning_complexity <- match.arg(tuning_complexity, c("balanced", "quick", "thorough", "exhaustive"))
 
@@ -540,7 +555,7 @@ fastml <- function(data = NULL,
       status_col <- label[length(label)]
       time_ok <- all(vapply(time_cols, function(col) is.numeric(source_data[[col]]), logical(1)))
       status_vec <- source_data[[status_col]]
-      uniq_status <- unique(status_vec)
+      uniq_status <- unique(status_vec[!is.na(status_vec)])
       status_ok <- is.logical(status_vec) || length(uniq_status) == 2
       if (time_ok && status_ok) {
         task <- "survival"
@@ -838,7 +853,7 @@ fastml <- function(data = NULL,
   }
 
   if (pending_auto_detection && task != "survival") {
-    if (is.numeric(target_var) && length(unique(target_var)) <= 5) {
+    if (is.numeric(target_var) && length(unique(target_var)) <= 2) {
       train_data[[label]] <- factor(train_data[[label]])
       test_data[[label]]  <- factor(test_data[[label]], levels = levels(train_data[[label]]))
       task <- "classification"
@@ -1759,8 +1774,6 @@ fastml <- function(data = NULL,
         val <- perf_df[perf_df$.metric == metric, ".estimate", drop = TRUE]
         if (length(val) == 0) NA_real_ else as.numeric(val[[1]])
       })
-
-      perf_values
 
       # Compute the average performance (ignoring any missing values)
       avg_perf <- mean(perf_values, na.rm = TRUE)
