@@ -1,6 +1,6 @@
 <img src="man/figures/fastml_hex.png" align="right" width="65"/>
 
-# fastml
+# fastml: Guarded Resampling Workflows for Safe and Automated Machine Learning in R
 
 <!-- badges: start -->
 [![CRAN status](https://www.r-pkg.org/badges/version/fastml)](https://CRAN.R-project.org/package=fastml)
