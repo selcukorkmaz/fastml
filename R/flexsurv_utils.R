@@ -17,7 +17,6 @@ NULL
 #'   \code{base_args}.
 #'
 #' @return A fitted \code{flexsurvreg} object.
-#' @importFrom flexsurv flexsurvreg
 #' @keywords internal
 #' @noRd
 

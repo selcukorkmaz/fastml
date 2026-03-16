@@ -21,7 +21,6 @@
 #' @return A list (returned invisibly) containing the DALEX profile, filtered
 #'   lines/points when `positive_class` is supplied, and the plotted object if
 #'   rendering succeeds.
-#' @importFrom DALEX explain predict_profile
 #' @export
 counterfactual_explain <- function(object,
                                    observation,

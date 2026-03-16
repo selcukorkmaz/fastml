@@ -50,7 +50,6 @@
 #' @importFrom RColorBrewer brewer.pal
 #' @importFrom yardstick conf_mat
 #' @importFrom pROC roc auc multiclass.roc
-#' @importFrom probably cal_plot_breaks
 #' @importFrom broom tidy glance
 #' @importFrom rlang get_expr get_env sym
 #' @importFrom viridisLite viridis

@@ -234,7 +234,6 @@ compute_uno_c_index <- function(train_time,
 #' @noMd
 #' @importFrom utils head
 #' @importFrom utils tail
-#' @importFrom survRM2 rmst2
 compute_rmst_difference <- function(time_vec,
                                     status_vec,
                                     risk_vec,

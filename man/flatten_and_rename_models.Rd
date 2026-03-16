@@ -6,9 +6,6 @@
 \usage{
 flatten_and_rename_models(models)
 }
-\arguments{
-\item{models}{A named list of model objects, optionally nested by engine.}
-}
 \description{
 Flatten and Rename Models
 }

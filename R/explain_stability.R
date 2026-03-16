@@ -66,7 +66,6 @@
 #' @importFrom tune extract_fit_parsnip
 #' @importFrom workflows extract_recipe extract_fit_parsnip
 #' @importFrom recipes bake
-#' @importFrom DALEX explain model_parts loss_root_mean_square
 #' @importFrom ggplot2 ggplot aes geom_point geom_errorbarh labs theme_minimal theme element_text
 #' @export
 explain_stability <- function(object,

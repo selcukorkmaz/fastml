@@ -7,7 +7,6 @@
 #' @param ... Additional arguments passed to `iml::FeatureEffect`.
 #'
 #' @return An `iml` object containing ALE results.
-#' @importFrom iml Predictor FeatureEffect
 #' @importFrom ggplot2 ggplot aes geom_line geom_col geom_rug labs
 #' @importFrom rlang sym
 #' @importFrom recipes bake

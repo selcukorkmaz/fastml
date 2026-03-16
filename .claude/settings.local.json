@@ -1,0 +1,25 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(grep:*)",
+      "Bash(/tmp/analyze_deps.txt:*)",
+      "Read(//tmp/**)",
+      "Bash(Rscript -e \"roxygen2::roxygenise\\(\\)\" 2>&1)",
+      "Bash(Rscript -e \"devtools::load_all\\(\\); cat\\('Package loaded successfully\\\\n'\\)\" 2>&1)",
+      "Bash(Rscript -e \"pkgs <- installed.packages\\(\\); pkgs[grep\\('ggrepel', pkgs[,'Imports']\\), 'Package']\")",
+      "Bash(Rscript -e \"tools::dependsOnPkgs\\('ggrepel', installed=installed.packages\\(\\)\\)\")",
+      "Bash(Rscript -e \"deps <- tools::package_dependencies\\(c\\('DALEX','iml','lime','iBreakDown','modelStudio','fairmodels','pdp','ggplot2','yardstick','probably','pROC','broom'\\), which='all'\\); for \\(pkg in names\\(deps\\)\\) { if \\('ggrepel' %in% deps[[pkg]]\\) print\\(paste\\(pkg, 'depends on ggrepel'\\)\\) }\")",
+      "Bash(Rscript -e \"options\\(repos = c\\(CRAN = 'https://cloud.r-project.org'\\)\\); deps <- tools::package_dependencies\\('DALEX', recursive=FALSE\\); print\\(names\\(deps[[1]]\\)\\)\")",
+      "Bash(Rscript -e \"options\\(repos = c\\(CRAN = 'https://cloud.r-project.org'\\)\\); deps <- tools::package_dependencies\\('iml', recursive=FALSE\\); print\\(names\\(deps[[1]]\\)\\)\")",
+      "Bash(Rscript -e \"options\\(repos = c\\(CRAN = 'https://cloud.r-project.org'\\)\\); deps <- tools::package_dependencies\\('lime', recursive=FALSE\\); print\\(names\\(deps[[1]]\\)\\)\")",
+      "Bash(Rscript -e 'options\\(repos = c\\(CRAN = \"https://cloud.r-project.org\"\\)\\); ip <- as.data.frame\\(installed.packages\\(\\)\\); if \\(nrow\\(ip\\) > 0\\) { matches <- grep\\(\"ggrepel|mixOmics\", ip$Imports, ignore.case=TRUE\\); if\\(length\\(matches\\) > 0\\) print\\(ip[matches, c\\(\"Package\", \"Imports\"\\)]\\) } else print\\(\"No packages installed\"\\)')",
+      "Bash(Rscript -e 'options\\(repos = c\\(CRAN = \"https://cloud.r-project.org\"\\)\\); ip <- as.data.frame\\(installed.packages\\(\\)\\); imports_str <- paste\\(ip$Imports, collapse=\" \"\\); matches <- grep\\(\"ggrepel\", strsplit\\(imports_str, \",\"\\)[[1]], value=TRUE\\); print\\(paste\\(\"Searching through all packages...\"\\)\\); for\\(i in 1:nrow\\(ip\\)\\) { if\\(!is.na\\(ip[i,\"Imports\"]\\) && grepl\\(\"ggrepel\", ip[i,\"Imports\"]\\)\\) { print\\(paste\\(ip[i,\"Package\"], \"imports ggrepel\"\\)\\) } }')",
+      "Bash(Rscript -e 'options\\(repos = c\\(CRAN = \"https://cloud.r-project.org\"\\)\\); ip <- as.data.frame\\(installed.packages\\(\\)\\); for\\(i in 1:nrow\\(ip\\)\\) { imports <- ip[i,\"Imports\"]; pkg <- ip[i,\"Package\"]; if\\(length\\(imports\\) > 0 && !is.na\\(imports\\)\\) { if\\(grepl\\(\"ggrepel\", imports\\)\\) { print\\(paste\\(pkg, \"imports ggrepel\"\\)\\) } } }')",
+      "Bash(Rscript -e \"options\\(repos=c\\(CRAN='https://cloud.r-project.org'\\)\\); ip <- as.data.frame\\(installed.packages\\(\\)\\); for\\(i in 1:nrow\\(ip\\)\\) { if\\(!is.na\\(ip[i,5]\\)\\) if\\(grepl\\('ggrepel', ip[i,5]\\)\\) cat\\(ip[i,1], ' imports ggrepel\\\\n'\\) }\")",
+      "Bash(R --vanilla --slave -e \"options\\(repos=c\\(CRAN='https://cloud.r-project.org'\\)\\); ip <- installed.packages\\(\\); idx <- grep\\('ggrepel', ip[,5]\\); print\\(ip[idx,1]\\)\")",
+      "Bash(Rscript -e \"cat\\(.libPaths\\(\\)[1]\\)\")",
+      "Bash(Rscript -e \"cat\\(Sys.getenv\\('R_LIBS'\\)\\)\")",
+      "Bash(for pkg:*)"
+    ]
+  }
+}

@@ -112,10 +112,12 @@ define_rand_forest_spec <- function(task, train_data, label, tuning = FALSE, eng
 #' @inheritParams define_decision_tree_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip bag_tree set_mode set_engine
-#' @import baguette
 #' @importFrom tune tune
 #' @noRd
 define_bag_tree_spec <- function(task, tuning = FALSE, engine = "rpart") {
+  if (!requireNamespace("baguette", quietly = TRUE)) {
+    stop("Package 'baguette' is required for bagged tree models. Install it with: install.packages('baguette')")
+  }
   defaults <- get_default_params("bag_tree")
   if (tuning) {
     model_spec <- bag_tree(

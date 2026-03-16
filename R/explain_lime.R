@@ -26,7 +26,6 @@ predict_model.model_fit <- function(x, newdata, type, ...) {
 #' @param data Character string specifying which data to use for the LIME explainer background:
 #'   \code{"train"} (default) or \code{"test"}.
 #' @return An object produced by `lime::explain`.
-#' @importFrom lime lime plot_features
 #' @importFrom recipes bake
 #' @export
 #' @examples

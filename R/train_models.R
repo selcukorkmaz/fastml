@@ -961,7 +961,6 @@ fastml_collect_tune_resample_summary <- function(tune_results, best_params, task
 #'   rolling_origin nested_cv
 #' @importFrom recipes all_nominal_predictors all_numeric_predictors all_outcomes all_predictors
 #' @importFrom finetune control_race tune_race_anova
-#' @importFrom rstpm2 stpm2
 #' @return A list of trained model objects.
 #' @export
 train_models <- function(train_data,

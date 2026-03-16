@@ -9,7 +9,6 @@
 #'
 #' @param data Character string specifying which data to use: \code{"train"} (default) or \code{"test"}.
 #' @return An `iml::TreeSurrogate` object.
-#' @importFrom iml Predictor TreeSurrogate
 #' @importFrom recipes bake
 #' @export
 #' @examples

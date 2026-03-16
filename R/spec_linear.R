@@ -124,7 +124,6 @@ define_elastic_net_spec <- function(task, tuning = FALSE, engine = "glmnet") {
 #' @inheritParams define_decision_tree_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip bag_tree set_mode set_engine logistic_reg
-#' @import baguette
 #' @importFrom tune tune
 #' @noRd
 define_logistic_reg_spec <- function(task, tuning = FALSE, engine = "glm") {
@@ -343,12 +342,14 @@ define_multinomial_reg_spec <- function(task, tuning = FALSE, engine) {
 #' @inheritParams define_elastic_net_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip pls set_mode set_engine
-#' @import plsmod
 #' @importFrom tune tune
 #' @noRd
 define_pls_spec <- function(task, tuning = FALSE, engine = "mixOmics") {
   if (task != "regression") {
     stop("PLS is only applicable for regression tasks.")
+  }
+  if (!requireNamespace("plsmod", quietly = TRUE)) {
+    stop("Package 'plsmod' is required for PLS models. Install it with: install.packages('plsmod')")
   }
   defaults <- get_default_params("pls")
 

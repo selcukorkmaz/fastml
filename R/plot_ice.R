@@ -13,7 +13,6 @@
 #' @param ... Additional arguments passed to `pdp::partial`.
 #'
 #' @return A list with two elements: `data` (the ICE data frame) and `plot` (the ggplot object).
-#' @importFrom pdp partial
 #' @importFrom ggplot2 autoplot
 #' @importFrom recipes bake
 #' @export

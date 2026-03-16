@@ -1,11 +1,14 @@
 #' Define Quadratic Discriminant Analysis Model Specification
 #'
 #' @return List containing the model specification (`model_spec`).
-#' @importFrom parsnip set_mode set_engine discrim_quad
+#' @importFrom parsnip set_mode set_engine
 #' @noRd
 define_discrim_quad_spec <- function(task, engine = "sparsediscrim") {
   if (task != "classification") {
     stop("discrim_quad is only applicable for classification tasks.")
+  }
+  if (!requireNamespace("discrim", quietly = TRUE)) {
+    stop("Package 'discrim' is required for discriminant analysis models. Install it with: install.packages('discrim')")
   }
   if (identical(engine, "sparsediscrim") &&
       !requireNamespace("sparsediscrim", quietly = TRUE)) {
@@ -14,7 +17,7 @@ define_discrim_quad_spec <- function(task, engine = "sparsediscrim") {
     )
   }
 
-  model_spec <- discrim_quad() %>%
+  model_spec <- discrim::discrim_quad() %>%
     set_mode("classification")
 
   if (identical(engine, "sparsediscrim")) {
@@ -31,13 +34,16 @@ define_discrim_quad_spec <- function(task, engine = "sparsediscrim") {
 #'
 #' @inheritParams define_logistic_reg_spec
 #' @return List containing the model specification (`model_spec`).
-#' @importFrom parsnip set_mode set_engine discrim_linear
+#' @importFrom parsnip set_mode set_engine
 #' @noRd
 define_discrim_linear_spec <- function(task, engine = "MASS") {
   if (task != "classification") {
     stop("discrim_linear is only applicable for classification tasks.")
   }
-  model_spec <- discrim_linear() %>%
+  if (!requireNamespace("discrim", quietly = TRUE)) {
+    stop("Package 'discrim' is required for discriminant analysis models. Install it with: install.packages('discrim')")
+  }
+  model_spec <- discrim::discrim_linear() %>%
     set_mode("classification") %>%
     set_engine(engine)
   list(model_spec = model_spec)
@@ -150,12 +156,14 @@ define_mlp_spec <- function(task, tuning = FALSE, engine = "nnet") {
 #' @inheritParams define_logistic_reg_spec
 #' @return List containing the model specification (`model_spec`).
 #' @importFrom parsnip naive_Bayes set_mode set_engine
-#' @import discrim
 #' @importFrom tune tune
 #' @noRd
 define_naive_Bayes_spec <- function(task, tuning = FALSE, engine = "klaR") {
   if (task != "classification") {
     stop("Naive Bayes is only applicable for classification tasks.")
+  }
+  if (!requireNamespace("discrim", quietly = TRUE)) {
+    stop("Package 'discrim' is required for Naive Bayes models. Install it with: install.packages('discrim')")
   }
 
   # Retrieve default parameters for naive_Bayes based on engine.
