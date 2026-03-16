@@ -7,7 +7,7 @@
 [![CRAN downloads](https://cranlogs.r-pkg.org/badges/grand-total/fastml)](https://CRAN.R-project.org/package=fastml)
 [![CRAN monthly](https://cranlogs.r-pkg.org/badges/fastml)](https://CRAN.R-project.org/package=fastml)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](https://opensource.org/licenses/MIT)
-[![Lifecycle: experimental](https://img.shields.io/badge/lifecycle-experimental-orange.svg)](https://lifecycle.r-lib.org/articles/stages.html#experimental)
+[![Lifecycle: stable](https://img.shields.io/badge/lifecycle-stable-brightgreen.svg)](https://lifecycle.r-lib.org/articles/stages.html#stable)
 [![R](https://img.shields.io/badge/R%20%3E%3D-4.1.0-blue.svg)](https://cran.r-project.org/)
 <!-- badges: end -->
 
