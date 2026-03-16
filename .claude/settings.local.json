@@ -19,7 +19,9 @@
       "Bash(R --vanilla --slave -e \"options\\(repos=c\\(CRAN='https://cloud.r-project.org'\\)\\); ip <- installed.packages\\(\\); idx <- grep\\('ggrepel', ip[,5]\\); print\\(ip[idx,1]\\)\")",
       "Bash(Rscript -e \"cat\\(.libPaths\\(\\)[1]\\)\")",
       "Bash(Rscript -e \"cat\\(Sys.getenv\\('R_LIBS'\\)\\)\")",
-      "Bash(for pkg:*)"
+      "Bash(for pkg:*)",
+      "Bash(Rscript -e \"cat\\(packageVersion\\('fastml'\\) |> as.character\\(\\)\\)\" 2>&1 | tail -1)",
+      "Bash(Rscript -e \"options\\(repos=c\\(CRAN='https://cloud.r-project.org'\\)\\); cat\\(available.packages\\(\\)['fastml','Version']\\)\" 2>&1 | tail -1)"
     ]
   }
 }
