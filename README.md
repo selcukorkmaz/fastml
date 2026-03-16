@@ -1,4 +1,4 @@
-<img src="man/figures/fastml_hex.png" align="right" width="95"/>
+<img src="man/figures/fastml_hex.png" align="right" width="65"/>
 
 # fastml
 
