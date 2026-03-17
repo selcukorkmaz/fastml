@@ -399,4 +399,4 @@ It prioritizes correctness-oriented defaults and workflow clarity over maximum f
 
 ## License
 
-MIT License. See [LICENSE](LICENSE.md) for details.
+MIT License.  

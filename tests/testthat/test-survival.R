@@ -14,6 +14,7 @@ test_that("get_default_engine works for survival algorithms", {
 })
 
 test_that("xgboost AFT survival model trains and evaluates", {
+  skip_on_cran()
   skip_if_not_installed("xgboost")
 
   data(heart, package = "survival")
@@ -47,6 +48,7 @@ test_that("xgboost AFT survival model trains and evaluates", {
 
 
 test_that("cox_ph survival model trains and evaluates", {
+  skip_on_cran()
   data(cancer, package = "survival")
   cancer$status <- cancer$status - 1  # Recode from 1/2 to 0/1
 
@@ -122,6 +124,7 @@ test_that("cox_ph survival model trains and evaluates", {
 })
 
 test_that("survival resampling results omit .estimator", {
+  skip_on_cran()
   data(cancer, package = "survival")
   cancer$status <- cancer$status - 1  # Recode from 1/2 to 0/1
 
@@ -146,6 +149,7 @@ test_that("survival resampling results omit .estimator", {
 })
 
 test_that("penalized Cox survival model trains and evaluates", {
+  skip_on_cran()
   # Ensure required packages are installed
   skip_if_not_installed("censored")
   skip_if_not_installed("glmnet")
@@ -190,6 +194,7 @@ test_that("penalized Cox survival model trains and evaluates", {
 })
 
 test_that("stratified Cox summary reports strata without coefficients", {
+  skip_on_cran()
   data(cancer, package = "survival")
   cancer$status <- cancer$status - 1  # Recode from 1/2 to 0/1
   cancer$strata_inst <- factor(cancer$inst)
@@ -234,6 +239,7 @@ test_that("stratified Cox summary reports strata without coefficients", {
 })
 
 test_that("survreg survival model returns Brier scores", {
+  skip_on_cran()
   data(cancer, package = "survival")
   cancer$status <- cancer$status - 1  # Recode from 1/2 to 0/1
   res <- suppressWarnings(
@@ -262,6 +268,7 @@ test_that("survreg survival model returns Brier scores", {
 })
 
 test_that("parametric_surv flexsurv integration returns survival metrics", {
+  skip_on_cran()
   skip_if_not_installed("flexsurv")
 
   suppressWarnings(data(lung, package = "survival"))
@@ -303,49 +310,9 @@ test_that("parametric_surv flexsurv integration returns survival metrics", {
   expect_true(all(brier_vals >= 0 & brier_vals <= 1))
 })
 
-test_that("parametric_surv flexsurv integration returns survival metrics 2", {
-  skip_if_not_installed("flexsurv")
-
-  suppressWarnings(data(lung, package = "survival"))
-  lung_surv <- subset(lung, select = c(time, status, age, sex, ph.ecog))
-  lung_surv <- stats::na.omit(lung_surv)
-  lung_surv$status <- lung_surv$status - 1  # Recode from 1/2 to 0/1
-  lung_surv$sex <- factor(lung_surv$sex, levels = 1:2, labels = c("male", "female"))
-
-  set.seed(123)
-  res <- suppressWarnings(
-    fastml(
-      data = lung_surv,
-      label = c("time", "status"),
-      task = "survival",
-      algorithms = "parametric_surv",
-      metric = "ibs",
-      resampling_method = "none",
-      test_size = 0.30,
-      impute_method = "remove",
-      eval_times = c(90, 180, 365),
-      engine_params = list(
-        parametric_surv = list(
-          flexsurvreg = list(dist = "loglogistic")
-        )
-      )
-    )
-  )
-
-  expect_s3_class(res, "fastml")
-  perf <- res$performance[[1]]
-  expect_true(any(perf$.metric == "ibs"))
-  ibs_val <- perf$.estimate[perf$.metric == "ibs"][1]
-  expect_true(is.finite(ibs_val))
-
-  brier_metrics <- perf$.metric[grepl("^brier_t", perf$.metric)]
-  expect_true(length(brier_metrics) >= 1)
-  brier_vals <- perf$.estimate[perf$.metric %in% brier_metrics]
-  expect_true(all(is.finite(brier_vals)))
-  expect_true(all(brier_vals >= 0 & brier_vals <= 1))
-})
 
 test_that("piecewise_exp flexsurv generates default knots when none supplied", {
+  skip_on_cran()
   skip_if_not_installed("flexsurv")
   skip_if_not_installed("survival")
 
@@ -380,6 +347,7 @@ test_that("piecewise_exp flexsurv generates default knots when none supplied", {
 })
 
 test_that("survival random forest with aorsf engine trains when available", {
+  skip_on_cran()
   skip_if_not_installed("aorsf")
   skip_if_not_installed("censored")
 

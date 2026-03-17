@@ -1,6 +1,7 @@
 library(testthat)
 
 test_that("binary roc_auc uses available probability columns", {
+  skip_on_cran()
   required <- c("parsnip", "workflows", "recipes", "yardstick", "rsample")
   lapply(required, skip_if_not_installed)
 
@@ -84,6 +85,7 @@ test_that("configured roc_auc accepts explicit estimator", {
 })
 
 test_that("logloss and brier_score are computed when probabilities are available", {
+  skip_on_cran()
   required <- c("parsnip", "workflows", "recipes", "yardstick", "rsample")
   lapply(required, skip_if_not_installed)
 

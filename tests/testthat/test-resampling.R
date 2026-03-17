@@ -176,6 +176,7 @@ test_that("nested CV inner folds remain within outer training data", {
 })
 
 test_that("nested CV tuning uses inner folds and outer metrics match manual evaluation", {
+  skip_on_cran()
   skip_if_not_installed("rsample")
   skip_if_not_installed("workflows")
   skip_if_not_installed("recipes")

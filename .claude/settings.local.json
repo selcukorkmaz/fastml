@@ -48,7 +48,9 @@
       "Bash(sed:*)",
       "Bash(Rscript -e 'install.packages\\(\"censored\", repos=\"https://cloud.r-project.org\"\\)' 2>&1)",
       "Bash(Rscript -e 'install.packages\\(c\\(\"mlbench\", \"DALEX\", \"DALEXtra\"\\), repos=\"https://cloud.r-project.org\"\\)' 2>&1)",
-      "Bash(Rscript -e 'install.packages\\(\"tidymodels\", repos=\"https://cloud.r-project.org\"\\)' 2>&1)"
+      "Bash(Rscript -e 'install.packages\\(\"tidymodels\", repos=\"https://cloud.r-project.org\"\\)' 2>&1)",
+      "Bash(find /Users/selcuk/Documents/GitHub/fastml/tests -type f -name *.R)",
+      "Bash(sort -t: -k2 -rn)"
     ]
   }
 }

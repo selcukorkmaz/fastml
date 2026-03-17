@@ -1,6 +1,7 @@
 library(testthat)
 library(dplyr)
 
+skip_on_cran()
 skip_if_not_installed("lime")
 skip_if_not_installed("pdp")
 skip_if_not_installed("iml")

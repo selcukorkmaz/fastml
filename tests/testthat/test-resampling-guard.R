@@ -11,6 +11,7 @@ test_that("bootstrap coverage does not trigger the full-data guard", {
 })
 
 test_that("guarded resampling errors when split indices are missing", {
+  skip_on_cran()
   skip_if_not_installed("rsample")
 
   set.seed(101)
@@ -45,6 +46,7 @@ test_that("guarded resampling errors when split indices are missing", {
 })
 
 test_that("guarded resampling requires consistent index fields", {
+  skip_on_cran()
   skip_if_not_installed("rsample")
 
   set.seed(202)

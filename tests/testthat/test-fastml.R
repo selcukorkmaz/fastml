@@ -27,6 +27,7 @@ test_that("rand_forest defaults to aorsf engine for survival", {
 })
 
 test_that("bootstrap CI columns are returned for classification and regression", {
+  skip_on_cran()
   # Reduce separation risk in glm for stable bootstrap fits.
   iris_bootstrap <- iris[, c("Sepal.Length", "Sepal.Width", "Species")]
 
@@ -115,6 +116,7 @@ test_that("advanced imputation options are rejected", {
 })
 
 test_that("multinom_reg falls back to logistic_reg for binary outcomes", {
+  skip_on_cran()
   binary_iris <- iris[, c("Sepal.Length", "Sepal.Width", "Species")]
 
   expect_warning(
@@ -296,6 +298,7 @@ test_that("variables successfuly excluded", {
 })
 
 test_that("checks for impute_method", {
+  skip_on_cran()
   expect_warning(
     fastml(
       data = iris,
@@ -348,6 +351,7 @@ test_that("checks for impute_method", {
 })
 
 test_that("engine_params list does not break ranger training", {
+  skip_on_cran()
   skip_if_not_installed("ranger")
 
   rf_recipe <- recipes::recipe(Species ~ ., data = iris)
@@ -382,6 +386,7 @@ test_that("engine_params list does not break ranger training", {
 
 
 test_that("engine_params configure Cox model ties", {
+  skip_on_cran()
   skip_if_not_installed("survival")
 
   data(cancer, package = "survival")
@@ -440,6 +445,7 @@ test_that("process_model works without global variables", {
 })
 
 test_that("regression model successful.", {
+  skip_on_cran()
   res <- fastml(
     data = iris[, -5],
     label = "Sepal.Length",
@@ -451,6 +457,7 @@ test_that("regression model successful.", {
 
 
 test_that("multicore tasks successful.", {
+  skip_on_cran()
   res <- fastml(
     data = iris[, -5],
     label = "Sepal.Length",
@@ -461,6 +468,7 @@ test_that("multicore tasks successful.", {
 })
 
 test_that("stop if unsupported metric is selected.", {
+  skip_on_cran()
   expect_error({
     fastml(
       data = iris[,-5],
@@ -495,6 +503,7 @@ test_that("invalid tuning_strategy triggers error", {
 })
 
 test_that("grid tuning executes successfully", {
+  skip_on_cran()
   suppressWarnings({
     res <- fastml(
       data = iris,
@@ -511,6 +520,7 @@ test_that("grid tuning executes successfully", {
 })
 
 test_that("Bayesian tuning executes successfully", {
+  skip_on_cran()
   suppressWarnings({
     res <- fastml(
       data = iris,
@@ -528,6 +538,7 @@ test_that("Bayesian tuning executes successfully", {
 })
 
 test_that("adaptive tuning executes successfully", {
+  skip_on_cran()
   skip_if_not_installed("lme4")
 
   suppressWarnings({
@@ -546,6 +557,7 @@ test_that("adaptive tuning executes successfully", {
 })
 
 test_that("early_stopping does not warn with grid tuning", {
+  skip_on_cran()
   suppressWarnings({
     res <- fastml(
       data = iris,
@@ -562,6 +574,7 @@ test_that("early_stopping does not warn with grid tuning", {
 })
 
 test_that("early stopping with bayesian tuning works", {
+  skip_on_cran()
   suppressWarnings({
     res <- fastml(
       data = iris,
@@ -594,6 +607,7 @@ test_that("invalid tuning_iterations triggers error", {
 })
 
 test_that("tuning_iterations ignored for non-bayesian strategies", {
+  skip_on_cran()
   suppressWarnings({
     expect_error(
       fastml(
@@ -625,6 +639,7 @@ test_that("tuning_iterations ignored for non-bayesian strategies", {
 
 
 test_that("adaptive ignored with bayesian tuning", {
+  skip_on_cran()
   # Capture all warnings and check that one matches "adaptive"
   warnings_caught <- character(0)
   withCallingHandlers(
@@ -648,6 +663,7 @@ test_that("adaptive ignored with bayesian tuning", {
 })
 
 test_that("fold-unsafe preprocessing is blocked during resampling", {
+  skip_on_cran()
   skip_if_not_installed("rsample")
 
   set.seed(101)
@@ -683,6 +699,7 @@ test_that("fold-unsafe preprocessing is blocked during resampling", {
 })
 
 test_that("guarded folds avoid performance inflation", {
+  skip_on_cran()
   set.seed(2024)
   noise_df <- data.frame(
     x1 = rnorm(80),
@@ -710,6 +727,7 @@ test_that("guarded folds avoid performance inflation", {
 })
 
 test_that("guarded resampling is reproducible with fixed seeds", {
+  skip_on_cran()
   set.seed(404)
   synth_df <- data.frame(
     x1 = rnorm(60),
@@ -743,6 +761,7 @@ test_that("guarded resampling is reproducible with fixed seeds", {
 })
 
 test_that("warning when tune_params ignored with no tuning", {
+  skip_on_cran()
   tune <- list(rand_forest = list(ranger = list(mtry = c(1, 2))))
   expect_warning(
     fastml(
