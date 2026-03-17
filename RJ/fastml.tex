@@ -16,7 +16,7 @@ Over the past decade, machine learning workflows in R have evolved from monolith
 
 Among these errors, data leakage remains one of the most consequential. In particular, preprocessing leakage occurs when transformations such as scaling, imputation, or feature construction are estimated using information that should be unavailable at evaluation time, for example by learning transformations on the full dataset prior to resampling. This violates training-test isolation and can substantially inflate performance estimates while remaining difficult to detect, because models may still appear well-validated under standard cross-validation \citep{Hastie:2009_ESL_book}. Recent studies report that leakage and related evaluation flaws are widespread in applied machine learning and contribute to irreproducible and overly optimistic results across multiple scientific domains \citep{Kapoor:2023aa, Rosenblatt:2024aa, Tampu:2022aa}.
 
-Modern R frameworks provide tools that can prevent preprocessing leakage, most notably by coupling transformations to resampling-aware workflows. However, these safeguards are typically optional rather than enforced. Correct usage requires users to explicitly define recipes or workflows, ensure that preprocessing is trained within each resampling split, and avoid global data-dependent transformations prior to model evaluation. When these conditions are not met, incorrect pipelines can run without warnings while yielding biased estimates. As a result, methodological validity often depends more on user discipline than on guarantees provided by the software. For example, tidymodels' \texttt{fit\_resamples()} and \texttt{tune\_grid()} correctly re-estimate preprocessing within each fold when a recipe is embedded in a workflow; however, users must assemble this workflow correctly, and nothing prevents them from applying global preprocessing before invoking these functions. fastml addresses this by making fold-local preprocessing the default execution path and by adding structural checks --- such as full-analysis split detection and recipe environment scanning --- that are not present in general-purpose frameworks.
+Modern R frameworks provide tools that can prevent preprocessing leakage, most notably by coupling transformations to resampling-aware workflows. However, these safeguards are typically optional rather than enforced. Correct usage requires users to explicitly define recipes or workflows, ensure that preprocessing is trained within each resampling split, and avoid global data-dependent transformations prior to model evaluation. When these conditions are not met, incorrect pipelines can run without warnings while yielding biased estimates. As a result, methodological validity often depends more on user discipline than on guarantees provided by the software. For example, tidymodels' \texttt{fit\_resamples()} and \texttt{tune\_grid()} correctly re-estimate preprocessing within each fold when a recipe is embedded in a workflow; however, users must assemble this workflow correctly, and nothing prevents them from applying global preprocessing before invoking these functions. fastml addresses this by making fold-local preprocessing the default execution path and by adding structural checks -- such as full-analysis split detection and recipe environment scanning -- that are not present in general-purpose frameworks.
 
 The \CRANpkg{fastml} package \citep{Korkmaz:2025_fastml_Rpkg} addresses this gap through a safety-by-design interface that emphasizes leakage-aware execution patterns while retaining access to established modeling engines. A central mechanism is its guarded resampling path, in which preprocessing is re-estimated within each resample on the analysis split and the fold-trained transformations are then applied to the corresponding assessment split. \CRANpkg{fastml} also includes checks intended to surface common configuration errors, including aborting a resampling run when a full-analysis (no-holdout) split is detected and rejecting user recipes that appear to depend on external data sources. When hyperparameter tuning is requested under this guarded path, tuning is performed inside the same resampling loop.
 
@@ -24,7 +24,7 @@ More broadly, \CRANpkg{fastml} provides resampling options and diagnostics that 
 
 These mechanisms are best understood as leakage-risk mitigation under supported configurations rather than universal guarantees; users can still introduce leakage upstream, for example by supplying preprocessed inputs or externally constructed resamples. The contribution of \CRANpkg{fastml} is therefore not a new learning algorithm, but an execution model that makes leakage-aware evaluation easier to carry out correctly in practice by packaging common patterns, defaults, and checks into a single interface. This paper describes the design and implementation of \CRANpkg{fastml}, details how guarded resampling and related checks are realized when those execution paths are used, and demonstrates via simulation how preprocessing leakage can inflate performance estimates and how fold-local workflow fitting mitigates this failure mode under the evaluated configurations.
 
-The remainder of this paper focuses on the leakage-mitigation architecture and its empirical evaluation; additional utilities --- parallel execution, bootstrap confidence intervals, adaptive classification thresholds, tuning complexity presets, and post hoc model explanation via \texttt{fastexplain()} --- are documented in the package.
+The remainder of this paper focuses on the leakage-mitigation architecture and its empirical evaluation; additional utilities -- parallel execution, bootstrap confidence intervals, adaptive classification thresholds, tuning complexity presets, and post hoc model explanation via \texttt{fastexplain()} -- are documented in the package.
 
 \section{Materials and methods}\label{materials-and-methods}
 
@@ -246,7 +246,7 @@ The central entry point is \texttt{fastml()}, a single function that coordinates
 \item
   \emph{Regression} (14 families): \texttt{linear\_reg}, \texttt{ridge\_reg}, \texttt{lasso\_reg}, \texttt{elastic\_net}, \texttt{decision\_tree}, \texttt{rand\_forest}, \texttt{xgboost}, \texttt{lightgbm}, \texttt{svm\_linear}, \texttt{svm\_rbf}, \texttt{nearest\_neighbor}, \texttt{mlp}, \texttt{pls}, \texttt{bayes\_glm}.
 \item
-  \emph{Survival} (12 families): \texttt{cox\_ph}, \texttt{penalized\_cox}, \texttt{stratified\_cox}, \texttt{time\_varying\_cox}, \texttt{survreg}, \texttt{parametric\_surv}, \texttt{royston\_parmar}, \texttt{piecewise\_exp}, \texttt{rand\_forest}, \texttt{rand\_forest\_survival}, \texttt{xgboost}, \texttt{xgboost\_aft}. (Note: \texttt{rand\_forest} and \texttt{rand\_forest\_survival} map to different engines --- ranger and aorsf, respectively.)
+  \emph{Survival} (12 families): \texttt{cox\_ph}, \texttt{penalized\_cox}, \texttt{stratified\_cox}, \texttt{time\_varying\_cox}, \texttt{survreg}, \texttt{parametric\_surv}, \texttt{royston\_parmar}, \texttt{piecewise\_exp}, \texttt{rand\_forest}, \texttt{rand\_forest\_survival}, \texttt{xgboost}, \texttt{xgboost\_aft}. (Note: \texttt{rand\_forest} and \texttt{rand\_forest\_survival} map to different engines -- ranger and aorsf, respectively.)
 \end{itemize}
 
 \textbf{Resampling methods.} Nine strategies are supported: \texttt{cv} (k-fold cross-validation, default for classification/regression), \texttt{repeatedcv}, \texttt{boot} (bootstrap), \texttt{grouped\_cv} (requires \texttt{group\_cols}), \texttt{blocked\_cv} (requires \texttt{block\_col}), \texttt{rolling\_origin} (requires \texttt{initial\_window} and \texttt{assess\_window}), \texttt{nested\_cv} (requires \texttt{outer\_folds}), \texttt{validation\_split}, and \texttt{none} (default for survival).
@@ -256,13 +256,13 @@ The central entry point is \texttt{fastml()}, a single function that coordinates
 \begin{itemize}
 \tightlist
 \item
-  \texttt{predict.fastml(object,\ newdata)} --- applies the stored preprocessor and fitted model to new data; supports \texttt{type} options including \texttt{"class"}, \texttt{"prob"}, \texttt{"numeric"}, and \texttt{"survival"}.
+  \texttt{predict.fastml(object,\ newdata)} -- applies the stored preprocessor and fitted model to new data; supports \texttt{type} options including \texttt{"class"}, \texttt{"prob"}, \texttt{"numeric"}, and \texttt{"survival"}.
 \item
-  \texttt{summary.fastml(object)} --- prints performance metrics, tuned parameters, and (for classification) confusion matrices.
+  \texttt{summary.fastml(object)} -- prints performance metrics, tuned parameters, and (for classification) confusion matrices.
 \item
-  \texttt{plot.fastml(object)} --- generates diagnostic visualizations including metric bar charts, ROC curves, calibration plots, residual diagnostics, and learning curves.
+  \texttt{plot.fastml(object)} -- generates diagnostic visualizations including metric bar charts, ROC curves, calibration plots, residual diagnostics, and learning curves.
 \item
-  \texttt{save\_fastml()} / \texttt{load\_model()} --- serialization and deserialization of fastml objects via \texttt{saveRDS}/\texttt{readRDS}.
+  \texttt{save\_fastml()} / \texttt{load\_model()} -- serialization and deserialization of fastml objects via \texttt{saveRDS}/\texttt{readRDS}.
 \end{itemize}
 
 \textbf{Minimal workflow example.} The simplest valid call requires only data and a label:
@@ -321,16 +321,25 @@ summary(fm_surv, type = "metrics")
 #> ===== fastml Model Summary =====
 #> Task: survival 
 #> Number of Models Trained: 1 
-#> Best Model(s): cox_ph (survival) (c_index: 0.6600000) 
 #> 
-#> Performance Metrics (Sorted by c_index):
+#> -- Table 1: Model Selection (Cross-Validation) --
+#> Note: This table determines the best model.
 #> 
-#> ------------------------------------------------------------------------------------------------------------------------- 
-#> Model    Engine    Harrell C-index  Uno's C-index  Integrated Brier Score  RMST diff (t<=655)  Brier(t=294)  Brier(t=526) 
-#> ------------------------------------------------------------------------------------------------------------------------- 
-#> cox_ph*  survival  0.660            0.702          0.208                   82.158              0.233         0.238        
-#> ------------------------------------------------------------------------------------------------------------------------- 
-#> (*Best model)
+#> --------------------------------------------------------------------- 
+#> Model    Engine    Harrell C-index (CV mean)  Harrell C-index (CV SD) 
+#> --------------------------------------------------------------------- 
+#> cox_ph†  survival  0.6064                     0.1410                  
+#> --------------------------------------------------------------------- 
+#> † Selected based on mean Harrell C-index across CV folds
+#> 
+#> -- Table 2: Final Evaluation (Test Set) --
+#> Note: For reporting only; selection was based on CV above.
+#> 
+#> ------------------------------------------------------------------------------------------------------------------------ 
+#> Model   Engine    Harrell C-index  Uno's C-index  Integrated Brier Score  RMST diff (t<=655)  Brier(t=294)  Brier(t=526) 
+#> ------------------------------------------------------------------------------------------------------------------------ 
+#> cox_ph  survival  0.660            0.702          0.208                   82.158              0.233         0.238        
+#> ------------------------------------------------------------------------------------------------------------------------
 \end{verbatim}
 
 \textbf{Explicit non-support and constraints.}
@@ -613,17 +622,19 @@ fm$performance$logistic_reg
 \end{verbatim}
 
 \begin{verbatim}
-#> $glm
-#> # A tibble: 7 x 3
-#>   .metric   .estimator .estimate
-#>   <chr>     <chr>          <dbl>
-#> 1 accuracy  binary         0.776
-#> 2 kap       binary         0.491
-#> 3 sens      binary         0.612
-#> 4 spec      binary         0.864
-#> 5 precision binary         0.707
-#> 6 f_meas    binary         0.656
-#> 7 roc_auc   binary         0.853
+#> # A tibble: 10 x 6
+#>    .metric     .estimator .estimate .lower .upper .n_boot
+#>    <chr>       <chr>          <dbl>  <dbl>  <dbl>   <dbl>
+#>  1 accuracy    binary        0.776  0.714   0.833     500
+#>  2 kap         binary        0.491  0.360   0.612     500
+#>  3 sens        binary        0.612  0.496   0.727     500
+#>  4 spec        binary        0.864  0.8     0.915     500
+#>  5 precision   binary        0.707  0.587   0.811     500
+#>  6 f_meas      binary        0.656  0.561   0.741     500
+#>  7 roc_auc     binary        0.853  0.799   0.903     500
+#>  8 logloss     <NA>          0.455  0.382   0.540     500
+#>  9 brier_score <NA>          0.150  0.122   0.183     500
+#> 10 ece         <NA>          0.0735 0.0650  0.148     500
 \end{verbatim}
 
 Because both implementations use the same model engine (\texttt{glm}), the same training/test partition, and equivalent preprocessing steps, the outputs shown above can be compared directly. When preprocessing choices are matched, the two approaches yield the same holdout metrics, confirming that \CRANpkg{fastml} dispatches to the underlying \CRANpkg{tidymodels} engine without altering the fitted model.
@@ -716,18 +727,29 @@ summary(fm_bc, type = "metrics")
 #> ===== fastml Model Summary =====
 #> Task: classification 
 #> Number of Models Trained: 3 
-#> Best Model(s): rand_forest (ranger) (roc_auc: 0.9960206) 
 #> 
-#> Performance Metrics (Sorted by roc_auc):
+#> -- Table 1: Model Selection (Cross-Validation) --
+#> Note: This table determines the best model.
 #> 
-#> ---------------------------------------------------------------------------------------------- 
-#> Model         Engine   Accuracy  F1 Score  Kappa  Precision  Sensitivity  Specificity  ROC AUC 
-#> ---------------------------------------------------------------------------------------------- 
-#> rand_forest*  ranger   0.971     0.960     0.937  0.923      1.000        0.955        0.996   
-#> xgboost       xgboost  0.964     0.948     0.920  0.939      0.958        0.966        0.993   
-#> logistic_reg  glm      0.942     0.915     0.870  0.935      0.896        0.966        0.965   
-#> ---------------------------------------------------------------------------------------------- 
-#> (*Best model)
+#> --------------------------------------------------------- 
+#> Model         Engine   ROC AUC (CV mean)  ROC AUC (CV SD) 
+#> --------------------------------------------------------- 
+#> rand_forest†  ranger   0.9904             0.0126          
+#> xgboost       xgboost  0.9859             0.0160          
+#> logistic_reg  glm      0.9239             0.0213          
+#> --------------------------------------------------------- 
+#> † Selected based on mean ROC AUC across CV folds
+#> 
+#> -- Table 2: Final Evaluation (Test Set) --
+#> Note: For reporting only; selection was based on CV above.
+#> 
+#> --------------------------------------------------------------------------------------------------------------------------- 
+#> Model         Engine   Accuracy  F1 Score  Kappa  Precision  Sensitivity  Specificity  ROC AUC  Logloss  Brier Score  ECE   
+#> --------------------------------------------------------------------------------------------------------------------------- 
+#> rand_forest   ranger   0.971     0.960     0.937  0.923      1.000        0.955        0.996    0.104    0.027        0.062 
+#> xgboost       xgboost  0.956     0.938     0.904  0.938      0.938        0.966        0.993    0.243    0.057        0.161 
+#> logistic_reg  glm      0.942     0.915     0.870  0.935      0.896        0.966        0.965    1.066    0.059        0.061 
+#> ---------------------------------------------------------------------------------------------------------------------------
 \end{verbatim}
 
 \begin{verbatim}
@@ -820,18 +842,29 @@ summary(fm_bp)
 #> ===== fastml Model Summary =====
 #> Task: regression 
 #> Number of Models Trained: 3 
-#> Best Model(s): rand_forest (ranger) (rmse: 11.9474624) 
 #> 
-#> Performance Metrics (Sorted by rmse):
+#> -- Table 1: Model Selection (Cross-Validation) --
+#> Note: This table determines the best model.
 #> 
-#> ------------------------------------------------- 
-#> Model         Engine    RMSE    R-squared  MAE    
-#> ------------------------------------------------- 
-#> rand_forest*  ranger    11.947  0.533      8.715  
-#> elastic_net   glmnet    14.152  0.329      10.483 
-#> lightgbm      lightgbm  23.058  0.193      15.851 
-#> ------------------------------------------------- 
-#> (*Best model)
+#> ---------------------------------------------------- 
+#> Model         Engine    RMSE (CV mean)  RMSE (CV SD) 
+#> ---------------------------------------------------- 
+#> rand_forest†  ranger    12.6069         0.3509       
+#> elastic_net   glmnet    14.3680         0.4643       
+#> lightgbm      lightgbm  23.6484         0.7203       
+#> ---------------------------------------------------- 
+#> † Selected based on mean RMSE across CV folds
+#> 
+#> -- Table 2: Final Evaluation (Test Set) --
+#> Note: For reporting only; selection was based on CV above.
+#> 
+#> ------------------------------------------------ 
+#> Model        Engine    RMSE    R-squared  MAE    
+#> ------------------------------------------------ 
+#> rand_forest  ranger    11.993  0.529      8.784  
+#> elastic_net  glmnet    14.152  0.329      10.483 
+#> lightgbm     lightgbm  23.058  0.193      15.851 
+#> ------------------------------------------------ 
 #> 
 #> Best Model hyperparameters:
 #> 

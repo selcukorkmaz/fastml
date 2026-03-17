@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (MiKTeX 25.4) (preloaded format=pdflatex 2026.1.20)  17 MAR 2026 16:26
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (MiKTeX 25.4) (preloaded format=pdflatex 2026.1.20)  17 MAR 2026 16:58
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -1139,46 +1139,47 @@ t\T1/ppl/m/n/10 (+20) , \T1/zi4/m/n/10 xgboost_aft\T1/ppl/m/n/10 (+20) . (Note:
 [9]
 
 [10]
-Overfull \hbox (232.3606pt too wide) in paragraph at lines 334--334
-[]\T1/zi4/m/n/10 #> -----------------------------------------------------------
---------------------------------------------------------------[] 
- []
-
 LaTeX Font Info:    Trying to load font information for TS1+zi4 on input line 3
-34.
+43.
 
 (C:\Users\Selçuk\AppData\Local\Programs\MiKTeX\tex/latex/inconsolata\ts1zi4.fd
 File: ts1zi4.fd 2018/01/14 TS1/zi4 (Inconsolata)
 )
 LaTeX Font Info:    Font shape `TS1/zi4/m/n' will be
-(Font)              scaled to size 10.20004pt on input line 334.
+(Font)              scaled to size 10.20004pt on input line 343.
 Package microtype Info: Loading generic protrusion settings for font family
 (microtype)             `zi4' (encoding: TS1).
 (microtype)             For optimal results, create family-specific settings.
 (microtype)             See the microtype manual for details.
 
-Overfull \hbox (191.47717pt too wide) in paragraph at lines 334--334
-[]\T1/zi4/m/n/10 #> Model    Engine    Harrell C-index  Uno\TS1/zi4/m/n/10 '\T1
-/zi4/m/n/10 s C-index  Integrated Brier Score  RMST diff (t<=655)  Brier(t=294)
-  Brier(t=526)[] 
- []
-
-
-Overfull \hbox (232.3606pt too wide) in paragraph at lines 334--334
+Overfull \hbox (227.26057pt too wide) in paragraph at lines 343--343
 []\T1/zi4/m/n/10 #> -----------------------------------------------------------
---------------------------------------------------------------[] 
+-------------------------------------------------------------[] 
  []
 
 
-Overfull \hbox (80.82408pt too wide) in paragraph at lines 334--334
-[]\T1/zi4/m/n/10 #> cox_ph*  survival  0.660            0.702          0.208   
-                82.158              0.233         0.238[] 
+Overfull \hbox (188.08063pt too wide) in paragraph at lines 343--343
+[]\T1/zi4/m/n/10 #> Model   Engine    Harrell C-index  Uno\TS1/zi4/m/n/10 '\T1/
+zi4/m/n/10 s C-index  Integrated Brier Score  RMST diff (t<=655)  Brier(t=294) 
+ Brier(t=526)[] 
  []
 
 
-Overfull \hbox (232.3606pt too wide) in paragraph at lines 334--334
+Overfull \hbox (227.26057pt too wide) in paragraph at lines 343--343
 []\T1/zi4/m/n/10 #> -----------------------------------------------------------
---------------------------------------------------------------[] 
+-------------------------------------------------------------[] 
+ []
+
+
+Overfull \hbox (75.72406pt too wide) in paragraph at lines 343--343
+[]\T1/zi4/m/n/10 #> cox_ph  survival  0.660            0.702          0.208    
+               82.158              0.233         0.238[] 
+ []
+
+
+Overfull \hbox (227.26057pt too wide) in paragraph at lines 343--343
+[]\T1/zi4/m/n/10 #> -----------------------------------------------------------
+-------------------------------------------------------------[] 
  []
 
 
@@ -1187,14 +1188,14 @@ Overfull \hbox (232.3606pt too wide) in paragraph at lines 334--334
 i4-ts1.enc}]
 
 [12]
-Overfull \hbox (1279.8654pt too wide) in paragraph at lines 395--412
+Overfull \hbox (1279.8654pt too wide) in paragraph at lines 404--421
  [][] 
  []
 
 
 
 [13]
-Underfull \hbox (badness 1303) in paragraph at lines 427--429
+Underfull \hbox (badness 1303) in paragraph at lines 436--438
 []\T1/ppl/b/n/10 (+20) Audit-mode in-stru-men-ta-tion (ob-ser-va-tional, broade
 r but in-com-plete). \T1/ppl/m/n/10 (+20) When
  []
@@ -1202,7 +1203,7 @@ r but in-com-plete). \T1/ppl/m/n/10 (+20) When
 
 
 [14]
-Overfull \hbox (1501.30937pt too wide) in paragraph at lines 461--474
+Overfull \hbox (1501.30937pt too wide) in paragraph at lines 470--483
  [][] 
  []
 
@@ -1215,7 +1216,7 @@ Overfull \hbox (1501.30937pt too wide) in paragraph at lines 461--474
 File: figures/auc-leaky-vs-guarded.png Graphic file (type png)
 <use figures/auc-leaky-vs-guarded.png>
 Package pdftex.def Info: figures/auc-leaky-vs-guarded.png  used on input line 5
-25.
+34.
 (pdftex.def)             Requested size: 398.33858pt x 199.16766pt.
 
 
@@ -1224,90 +1225,89 @@ Package pdftex.def Info: figures/auc-leaky-vs-guarded.png  used on input line 5
 [18]
 
 [19]
-Overfull \hbox (438.49867pt too wide) in paragraph at lines 663--672
+Overfull \hbox (438.49867pt too wide) in paragraph at lines 674--683
  [][] 
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 677--677
+Underfull \hbox (badness 10000) in paragraph at lines 688--688
 |[]\T1/ppl/b/n/10 (+20) Case stud-ies|
  []
 
 
-Underfull \hbox (badness 10000) in paragraph at lines 683--683
+
+[20]
+Underfull \hbox (badness 10000) in paragraph at lines 694--694
 |\T1/ppl/b/n/10 (+20) Case study A: di-ag-nos-tic bench-mark-ing (breast can-ce
 r)|
  []
 
 
 
-[20]
-Overfull \hbox (94.66002pt too wide) in paragraph at lines 731--731
+[21]
+Overfull \hbox (242.56064pt too wide) in paragraph at lines 753--753
 []\T1/zi4/m/n/10 #> -----------------------------------------------------------
------------------------------------[] 
+----------------------------------------------------------------[] 
  []
 
 
-Overfull \hbox (50.36964pt too wide) in paragraph at lines 731--731
+Overfull \hbox (176.14589pt too wide) in paragraph at lines 753--753
 []\T1/zi4/m/n/10 #> Model         Engine   Accuracy  F1 Score  Kappa  Precision
-  Sensitivity  Specificity  ROC AUC[] 
+  Sensitivity  Specificity  ROC AUC  Logloss  Brier Score  ECE[] 
  []
 
 
-Overfull \hbox (94.66002pt too wide) in paragraph at lines 731--731
+Overfull \hbox (242.56064pt too wide) in paragraph at lines 753--753
 []\T1/zi4/m/n/10 #> -----------------------------------------------------------
------------------------------------[] 
+----------------------------------------------------------------[] 
  []
 
 
-Overfull \hbox (18.02441pt too wide) in paragraph at lines 731--731
-[]\T1/zi4/m/n/10 #> rand_forest*  ranger   0.971     0.960     0.937  0.923    
-  1.000        0.955        0.996[] 
+Overfull \hbox (147.16599pt too wide) in paragraph at lines 753--753
+[]\T1/zi4/m/n/10 #> rand_forest   ranger   0.971     0.960     0.937  0.923    
+  1.000        0.955        0.996    0.104    0.027        0.062[] 
  []
 
 
-Overfull \hbox (11.21051pt too wide) in paragraph at lines 731--731
-[]\T1/zi4/m/n/10 #> xgboost       xgboost  0.964     0.948     0.920  0.939    
-  0.958        0.966        0.993[] 
+Overfull \hbox (142.05556pt too wide) in paragraph at lines 753--753
+[]\T1/zi4/m/n/10 #> xgboost       xgboost  0.956     0.938     0.904  0.938    
+  0.938        0.966        0.993    0.243    0.057        0.161[] 
  []
 
 
-Overfull \hbox (12.91399pt too wide) in paragraph at lines 731--731
+Overfull \hbox (143.75903pt too wide) in paragraph at lines 753--753
 []\T1/zi4/m/n/10 #> logistic_reg  glm      0.942     0.915     0.870  0.935    
-  0.896        0.966        0.965[] 
+  0.896        0.966        0.965    1.066    0.059        0.061[] 
  []
 
 
-Overfull \hbox (94.66002pt too wide) in paragraph at lines 731--731
+Overfull \hbox (242.56064pt too wide) in paragraph at lines 753--753
 []\T1/zi4/m/n/10 #> -----------------------------------------------------------
------------------------------------[] 
+----------------------------------------------------------------[] 
  []
 
-<fastml_files/figure-latex/case-study-a-1.pdf, id=430, 469.755pt x 325.215pt>
+<fastml_files/figure-latex/case-study-a-1.pdf, id=438, 469.755pt x 325.215pt>
 File: fastml_files/figure-latex/case-study-a-1.pdf Graphic file (type pdf)
 <use fastml_files/figure-latex/case-study-a-1.pdf>
 Package pdftex.def Info: fastml_files/figure-latex/case-study-a-1.pdf  used on 
-input line 737.
-(pdftex.def)             Requested size: 469.75386pt x 325.2142pt.
-
-
-[21]
-<fastml_files/figure-latex/unnamed-chunk-4-1.pdf, id=442, 469.755pt x 325.215pt
->
-File: fastml_files/figure-latex/unnamed-chunk-4-1.pdf Graphic file (type pdf)
-<use fastml_files/figure-latex/unnamed-chunk-4-1.pdf>
-Package pdftex.def Info: fastml_files/figure-latex/unnamed-chunk-4-1.pdf  used 
-on input line 753.
+input line 759.
 (pdftex.def)             Requested size: 469.75386pt x 325.2142pt.
 
 
 [22 <./fastml_files/figure-latex/case-study-a-1.pdf>]
+<fastml_files/figure-latex/unnamed-chunk-4-1.pdf, id=453, 469.755pt x 325.215pt
+>
+File: fastml_files/figure-latex/unnamed-chunk-4-1.pdf Graphic file (type pdf)
+<use fastml_files/figure-latex/unnamed-chunk-4-1.pdf>
+Package pdftex.def Info: fastml_files/figure-latex/unnamed-chunk-4-1.pdf  used 
+on input line 775.
+(pdftex.def)             Requested size: 469.75386pt x 325.2142pt.
 <fastml_files/figure-latex/unnamed-chunk-4-2.pdf, id=454, 469.755pt x 325.215pt
 >
 File: fastml_files/figure-latex/unnamed-chunk-4-2.pdf Graphic file (type pdf)
 <use fastml_files/figure-latex/unnamed-chunk-4-2.pdf>
 Package pdftex.def Info: fastml_files/figure-latex/unnamed-chunk-4-2.pdf  used 
-on input line 760.
+on input line 782.
 (pdftex.def)             Requested size: 469.75386pt x 325.2142pt.
 
 
@@ -1315,7 +1315,7 @@ on input line 760.
 latex/unnamed-chunk-4-2.pdf>]
 
 [24]
-Underfull \hbox (badness 10000) in paragraph at lines 848--848
+Underfull \hbox (badness 10000) in paragraph at lines 881--881
 |[]\T1/ppl/b/n/12 (+20) Conclusion|
  []
 
@@ -1345,13 +1345,14 @@ tree.  In I. Guyon, U. V.
 [28])
 
 LaTeX Font Warning: Font shape `T1/zi4/m/it' undefined
-(Font)              using `T1/zi4/m/n' instead on input line 875.
+(Font)              using `T1/zi4/m/n' instead on input line 908.
 
-LaTeX Font Info:    Font shape `T1/zi4/m/it' will be
-(Font)              scaled to size 10.20004pt on input line 885.
-)
+
 
 [29]
+LaTeX Font Info:    Font shape `T1/zi4/m/it' will be
+(Font)              scaled to size 10.20004pt on input line 918.
+)
 
 [30] (RJwrapper.aux)
  ***********
@@ -1364,16 +1365,16 @@ LaTeX Font Warning: Some font shapes were not available, defaults substituted.
 Package rerunfilecheck Info: File `RJwrapper.out' has not changed.
 (rerunfilecheck)             Checksum: 96CAB09E91AFA23C28EB1AC89C0340E0;2386.
 Package rerunfilecheck Info: File `RJwrapper.brf' has not changed.
-(rerunfilecheck)             Checksum: CBB259A497C2E589CEC4C22A8CF77220;3458.
+(rerunfilecheck)             Checksum: C47690D8CE23EC7DD87B81BCDE6906AF;3458.
  ) 
 Here is how much of TeX's memory you used:
- 27902 strings out of 468080
- 510352 string characters out of 5424804
+ 27903 strings out of 468080
+ 510365 string characters out of 5424804
  928384 words of memory out of 5000000
- 55602 multiletter control sequences out of 15000+600000
+ 55603 multiletter control sequences out of 15000+600000
  672702 words of font info for 334 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 117i,12n,131p,1382b,981s stack positions out of 10000i,1000n,20000p,200000b,200000s
+ 117i,12n,131p,1382b,999s stack positions out of 10000i,1000n,20000p,200000b,200000s
 <C:/Users/Selçuk/AppData/Local/Programs/MiKTeX/fonts/type1/public/inconsolat
 a/Inconsolata-zi4r.pfb><C:/Users/Selçuk/AppData/Local/Programs/MiKTeX/fonts/ty
 pe1/public/amsfonts/cm/cmmi10.pfb><C:/Users/Selçuk/AppData/Local/Programs/MiKT
@@ -1385,7 +1386,7 @@ a/Local/Programs/MiKTeX/fonts/type1/public/mathpazo/fplmr.pfb><C:/Users/Selçuk
 Users/Selçuk/AppData/Local/Programs/MiKTeX/fonts/type1/urw/palatino/uplr8a.pfb
 ><C:/Users/Selçuk/AppData/Local/Programs/MiKTeX/fonts/type1/urw/palatino/uplri
 8a.pfb>
-Output written on RJwrapper.pdf (30 pages, 940000 bytes).
+Output written on RJwrapper.pdf (30 pages, 941033 bytes).
 PDF statistics:
  674 PDF objects out of 1000 (max. 8388607)
  102 named destinations out of 1000 (max. 500000)
