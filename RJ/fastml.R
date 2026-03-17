@@ -124,6 +124,150 @@ knitr::include_graphics("figures/leaky_cv_workflow_AB.png")
 # print(summary_stats)
 
 
+## ----minimal-workflow-example, eval=FALSE, echo=TRUE--------------------------
+# library(fastml)
+# fm <- fastml(data = iris, label = "Species")
+# summary(fm)
+# predict(fm, newdata = new_obs)
+
+
+## ----minimal-survival-example, eval=TRUE, echo=TRUE---------------------------
+library(fastml)
+library(survival)
+library(censored)
+
+lung_df <- lung[complete.cases(lung), ]
+lung_df$status <- lung_df$status - 1  # recode from 1/2 to 0/1
+
+fm_surv <- fastml(
+  data       = lung_df,
+  label      = c("time", "status"),
+  algorithms = "cox_ph",
+  metric     = "c_index",
+  seed       = 2025
+)
+
+summary(fm_surv, type = "metrics")
+
+
+## ----fastml-object-table, results="asis"--------------------------------------
+fastml_object_table <- data.frame(
+  Slot = c(
+    "\\texttt{models}",
+    "\\texttt{preprocessor}",
+    "\\texttt{predictions}",
+    "\\texttt{performance}",
+    "\\texttt{metric}",
+    "\\texttt{best\\_model\\_name}",
+    "\\texttt{resampling\\_plan}",
+    "\\texttt{raw\\_train\\_data}, \\texttt{raw\\_test\\_data}",
+    "\\texttt{processed\\_train\\_data}, \\texttt{processed\\_test\\_data}",
+    "\\texttt{audit}"
+  ),
+  Description = c(
+    "Fitted model objects, indexed by algorithm and engine",
+    "Stored preprocessing object",
+    "Stored predictions from evaluation",
+    "Aggregated performance metrics",
+    "Primary evaluation metric",
+    "Identifier of the default reference model",
+    "Resampling specification (e.g., CV folds, repeats)",
+    "Data partitions used for fitting/evaluation (when retained)",
+    "Preprocessed partitions (when retained)",
+    "Audit log entries and a flagged indicator"
+  ),
+  `Practical guarantee` = c(
+    "Models are stored as fitted objects; downstream \\texttt{predict} and \\texttt{plot} methods are intended to use stored fits rather than refitting. Reproducibility depends on package versions and environment consistency.",
+    "The stored preprocessor corresponds to the final training split (\\texttt{train\\_data}), not to per-fold analysis subsets. Fold-local preprocessing occurs inside resampling when that path is used, but the stored final preprocessor is trained on the training split used for the final fit.",
+    "Predictions stored here are the holdout or test predictions produced during evaluation. Training-set predictions and per-fold resampling predictions are not necessarily stored in the same slot by default.",
+    "Metrics are computed from evaluation outputs, typically holdout or test predictions. If resampling is used, summary performance reflects the resampling results recorded by the resampling layer.",
+    "Defines the main comparison target used in model reporting within the object.",
+    "A presentation or default-selection label; it should not be interpreted as changing how metrics were computed.",
+    "Encodes how resampling was defined when resampling is executed; used for reporting and consistency.",
+    "Enables inspection of the exact splits used. This supports auditability, but the object may include data and therefore is not data-free.",
+    "Supports inspection of preprocessing output and helps detect unexpected preprocessing behavior; this is an audit convenience, not a mathematical guarantee of leakage absence.",
+    "When \\texttt{audit\\_mode = TRUE}, the audit structure records security-related warnings or flags. It is not a full training provenance log."
+  ),
+  check.names = FALSE
+)
+knitr::kable(
+  fastml_object_table,
+  caption = "Core components of a `fastml` object and associated guarantees.",
+  booktabs = TRUE,
+  escape = FALSE
+)
+cat("\n\n\\emph{Note}: This table lists the principal user-facing components. The full object contains additional fields (e.g., \\texttt{task}, \\texttt{label}, \\texttt{event\\_class}, \\texttt{engine\\_names}, \\texttt{resampling\\_results}, \\texttt{metric\\_bootstrap}) that support internal dispatch and are accessible for advanced use.\n")
+
+
+## ----framework-comparison-table, results="asis"-------------------------------
+framework_comparison_table <- data.frame(
+  Feature = c(
+    "Interface philosophy",
+    "Preprocessing and leakage control",
+    "Survival analysis support",
+    "Extensibility and safety",
+    "Parallel execution",
+    "Model explainability"
+  ),
+  caret = c(
+    "Unified wrapper; function-based syntax such as \\texttt{train}.",
+    "Manual; users must prevent leakage explicitly.",
+    "Basic support, primarily Cox proportional hazards.",
+    "Standard execution inside the R session.",
+    "Via \\CRANpkg{doParallel} or similar foreach backends.",
+    "Limited built-in support; variable importance for some models."
+  ),
+  tidymodels = c(
+    "Modular pipeline built from recipes, model specifications, workflows, and resamples.",
+    "Optional and user-assembled; leakage-safe workflows are possible but not enforced.",
+    "Expanding support, including extensions such as \\CRANpkg{censored}.",
+    "Standard execution inside the R session.",
+    "Via \\CRANpkg{future} with explicit plan registration.",
+    "Via \\CRANpkg{DALEXtra} and \\CRANpkg{vetiver}."
+  ),
+  mlr3 = c(
+    "Object-oriented design with tasks, learners, and graphs.",
+    "Robust graph-based pipelines can express leakage-safe evaluation.",
+    "Extensive support via extensions.",
+    "Standard execution inside the R session.",
+    "Via \\CRANpkg{future} with \\CRANpkg{mlr3} parallelization options.",
+    "Via \\CRANpkg{iml} and \\CRANpkg{DALEX}."
+  ),
+  h2o = c(
+    "Integrated AutoML engine.",
+    "Automated preprocessing and evaluation inside the H2O engine.",
+    "Standard survival support including Cox and AFT variants.",
+    "Engine-isolated execution on the Java backend.",
+    "Native multi-threaded execution on the Java backend.",
+    "Built-in SHAP and variable importance."
+  ),
+  fastml = c(
+    "Guarded facade with a simplified single-function call (\\texttt{fastml}).",
+    "Guarded resampling re-estimates preprocessing within folds on supported execution paths.",
+    "Unified interface spanning penalized Cox, native XGBoost AFT, and piecewise exponential models.",
+    "Preventive recipe validation plus optional audit instrumentation.",
+    "Via \\CRANpkg{doFuture} with \\texttt{n\\_cores} argument.",
+    "Integrated \\texttt{fastexplain} with 10 explanation methods."
+  ),
+  check.names = FALSE
+)
+names(framework_comparison_table) <- c(
+  "Feature",
+  "caret",
+  "tidymodels",
+  "mlr3",
+  "h2o",
+  "fastml"
+)
+knitr::kable(
+  framework_comparison_table,
+  caption = "Architectural and functional comparison of major R machine learning frameworks.",
+  booktabs = TRUE,
+  escape = FALSE
+)
+cat("\n")
+
+
 ## ----eval=FALSE, echo=TRUE----------------------------------------------------
 # diffs <- simulation_results$Leaky_AUC - simulation_results$Guarded_AUC
 # mean_diff <- mean(diffs)
@@ -162,111 +306,6 @@ knitr::include_graphics("figures/leaky_cv_workflow_AB.png")
 
 ## ----auc-leaky-vs-guarded, fig.cap="Preprocessing placement under grouped cross-validation: (A) ROC AUC distributions for leaky versus guarded workflows; (B) paired ROC AUC showing inflation with global preprocessing.", fig.alt="A two-panel figure. Panel A compares the distribution of ROC AUC values for leaky and guarded workflows across simulation runs. Panel B shows paired points and connecting segments, with most guarded values lower than the corresponding leaky values.", out.width="100%"----
 knitr::include_graphics("figures/auc-leaky-vs-guarded.png")
-
-
-## ----fastml-object-table, results="asis"--------------------------------------
-fastml_object_table <- data.frame(
-  Slot = c(
-    "`models`",
-    "`preprocessor`",
-    "`predictions`",
-    "`performance`",
-    "`metric`",
-    "`best_model_name`",
-    "`resampling_plan`",
-    "`raw_train_data`, `raw_test_data`",
-    "`processed_train_data`, `processed_test_data`",
-    "`audit`"
-  ),
-  Description = c(
-    "Fitted model objects, indexed by algorithm and engine",
-    "Stored preprocessing object",
-    "Stored predictions from evaluation",
-    "Aggregated performance metrics",
-    "Primary evaluation metric",
-    "Identifier of the default reference model",
-    "Resampling specification (e.g., CV folds, repeats)",
-    "Data partitions used for fitting/evaluation (when retained)",
-    "Preprocessed partitions (when retained)",
-    "Audit log entries and a flagged indicator"
-  ),
-  `Practical guarantee` = c(
-    "Models are stored as fitted objects; downstream `predict` and `plot` methods are intended to use stored fits rather than refitting. Reproducibility depends on package versions and environment consistency.",
-    "The stored preprocessor corresponds to the final training split (`train_data`), not to per-fold analysis subsets. Fold-local preprocessing occurs inside resampling when that path is used, but the stored final preprocessor is trained on the training split used for the final fit.",
-    "Predictions stored here are the holdout or test predictions produced during evaluation. Training-set predictions and per-fold resampling predictions are not necessarily stored in the same slot by default.",
-    "Metrics are computed from evaluation outputs, typically holdout or test predictions. If resampling is used, summary performance reflects the resampling results recorded by the resampling layer.",
-    "Defines the main comparison target used in model reporting within the object.",
-    "A presentation or default-selection label; it should not be interpreted as changing how metrics were computed.",
-    "Encodes how resampling was defined when resampling is executed; used for reporting and consistency.",
-    "Enables inspection of the exact splits used. This supports auditability, but the object may include data and therefore is not data-free.",
-    "Supports inspection of preprocessing output and helps detect unexpected preprocessing behavior; this is an audit convenience, not a mathematical guarantee of leakage absence.",
-    "When `audit_mode = TRUE`, the audit structure records security-related warnings or flags. It is not a full training provenance log."
-  ),
-  check.names = FALSE
-)
-knitr::kable(
-  fastml_object_table,
-  caption = "Core components of a `fastml` object and associated guarantees.",
-  booktabs = TRUE,
-  escape = FALSE
-)
-
-
-## ----framework-comparison-table, results="asis"-------------------------------
-framework_comparison_table <- data.frame(
-  Feature = c(
-    "Interface philosophy",
-    "Preprocessing and leakage control",
-    "Survival analysis support",
-    "Extensibility and safety"
-  ),
-  caret = c(
-    "Unified wrapper; function-based syntax such as `train`.",
-    "Manual; users must prevent leakage explicitly.",
-    "Basic support, primarily Cox proportional hazards.",
-    "Standard execution inside the R session."
-  ),
-  tidymodels = c(
-    "Modular pipeline built from recipes, model specifications, workflows, and resamples.",
-    "Optional and user-assembled; leakage-safe workflows are possible but not enforced.",
-    "Expanding support, including extensions such as \\CRANpkg{censored}.",
-    "Standard execution inside the R session."
-  ),
-  mlr3 = c(
-    "Object-oriented design with tasks, learners, and graphs.",
-    "Robust graph-based pipelines can express leakage-safe evaluation.",
-    "Extensive support via extensions such as \\CRANpkg{mlr3proba}.",
-    "Standard execution inside the R session."
-  ),
-  h2o = c(
-    "Integrated AutoML engine.",
-    "Automated preprocessing and evaluation inside the H2O engine.",
-    "Standard survival support including Cox and AFT variants.",
-    "Engine-isolated execution on the Java backend."
-  ),
-  fastml = c(
-    "Guarded facade with a simplified single-function call (`fastml`).",
-    "Guarded resampling re-estimates preprocessing within folds on supported execution paths.",
-    "Unified interface spanning penalized Cox, native XGBoost AFT, and piecewise exponential models.",
-    "Preventive recipe validation plus optional audit instrumentation."
-  ),
-  check.names = FALSE
-)
-names(framework_comparison_table) <- c(
-  "Feature",
-  "\\\\CRANpkg{caret}",
-  "\\\\CRANpkg{tidymodels}",
-  "\\\\CRANpkg{mlr3}",
-  "\\\\CRANpkg{h2o}",
-  "\\\\CRANpkg{fastml}"
-)
-knitr::kable(
-  framework_comparison_table,
-  caption = "Architectural and functional comparison of major R machine learning frameworks.",
-  booktabs = TRUE,
-  escape = FALSE
-)
-cat("\n\n\\emph{Note}: \\CRANpkg{mlr3proba} is currently removed from CRAN; archived versions remain available.\n")
 
 
 ## ----benchmark-a-split, eval=TRUE, include=FALSE------------------------------
@@ -341,11 +380,11 @@ fm$performance$logistic_reg
 ## ----external-survival-table, results="asis"----------------------------------
 external_survival_table <- data.frame(
   Dataset = c("Lung (N = 228)", "Rotterdam (N = 2,982)", "Flchain (N = 7,874)"),
-  `Cox PH (Baseline)` = c("0.631 +/- 0.064 (0.599 to 0.663)", "0.690 +/- 0.014 (0.683 to 0.697)", "0.794 +/- 0.013 (0.787 to 0.800)"),
-  `Weibull AFT (Baseline)` = c("0.633 +/- 0.062 (0.601 to 0.664)", "0.690 +/- 0.014 (0.683 to 0.697)", "0.794 +/- 0.013 (0.788 to 0.801)"),
-  `fastml (Penalized Cox)` = c("0.641 +/- 0.066 (0.607 to 0.674)", "0.695 +/- 0.015 (0.687 to 0.702)", "0.793 +/- 0.012 (0.787 to 0.799)"),
-  `fastml (XGBoost AFT)` = c("0.618 +/- 0.050 (0.593 to 0.644)", "0.705 +/- 0.012 (0.699 to 0.711)", "0.795 +/- 0.014 (0.788 to 0.802)"),
-  `fastml (RF Survival)` = c("0.644 +/- 0.061 (0.613 to 0.675)", "0.711 +/- 0.015 (0.704 to 0.719)", "0.799 +/- 0.013 (0.793 to 0.806)"),
+  `Cox PH (Baseline)` = c("0.631 +/- 0.064 (0.530 to 0.716)", "0.690 +/- 0.014 (0.669 to 0.713)", "0.794 +/- 0.013 (0.775 to 0.817)"),
+  `Weibull AFT (Baseline)` = c("0.633 +/- 0.062 (0.535 to 0.716)", "0.690 +/- 0.014 (0.669 to 0.712)", "0.794 +/- 0.013 (0.776 to 0.817)"),
+  `fastml (Penalized Cox)` = c("0.641 +/- 0.066 (0.528 to 0.739)", "0.695 +/- 0.015 (0.673 to 0.718)", "0.793 +/- 0.012 (0.776 to 0.816)"),
+  `fastml (XGBoost AFT)` = c("0.618 +/- 0.050 (0.521 to 0.700)", "0.705 +/- 0.012 (0.690 to 0.724)", "0.795 +/- 0.014 (0.778 to 0.819)"),
+  `fastml (RF Survival)` = c("0.641 +/- 0.063 (0.517 to 0.734)", "0.712 +/- 0.014 (0.688 to 0.730)", "0.799 +/- 0.013 (0.784 to 0.823)"),
   check.names = FALSE
 )
 knitr::kable(
@@ -375,8 +414,7 @@ fm_bc <- fastml(
   label         = "Class",
   algorithms    = c("logistic_reg", "rand_forest", "xgboost"),
   metric        = "roc_auc",
-  event_class   = "second",
-  impute_method = "medianImpute"
+  event_class   = "second"
 )
 
 summary(fm_bc, type = "metrics")
@@ -384,9 +422,9 @@ plot(fm_bc, type = "roc")
 
 
 ## ----eval=TRUE, echo=TRUE-----------------------------------------------------
-# Optional: explanation outputs depend on installed explainers 
+# Optional: explanation outputs depend on installed explainers
 #           and model compatibility
-fastexplain(fm_bc, algorithm = "rand_forest")
+fastexplain(fm_bc, method = "dalex")
 
 
 ## ----case-study-b, eval=TRUE, echo=TRUE---------------------------------------
@@ -431,8 +469,8 @@ fm_bp <- fastml(
     ),
     lightgbm = list(
       lightgbm = list(
-        num_leaves    = c(20, 31),
-        learning_rate = c(0.05, 0.1)
+        tree_depth    = c(20, 31),
+        learn_rate    = c(0.05, 0.1)
       )
     )
   )

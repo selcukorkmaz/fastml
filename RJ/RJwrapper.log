@@ -1,4 +1,4 @@
-This is pdfTeX, Version 3.141592653-2.6-1.40.27 (MiKTeX 25.4) (preloaded format=pdflatex 2026.1.20)  16 MAR 2026 16:45
+This is pdfTeX, Version 3.141592653-2.6-1.40.27 (MiKTeX 25.4) (preloaded format=pdflatex 2026.1.20)  17 MAR 2026 16:26
 entering extended mode
  restricted \write18 enabled.
  %&-line parsing enabled.
@@ -838,8 +838,7 @@ Package: float 2001/11/08 v1.3d Float enhancements (AL)
 dftex.def
 File: l3backend-pdftex.def 2025-10-09 L3 backend support: PDF output (pdfTeX)
 \l__color_backend_stack_int=\count355
-)
-No file RJwrapper.aux.
+) (RJwrapper.aux)
 \openout1 = `RJwrapper.aux'.
 
 LaTeX Font Info:    Checking defaults for OML/cmm/m/it on input line 55.
@@ -949,6 +948,7 @@ tim
 )
 Package backref Info: ** backref set up for natbib ** on input line 55.
 Package hyperref Info: Link coloring ON on input line 55.
+(RJwrapper.out) (RJwrapper.out)
 \@outlinefile=\write5
 \openout5 = `RJwrapper.out'.
 
@@ -961,34 +961,17 @@ Package: ltcaption 2021/01/08 v1.4c longtable captions (AR)
 )
 Package caption Info: End \AtBeginDocument code.
 (fastml.tex
-
-Package natbib Warning: Citation `caret_kuhn:2008aa' on page 1 undefined on inp
-ut line 15.
-
-
-Package natbib Warning: Citation `tidymodels_Kuhn:2020aa' on page 1 undefined o
-n input line 15.
-
-
-Package natbib Warning: Citation `mlr3_Lang:2019aa' on page 1 undefined on inpu
-t line 15.
-
-
-Package natbib Warning: Citation `Hastie:2009_ESL_book' on page 1 undefined on 
-input line 17.
-
-
-Package natbib Warning: Citation `Kapoor:2023aa' on page 1 undefined on input l
-ine 17.
-
-
-Package natbib Warning: Citation `Rosenblatt:2024aa' on page 1 undefined on inp
-ut line 17.
-
-
-Package natbib Warning: Citation `Tampu:2022aa' on page 1 undefined on input li
-ne 17.
-
+LaTeX Font Info:    Trying to load font information for T1+zi4 on input line 19
+.
+(C:\Users\Selçuk\AppData\Local\Programs\MiKTeX\tex/latex/inconsolata\t1zi4.fd
+File: t1zi4.fd 2018/01/14 T1/zi4 (Inconsolata)
+)
+LaTeX Font Info:    Font shape `T1/zi4/m/n' will be
+(Font)              scaled to size 10.20004pt on input line 19.
+Package microtype Info: Loading generic protrusion settings for font family
+(microtype)             `zi4' (encoding: T1).
+(microtype)             For optimal results, create family-specific settings.
+(microtype)             See the microtype manual for details.
 
 
 [1{C:/Users/Selçuk/AppData/Local/MiKTeX/fonts/map/pdftex/pdftex.map}{C:/Users/
@@ -996,83 +979,36 @@ Selçuk/AppData/Local/Programs/MiKTeX/fonts/enc/dvips/base/8r.enc}
 
 ]
 
-Package natbib Warning: Citation `Korkmaz:2025_fastml_Rpkg' on page 2 undefined
- on input line 21.
-
-
-Package natbib Warning: Citation `Kapoor:2023aa' on page 2 undefined on input l
-ine 31.
-
-
-Package natbib Warning: Citation `Kaufman:2012aa' on page 2 undefined on input 
-line 31.
-
-
-Package natbib Warning: Citation `Vabalas:2019aa' on page 2 undefined on input 
-line 31.
-
-
-Package natbib Warning: Citation `Hastie:2009_ESL_book' on page 2 undefined on 
-input line 31.
-
-
-Package natbib Warning: Citation `Moscato:2021aa' on page 2 undefined on input 
-line 31.
-
-
-Package natbib Warning: Citation `Hastie:2009_ESL_book' on page 2 undefined on 
-input line 31.
-
-
-Package natbib Warning: Citation `Kaufman:2012aa' on page 2 undefined on input 
-line 31.
-
-
-LaTeX Warning: Reference `fig:leakage-workflow' on page 2 undefined on input li
-ne 33.
-
-<figures/leaky_cv_workflow_AB.png, id=28, 337.5009pt x 211.7511pt>
+[2{C:/Users/Selçuk/AppData/Local/Programs/MiKTeX/fonts/enc/dvips/inconsolata/i
+4-t1-0.enc}]
+<figures/leaky_cv_workflow_AB.png, id=123, 337.5009pt x 211.7511pt>
 File: figures/leaky_cv_workflow_AB.png Graphic file (type png)
 <use figures/leaky_cv_workflow_AB.png>
 Package pdftex.def Info: figures/leaky_cv_workflow_AB.png  used on input line 3
-6.
+8.
 (pdftex.def)             Requested size: 398.33858pt x 249.91904pt.
-
-
-[2]
-LaTeX Font Info:    Trying to load font information for T1+zi4 on input line 39
-.
-(C:\Users\Selçuk\AppData\Local\Programs\MiKTeX\tex/latex/inconsolata\t1zi4.fd
-File: t1zi4.fd 2018/01/14 T1/zi4 (Inconsolata)
-)
-LaTeX Font Info:    Font shape `T1/zi4/m/n' will be
-(Font)              scaled to size 10.20004pt on input line 39.
-Package microtype Info: Loading generic protrusion settings for font family
-(microtype)             `zi4' (encoding: T1).
-(microtype)             For optimal results, create family-specific settings.
-(microtype)             See the microtype manual for details.
 LaTeX Font Info:    Trying to load font information for OT1+ppl on input line 4
-3.
+5.
 (C:\Users\Selçuk\AppData\Local\Programs\MiKTeX\tex/latex/psnfss\ot1ppl.fd
 File: ot1ppl.fd 2001/06/04 font definitions for OT1/ppl.
 )
 LaTeX Font Info:    Trying to load font information for OML+zplm on input line 
-43.
+45.
 (C:\Users\Selçuk\AppData\Local\Programs\MiKTeX\tex/latex/psnfss\omlzplm.fd
 File: omlzplm.fd 2002/09/08 Fontinst v1.914 font definitions for OML/zplm.
 )
 LaTeX Font Info:    Trying to load font information for OMS+zplm on input line 
-43.
+45.
 (C:\Users\Selçuk\AppData\Local\Programs\MiKTeX\tex/latex/psnfss\omszplm.fd
 File: omszplm.fd 2002/09/08 Fontinst v1.914 font definitions for OMS/zplm.
 )
 LaTeX Font Info:    Trying to load font information for OMX+zplm on input line 
-43.
+45.
 (C:\Users\Selçuk\AppData\Local\Programs\MiKTeX\tex/latex/psnfss\omxzplm.fd
 File: omxzplm.fd 2002/09/08 Fontinst v1.914 font definitions for OMX/zplm.
 )
 LaTeX Font Info:    Trying to load font information for OT1+zplm on input line 
-43.
+45.
 (C:\Users\Selçuk\AppData\Local\Programs\MiKTeX\tex/latex/psnfss\ot1zplm.fd
 File: ot1zplm.fd 2002/09/08 Fontinst v1.914 font definitions for OT1/zplm.
 )
@@ -1081,67 +1017,49 @@ Package microtype Info: Loading generic protrusion settings for font family
 (microtype)             For optimal results, create family-specific settings.
 (microtype)             See the microtype manual for details.
 LaTeX Font Info:    Font shape `U/msa/m/n' will be
-(Font)              scaled to size 10.42007pt on input line 43.
+(Font)              scaled to size 10.42007pt on input line 45.
 (C:\Users\Selçuk\AppData\Local\Programs\MiKTeX\tex/latex/microtype\mt-msa.cfg
 File: mt-msa.cfg 2006/02/04 v1.1 microtype config. file: AMS symbols (a) (RS)
 )
 LaTeX Font Info:    Font shape `U/msa/m/n' will be
-(Font)              scaled to size 7.91925pt on input line 43.
+(Font)              scaled to size 7.91925pt on input line 45.
 LaTeX Font Info:    Font shape `U/msa/m/n' will be
-(Font)              scaled to size 6.25204pt on input line 43.
+(Font)              scaled to size 6.25204pt on input line 45.
 LaTeX Font Info:    Font shape `U/msb/m/n' will be
-(Font)              scaled to size 10.42007pt on input line 43.
+(Font)              scaled to size 10.42007pt on input line 45.
 (C:\Users\Selçuk\AppData\Local\Programs\MiKTeX\tex/latex/microtype\mt-msb.cfg
 File: mt-msb.cfg 2005/06/01 v1.0 microtype config. file: AMS symbols (b) (RS)
 )
 LaTeX Font Info:    Font shape `U/msb/m/n' will be
-(Font)              scaled to size 7.91925pt on input line 43.
+(Font)              scaled to size 7.91925pt on input line 45.
 LaTeX Font Info:    Font shape `U/msb/m/n' will be
-(Font)              scaled to size 6.25204pt on input line 43.
+(Font)              scaled to size 6.25204pt on input line 45.
 LaTeX Font Info:    Trying to load font information for TS1+ppl on input line 4
-7.
+9.
 (C:\Users\Selçuk\AppData\Local\Programs\MiKTeX\tex/latex/psnfss\ts1ppl.fd
 File: ts1ppl.fd 2001/06/04 font definitions for TS1/ppl.
 )
 
-[3{C:/Users/Selçuk/AppData/Local/Programs/MiKTeX/fonts/enc/dvips/inconsolata/i
-4-t1-0.enc} <./figures/leaky_cv_workflow_AB.png>]
-
-Package natbib Warning: Citation `Frick:2025_rsample_Rpkg' on page 4 undefined 
-on input line 60.
-
-
-Package natbib Warning: Citation `Kuhn:2025_recipes_Rpkg' on page 4 undefined o
-n input line 62.
-
-
-Package natbib Warning: Citation `Kuhn:2013_APM' on page 4 undefined on input l
-ine 70.
-
-
-Package natbib Warning: Citation `Hyndman:2018_forecasting' on page 4 undefined
- on input line 70.
-
-
-Underfull \hbox (badness 10000) in paragraph at lines 69--71
+[3 <./figures/leaky_cv_workflow_AB.png>]
+Underfull \hbox (badness 10000) in paragraph at lines 71--72
 []\T1/ppl/m/n/10 (+20) Taken to-gether, [][]\T1/ppl/b/n/10 (+20) fastml[][]\T1/
 ppl/m/n/10 (+20) 's guarded re-sam-pling func-tion-al-ity re-duces leak-
  []
 
 
-Underfull \hbox (badness 2495) in paragraph at lines 69--71
+Underfull \hbox (badness 2495) in paragraph at lines 71--72
 \T1/ppl/m/n/10 (+20) age risk by (i) fit-ting work-flows within each re-sam-ple
  when ex-e-cuted through
  []
 
 
-Underfull \hbox (badness 6608) in paragraph at lines 69--71
+Underfull \hbox (badness 6608) in paragraph at lines 71--72
 \T1/zi4/m/n/10 fastml_guarded_resample_fit\T1/ppl/m/n/10 (+20) , (ii) de-tect-i
 ng full-analysis re-sam-pling fail-ures by
  []
 
 
-Underfull \hbox (badness 1028) in paragraph at lines 74--75
+Underfull \hbox (badness 1028) in paragraph at lines 77--78
 \T1/ppl/m/n/10 (+20) Fold-local pre-pro-cess-ing ad-dresses a spe-cific leak-ag
 e mech-a-nism: es-ti-mat-ing data-
  []
@@ -1150,125 +1068,326 @@ e mech-a-nism: es-ti-mat-ing data-
 
 [4]
 
-Package natbib Warning: Citation `Roberts:2017aa' on page 5 undefined on input 
-line 76.
-
-
-Package natbib Warning: Citation `Bergmeir:2012aa' on page 5 undefined on input
- line 78.
-
-
-Package natbib Warning: Citation `Hyndman:2018_forecasting' on page 5 undefined
- on input line 78.
-
-
-Package natbib Warning: Citation `Luo:2010aa' on page 5 undefined on input line
- 84.
-
-
-
 [5]
 
 [6]
 
 [7]
+Underfull \hbox (badness 10000) in paragraph at lines 229--231
+[]\T1/ppl/b/n/10 (+20) Preprocessing\T1/ppl/m/n/10 (+20) : \T1/zi4/m/n/10 recip
+e \T1/ppl/m/n/10 (+20) (user-supplied recipes ob-ject), \T1/zi4/m/n/10 impute_m
+ethod\T1/ppl/m/n/10 (+20) ,
+ []
 
-LaTeX Warning: Reference `fig:auc-leaky-vs-guarded' on page 8 undefined on inpu
-t line 227.
+
+Underfull \hbox (badness 4726) in paragraph at lines 231--233
+\T1/zi4/m/n/10 "blocked_cv"\T1/ppl/m/n/10 (+20) , \T1/zi4/m/n/10 "rolling_origi
+n"\T1/ppl/m/n/10 (+20) , \T1/zi4/m/n/10 "nested_cv"\T1/ppl/m/n/10 (+20) , \T1/z
+i4/m/n/10 "validation_split"\T1/ppl/m/n/10 (+20) , \T1/zi4/m/n/10 "none"\T1/ppl
+/m/n/10 (+20) );
+ []
 
 
-LaTeX Warning: Reference `fig:auc-leaky-vs-guarded' on page 8 undefined on inpu
-t line 227.
+Underfull \hbox (badness 10000) in paragraph at lines 233--235
+[]\T1/ppl/b/n/10 (+20) Tuning\T1/ppl/m/n/10 (+20) : \T1/zi4/m/n/10 tune_params 
+\T1/ppl/m/n/10 (+20) (named list of grids per algorithm--engine pair);
+ []
 
-<figures/auc-leaky-vs-guarded.png, id=73, 722.7pt x 361.35pt>
-File: figures/auc-leaky-vs-guarded.png Graphic file (type png)
-<use figures/auc-leaky-vs-guarded.png>
-Package pdftex.def Info: figures/auc-leaky-vs-guarded.png  used on input line 2
-56.
-(pdftex.def)             Requested size: 398.33858pt x 199.16766pt.
+
+Underfull \hbox (badness 10000) in paragraph at lines 245--247
+\T1/zi4/m/n/10 rand_forest\T1/ppl/m/n/10 (+20) , \T1/zi4/m/n/10 xgboost\T1/ppl/
+m/n/10 (+20) , \T1/zi4/m/n/10 lightgbm\T1/ppl/m/n/10 (+20) , \T1/zi4/m/n/10 svm
+_linear\T1/ppl/m/n/10 (+20) , \T1/zi4/m/n/10 svm_rbf\T1/ppl/m/n/10 (+20) , \T1/
+zi4/m/n/10 nearest_neighbor\T1/ppl/m/n/10 (+20) ,
+ []
+
+
+Underfull \hbox (badness 8170) in paragraph at lines 247--249
+[]\T1/ppl/m/it/10 (+20) Regression \T1/ppl/m/n/10 (+20) (14 fam-i-lies): \T1/zi
+4/m/n/10 linear_reg\T1/ppl/m/n/10 (+20) , \T1/zi4/m/n/10 ridge_reg\T1/ppl/m/n/1
+0 (+20) , \T1/zi4/m/n/10 lasso_reg\T1/ppl/m/n/10 (+20) , \T1/zi4/m/n/10 elastic
+_net\T1/ppl/m/n/10 (+20) ,
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 247--249
+\T1/zi4/m/n/10 decision_tree\T1/ppl/m/n/10 (+20) , \T1/zi4/m/n/10 rand_forest\T
+1/ppl/m/n/10 (+20) , \T1/zi4/m/n/10 xgboost\T1/ppl/m/n/10 (+20) , \T1/zi4/m/n/1
+0 lightgbm\T1/ppl/m/n/10 (+20) , \T1/zi4/m/n/10 svm_linear\T1/ppl/m/n/10 (+20) 
+, \T1/zi4/m/n/10 svm_rbf\T1/ppl/m/n/10 (+20) ,
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 249--250
+\T1/zi4/m/n/10 survreg\T1/ppl/m/n/10 (+20) , \T1/zi4/m/n/10 parametric_surv\T1/
+ppl/m/n/10 (+20) , \T1/zi4/m/n/10 royston_parmar\T1/ppl/m/n/10 (+20) , \T1/zi4/
+m/n/10 piecewise_exp\T1/ppl/m/n/10 (+20) , \T1/zi4/m/n/10 rand_forest\T1/ppl/m/
+n/10 (+20) ,
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 249--250
+\T1/zi4/m/n/10 rand_forest_survival\T1/ppl/m/n/10 (+20) , \T1/zi4/m/n/10 xgboos
+t\T1/ppl/m/n/10 (+20) , \T1/zi4/m/n/10 xgboost_aft\T1/ppl/m/n/10 (+20) . (Note:
+ \T1/zi4/m/n/10 rand_forest \T1/ppl/m/n/10 (+20) and
+ []
+
 
 
 [8]
 
-Package natbib Warning: Citation `Therneau:2000_survival_book' on page 9 undefi
-ned on input line 268.
-
-
-Package natbib Warning: Citation `Therneau:2024_survival_Rpkg' on page 9 undefi
-ned on input line 268.
-
-
-Package natbib Warning: Citation `Barnwal:2020_arXiv' on page 9 undefined on in
-put line 268.
-
-
-Package natbib Warning: Citation `Harrell:1982aa' on page 9 undefined on input 
-line 271.
-
-
-
-[9 <./figures/auc-leaky-vs-guarded.png>]
-
-Package natbib Warning: Citation `Kalbfleisch:2002aa' on page 10 undefined on i
-nput line 285.
-
-
-Package natbib Warning: Citation `Barnwal:2020_arXiv' on page 10 undefined on i
-nput line 291.
-
-
-Package natbib Warning: Citation `Jackson:2016aa' on page 10 undefined on input
- line 297.
-
-
+[9]
 
 [10]
+Overfull \hbox (232.3606pt too wide) in paragraph at lines 334--334
+[]\T1/zi4/m/n/10 #> -----------------------------------------------------------
+--------------------------------------------------------------[] 
+ []
 
-Package natbib Warning: Citation `Friedman:1982aa' on page 11 undefined on inpu
-t line 299.
+LaTeX Font Info:    Trying to load font information for TS1+zi4 on input line 3
+34.
 
+(C:\Users\Selçuk\AppData\Local\Programs\MiKTeX\tex/latex/inconsolata\ts1zi4.fd
+File: ts1zi4.fd 2018/01/14 TS1/zi4 (Inconsolata)
+)
+LaTeX Font Info:    Font shape `TS1/zi4/m/n' will be
+(Font)              scaled to size 10.20004pt on input line 334.
+Package microtype Info: Loading generic protrusion settings for font family
+(microtype)             `zi4' (encoding: TS1).
+(microtype)             For optimal results, create family-specific settings.
+(microtype)             See the microtype manual for details.
 
-Package natbib Warning: Citation `Lawless:2003aa' on page 11 undefined on input
- line 313.
-
-
-Package natbib Warning: Citation `Wilson:2014aa' on page 11 undefined on input 
-line 317.
-
-
-Package natbib Warning: Citation `Wickham:2019aa' on page 11 undefined on input
- line 317.
-
-
-Package natbib Warning: Citation `Peng:2011aa' on page 11 undefined on input li
-ne 319.
-
-
-Package natbib Warning: Citation `Eddelbuettel:2013' on page 11 undefined on in
-put line 323.
-
-
-Package natbib Warning: Citation `Stodden:2014aa' on page 11 undefined on input
- line 323.
+Overfull \hbox (191.47717pt too wide) in paragraph at lines 334--334
+[]\T1/zi4/m/n/10 #> Model    Engine    Harrell C-index  Uno\TS1/zi4/m/n/10 '\T1
+/zi4/m/n/10 s C-index  Integrated Brier Score  RMST diff (t<=655)  Brier(t=294)
+  Brier(t=526)[] 
+ []
 
 
+Overfull \hbox (232.3606pt too wide) in paragraph at lines 334--334
+[]\T1/zi4/m/n/10 #> -----------------------------------------------------------
+--------------------------------------------------------------[] 
+ []
 
-[11]
-! Missing $ inserted.
-<inserted text> 
-                $
-l.340 ...onds to the final training split (`train_
-                                                  data`), not to per-fold an...
-I've inserted a begin-math/end-math symbol since I think
-you left one out. Proceed, with fingers crossed.
 
- 
+Overfull \hbox (80.82408pt too wide) in paragraph at lines 334--334
+[]\T1/zi4/m/n/10 #> cox_ph*  survival  0.660            0.702          0.208   
+                82.158              0.233         0.238[] 
+ []
+
+
+Overfull \hbox (232.3606pt too wide) in paragraph at lines 334--334
+[]\T1/zi4/m/n/10 #> -----------------------------------------------------------
+--------------------------------------------------------------[] 
+ []
+
+
+
+[11{C:/Users/Selçuk/AppData/Local/Programs/MiKTeX/fonts/enc/dvips/inconsolata/
+i4-ts1.enc}]
+
+[12]
+Overfull \hbox (1279.8654pt too wide) in paragraph at lines 395--412
+ [][] 
+ []
+
+
+
+[13]
+Underfull \hbox (badness 1303) in paragraph at lines 427--429
+[]\T1/ppl/b/n/10 (+20) Audit-mode in-stru-men-ta-tion (ob-ser-va-tional, broade
+r but in-com-plete). \T1/ppl/m/n/10 (+20) When
+ []
+
+
+
+[14]
+Overfull \hbox (1501.30937pt too wide) in paragraph at lines 461--474
+ [][] 
+ []
+
+
+
+[15]
+
+[16]
+<figures/auc-leaky-vs-guarded.png, id=370, 722.7pt x 361.35pt>
+File: figures/auc-leaky-vs-guarded.png Graphic file (type png)
+<use figures/auc-leaky-vs-guarded.png>
+Package pdftex.def Info: figures/auc-leaky-vs-guarded.png  used on input line 5
+25.
+(pdftex.def)             Requested size: 398.33858pt x 199.16766pt.
+
+
+[17 <./figures/auc-leaky-vs-guarded.png>]
+
+[18]
+
+[19]
+Overfull \hbox (438.49867pt too wide) in paragraph at lines 663--672
+ [][] 
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 677--677
+|[]\T1/ppl/b/n/10 (+20) Case stud-ies|
+ []
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 683--683
+|\T1/ppl/b/n/10 (+20) Case study A: di-ag-nos-tic bench-mark-ing (breast can-ce
+r)|
+ []
+
+
+
+[20]
+Overfull \hbox (94.66002pt too wide) in paragraph at lines 731--731
+[]\T1/zi4/m/n/10 #> -----------------------------------------------------------
+-----------------------------------[] 
+ []
+
+
+Overfull \hbox (50.36964pt too wide) in paragraph at lines 731--731
+[]\T1/zi4/m/n/10 #> Model         Engine   Accuracy  F1 Score  Kappa  Precision
+  Sensitivity  Specificity  ROC AUC[] 
+ []
+
+
+Overfull \hbox (94.66002pt too wide) in paragraph at lines 731--731
+[]\T1/zi4/m/n/10 #> -----------------------------------------------------------
+-----------------------------------[] 
+ []
+
+
+Overfull \hbox (18.02441pt too wide) in paragraph at lines 731--731
+[]\T1/zi4/m/n/10 #> rand_forest*  ranger   0.971     0.960     0.937  0.923    
+  1.000        0.955        0.996[] 
+ []
+
+
+Overfull \hbox (11.21051pt too wide) in paragraph at lines 731--731
+[]\T1/zi4/m/n/10 #> xgboost       xgboost  0.964     0.948     0.920  0.939    
+  0.958        0.966        0.993[] 
+ []
+
+
+Overfull \hbox (12.91399pt too wide) in paragraph at lines 731--731
+[]\T1/zi4/m/n/10 #> logistic_reg  glm      0.942     0.915     0.870  0.935    
+  0.896        0.966        0.965[] 
+ []
+
+
+Overfull \hbox (94.66002pt too wide) in paragraph at lines 731--731
+[]\T1/zi4/m/n/10 #> -----------------------------------------------------------
+-----------------------------------[] 
+ []
+
+<fastml_files/figure-latex/case-study-a-1.pdf, id=430, 469.755pt x 325.215pt>
+File: fastml_files/figure-latex/case-study-a-1.pdf Graphic file (type pdf)
+<use fastml_files/figure-latex/case-study-a-1.pdf>
+Package pdftex.def Info: fastml_files/figure-latex/case-study-a-1.pdf  used on 
+input line 737.
+(pdftex.def)             Requested size: 469.75386pt x 325.2142pt.
+
+
+[21]
+<fastml_files/figure-latex/unnamed-chunk-4-1.pdf, id=442, 469.755pt x 325.215pt
+>
+File: fastml_files/figure-latex/unnamed-chunk-4-1.pdf Graphic file (type pdf)
+<use fastml_files/figure-latex/unnamed-chunk-4-1.pdf>
+Package pdftex.def Info: fastml_files/figure-latex/unnamed-chunk-4-1.pdf  used 
+on input line 753.
+(pdftex.def)             Requested size: 469.75386pt x 325.2142pt.
+
+
+[22 <./fastml_files/figure-latex/case-study-a-1.pdf>]
+<fastml_files/figure-latex/unnamed-chunk-4-2.pdf, id=454, 469.755pt x 325.215pt
+>
+File: fastml_files/figure-latex/unnamed-chunk-4-2.pdf Graphic file (type pdf)
+<use fastml_files/figure-latex/unnamed-chunk-4-2.pdf>
+Package pdftex.def Info: fastml_files/figure-latex/unnamed-chunk-4-2.pdf  used 
+on input line 760.
+(pdftex.def)             Requested size: 469.75386pt x 325.2142pt.
+
+
+[23 <./fastml_files/figure-latex/unnamed-chunk-4-1.pdf> <./fastml_files/figure-
+latex/unnamed-chunk-4-2.pdf>]
+
+[24]
+Underfull \hbox (badness 10000) in paragraph at lines 848--848
+|[]\T1/ppl/b/n/12 (+20) Conclusion|
+ []
+
+
+
+[25] (RJwrapper.bbl (RJwrapper.brf)
+\tf@brf=\write6
+\openout6 = `RJwrapper.brf'.
+
+
+Underfull \hbox (badness 10000) in paragraph at lines 1--1
+|\T1/ppl/b/n/12 (+20) References|
+ []
+
+
+
+[26]
+Underfull \hbox (badness 1874) in paragraph at lines 140--140
+\T1/ppl/m/n/10 (+20) GBM: A highly ef-fi-cient gra-di-ent boost-ing de-ci-sion 
+tree.  In I. Guyon, U. V.
+ []
+
+
+
+[27]
+
+[28])
+
+LaTeX Font Warning: Font shape `T1/zi4/m/it' undefined
+(Font)              using `T1/zi4/m/n' instead on input line 875.
+
+LaTeX Font Info:    Font shape `T1/zi4/m/it' will be
+(Font)              scaled to size 10.20004pt on input line 885.
+)
+
+[29]
+
+[30] (RJwrapper.aux)
+ ***********
+LaTeX2e <2025-06-01> patch level 1
+L3 programming layer <2025-10-09>
+ ***********
+
+LaTeX Font Warning: Some font shapes were not available, defaults substituted.
+
+Package rerunfilecheck Info: File `RJwrapper.out' has not changed.
+(rerunfilecheck)             Checksum: 96CAB09E91AFA23C28EB1AC89C0340E0;2386.
+Package rerunfilecheck Info: File `RJwrapper.brf' has not changed.
+(rerunfilecheck)             Checksum: CBB259A497C2E589CEC4C22A8CF77220;3458.
+ ) 
 Here is how much of TeX's memory you used:
- 27332 strings out of 468080
- 498086 string characters out of 5424804
- 917866 words of memory out of 5000000
- 55203 multiletter control sequences out of 15000+600000
- 668895 words of font info for 281 fonts, out of 8000000 for 9000
+ 27902 strings out of 468080
+ 510352 string characters out of 5424804
+ 928384 words of memory out of 5000000
+ 55602 multiletter control sequences out of 15000+600000
+ 672702 words of font info for 334 fonts, out of 8000000 for 9000
  1141 hyphenation exceptions out of 8191
- 117i,12n,131p,1363b,898s stack positions out of 10000i,1000n,20000p,200000b,200000s
-!  ==> Fatal error occurred, no output PDF file produced!
+ 117i,12n,131p,1382b,981s stack positions out of 10000i,1000n,20000p,200000b,200000s
+<C:/Users/Selçuk/AppData/Local/Programs/MiKTeX/fonts/type1/public/inconsolat
+a/Inconsolata-zi4r.pfb><C:/Users/Selçuk/AppData/Local/Programs/MiKTeX/fonts/ty
+pe1/public/amsfonts/cm/cmmi10.pfb><C:/Users/Selçuk/AppData/Local/Programs/MiKT
+eX/fonts/type1/public/amsfonts/cm/cmr10.pfb><C:/Users/Selçuk/AppData/Local/Pro
+grams/MiKTeX/fonts/type1/public/amsfonts/cm/cmsy10.pfb><C:/Users/Selçuk/AppDat
+a/Local/Programs/MiKTeX/fonts/type1/public/mathpazo/fplmr.pfb><C:/Users/Selçuk
+/AppData/Local/Programs/MiKTeX/fonts/type1/public/mathpazo/fplmri.pfb><C:/Users
+/Selçuk/AppData/Local/Programs/MiKTeX/fonts/type1/urw/palatino/uplb8a.pfb><C:/
+Users/Selçuk/AppData/Local/Programs/MiKTeX/fonts/type1/urw/palatino/uplr8a.pfb
+><C:/Users/Selçuk/AppData/Local/Programs/MiKTeX/fonts/type1/urw/palatino/uplri
+8a.pfb>
+Output written on RJwrapper.pdf (30 pages, 940000 bytes).
+PDF statistics:
+ 674 PDF objects out of 1000 (max. 8388607)
+ 102 named destinations out of 1000 (max. 500000)
+ 55950 words of extra memory for PDF output out of 61914 (max. 10000000)
+

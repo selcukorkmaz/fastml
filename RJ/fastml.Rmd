@@ -1,9 +1,8 @@
 ---
-title: "fastml: Guarded Resampling Workflows for Safe and Automated Machine Learning in R"
+title: "fastml: Guarded Resampling Workflows for Safer Automated Machine Learning in R"
 date: "2026-03-16"
 abstract: >
-  Preprocessing leakage arises when scaling, imputation, or other data-dependent transformations are estimated before resampling, inflating apparent performance while remaining hard to detect. We present fastml, an R package that emphasizes leakage-aware execution through guarded resampling, where preprocessing is re-estimated inside each resample and then applied to the corresponding assessment data. The package supports grouped and time-ordered resampling, blocks high-risk configurations such as full-analysis splits, and audits recipes for dependencies on external data or environments. We evaluate fastml with a Monte Carlo simulation contrasting global and fold-local normalization, a usability comparison with tidymodels under matched specifications, and survival benchmarks across datasets of different sizes. Across 100 simulation runs, global preprocessing yielded a mean ROC AUC of 0.809 (SD 0.018) versus 0.651 (SD 0.046) under guarded execution, an average inflation of 0.158 (95% CI 0.149 to 0.167). fastml matched held-out performance obtained with tidymodels while reducing workflow orchestration, and it supported consistent benchmarking of multiple survival model classes through a unified interface. fastml is an execution model designed to make leakage-aware evaluation easier to implement correctly in R.
-draft: true
+  Preprocessing leakage arises when scaling, imputation, or other data-dependent transformations are estimated before resampling, inflating apparent performance while remaining hard to detect. We present fastml, an R package that emphasizes leakage-aware execution through guarded resampling, where preprocessing is re-estimated inside each resample and then applied to the corresponding assessment data. The package supports grouped and time-ordered resampling, blocks high-risk configurations such as full-analysis splits, and audits recipes for dependencies on external data or environments. We evaluate fastml with a Monte Carlo simulation contrasting global and fold-local normalization, a usability comparison with tidymodels under matched specifications, and survival benchmarks across datasets of different sizes. Across 100 simulation runs, global preprocessing yielded a mean ROC AUC of 0.809 (SD 0.018) versus 0.651 (SD 0.046) under guarded execution, an average inflation of 0.158 (95% CI 0.149 to 0.167). fastml matched held-out performance obtained with tidymodels while reducing workflow orchestration, and it supported consistent benchmarking of multiple survival model classes through a unified interface. fastml is an R package whose execution model is designed to make leakage-aware evaluation easier to implement correctly in R.
 author:
   - name: Selcuk Korkmaz
     affiliation: Trakya University
@@ -11,19 +10,28 @@ author:
       - Faculty of Medicine, Department of Biostatistics, Balkan Campus
       - Edirne 22030, Turkiye
     email: selcukorkmaz@gmail.com
+    orcid: 0000-0003-4632-6850
   - name: Dincer Goksuluk
     affiliation: Sakarya University
     address:
       - Faculty of Medicine, Department of Biostatistics, Korucuk Campus
       - Sakarya 54290, Turkiye
     email: dincergoksuluk@sakarya.edu.tr
+    orcid: 0000-0002-2752-7668
   - name: Eda Karaismailoglu
     affiliation: University of Health Sciences
     address:
       - Faculty of Medicine, Department of Biostatistics, Gulhane Campus
       - Ankara 06010, Turkiye
     email: eda.karaismailoglu@sbu.edu.tr
+    orcid: 0000-0003-3085-7809
 type: package
+keywords:
+  - machine learning
+  - preprocessing leakage
+  - cross-validation
+  - resampling
+  - survival analysis
 output: 
   rjtools::rjournal_article:
     self_contained: yes
@@ -48,22 +56,24 @@ knitr::opts_chunk$set(
   message = FALSE
 )
 ```
-# Introduction
+# Introduction {#sec:introduction}
 Over the past decade, machine learning workflows in R have evolved from monolithic interfaces, such as \CRANpkg{caret} [@caret_kuhn:2008aa], toward modular ecosystems including \CRANpkg{tidymodels} [@tidymodels_Kuhn:2020aa] and \CRANpkg{mlr3} [@mlr3_Lang:2019aa]. These frameworks decompose modeling into explicit steps for resampling, preprocessing, model specification, and evaluation, providing flexibility and methodological transparency. However, this modularity also shifts responsibility to the user to correctly assemble and coordinate multiple components into a valid pipeline. This shift increases the risk of methodological error by expanding the number of decisions that must be coordinated correctly. Users must ensure that preprocessing, resampling, and model fitting are applied in the proper order and with strict separation between training and evaluation data. In complex workflows, particularly those involving grouped or nested resampling, even experienced practitioners may inadvertently introduce errors that are not detected by standard software checks.
 
 Among these errors, data leakage remains one of the most consequential. In particular, preprocessing leakage occurs when transformations such as scaling, imputation, or feature construction are estimated using information that should be unavailable at evaluation time, for example by learning transformations on the full dataset prior to resampling. This violates training-test isolation and can substantially inflate performance estimates while remaining difficult to detect, because models may still appear well-validated under standard cross-validation [@Hastie:2009_ESL_book]. Recent studies report that leakage and related evaluation flaws are widespread in applied machine learning and contribute to irreproducible and overly optimistic results across multiple scientific domains [@Kapoor:2023aa; @Rosenblatt:2024aa; @Tampu:2022aa]. 
 
-Modern R frameworks provide tools that can prevent preprocessing leakage, most notably by coupling transformations to resampling-aware workflows. However, these safeguards are typically optional rather than enforced. Correct usage requires users to explicitly define recipes or workflows, ensure that preprocessing is trained within each resampling split, and avoid global data-dependent transformations prior to model evaluation. When these conditions are not met, incorrect pipelines can run without warnings while yielding biased estimates. As a result, methodological validity often depends more on user discipline than on guarantees provided by the software.
+Modern R frameworks provide tools that can prevent preprocessing leakage, most notably by coupling transformations to resampling-aware workflows. However, these safeguards are typically optional rather than enforced. Correct usage requires users to explicitly define recipes or workflows, ensure that preprocessing is trained within each resampling split, and avoid global data-dependent transformations prior to model evaluation. When these conditions are not met, incorrect pipelines can run without warnings while yielding biased estimates. As a result, methodological validity often depends more on user discipline than on guarantees provided by the software. For example, tidymodels' `fit_resamples()` and `tune_grid()` correctly re-estimate preprocessing within each fold when a recipe is embedded in a workflow; however, users must assemble this workflow correctly, and nothing prevents them from applying global preprocessing before invoking these functions. fastml addresses this by making fold-local preprocessing the default execution path and by adding structural checks -- such as full-analysis split detection and recipe environment scanning -- that are not present in general-purpose frameworks.
 
 The \CRANpkg{fastml} package [@Korkmaz:2025_fastml_Rpkg] addresses this gap through a safety-by-design interface that emphasizes leakage-aware execution patterns while retaining access to established modeling engines. A central mechanism is its guarded resampling path, in which preprocessing is re-estimated within each resample on the analysis split and the fold-trained transformations are then applied to the corresponding assessment split. \CRANpkg{fastml} also includes checks intended to surface common configuration errors, including aborting a resampling run when a full-analysis (no-holdout) split is detected and rejecting user recipes that appear to depend on external data sources. When hyperparameter tuning is requested under this guarded path, tuning is performed inside the same resampling loop.
 
 More broadly, \CRANpkg{fastml} provides resampling options and diagnostics that target additional evaluation pitfalls. Grouped resampling can keep related observations together when repeated measures or clustered records exist. For time-ordered settings, blocked or rolling resampling relies on an explicit ordering variable and \CRANpkg{fastml} warns when the ordering required by the chosen design is not provided. An optional audit mode can flag risky patterns in custom preprocessing, such as references to the global environment or code that reads data from files or writes outputs to files, which can create hidden dependencies and undermine reproducibility.
 
-These mechanisms are best understood as leakage-risk mitigation rather than universal guarantees. The guarded resampling path reduces leakage risk under supported configurations, but users can still introduce leakage upstream by supplying preprocessed inputs, externally constructed resamples, or otherwise encoding information before invoking \CRANpkg{fastml}. The contribution of \CRANpkg{fastml} is therefore not a new learning algorithm, but an execution model that makes leakage-aware evaluation easier to carry out correctly in practice by packaging common patterns, defaults, and checks into a single interface. This paper describes the design and implementation of \CRANpkg{fastml}, details how guarded resampling and related checks are realized when those execution paths are used, and demonstrates via simulation how preprocessing leakage can inflate performance estimates and how fold-local workflow fitting mitigates this failure mode under the evaluated configurations.
+These mechanisms are best understood as leakage-risk mitigation under supported configurations rather than universal guarantees; users can still introduce leakage upstream, for example by supplying preprocessed inputs or externally constructed resamples. The contribution of \CRANpkg{fastml} is therefore not a new learning algorithm, but an execution model that makes leakage-aware evaluation easier to carry out correctly in practice by packaging common patterns, defaults, and checks into a single interface. This paper describes the design and implementation of \CRANpkg{fastml}, details how guarded resampling and related checks are realized when those execution paths are used, and demonstrates via simulation how preprocessing leakage can inflate performance estimates and how fold-local workflow fitting mitigates this failure mode under the evaluated configurations.
+
+The remainder of this paper focuses on the leakage-mitigation architecture and its empirical evaluation; additional utilities -- parallel execution, bootstrap confidence intervals, adaptive classification thresholds, tuning complexity presets, and post hoc model explanation via `fastexplain()` -- are documented in the package.
 
 # Materials and methods
 ## Guarded resampling {#sec:guarded-resampling}
-Preprocessing leakage arises when data-dependent transformation parameters are estimated using information that should be unavailable at evaluation time [@Kapoor:2023aa; @Kaufman:2012aa]. This most commonly occurs when steps such as scaling, imputation, or dimensionality reduction are learned on the full dataset prior to resampling [@Vabalas:2019aa]. Because transformation parameters are estimated using all rows before the data are split into folds, observations that later belong to assessment folds contribute to those parameters, which are then applied within each training fold, breaking training-test separation and tending to yield optimistic performance estimates [@Hastie:2009_ESL_book]. This failure mode does not require access to outcome labels: even unsupervised transformations can leak information when their parameters are estimated globally [@Moscato:2021aa]. The general problem of optimistic evaluation due to leakage from preprocessing and evaluation design has been widely discussed in the applied machine learning literature [@Hastie:2009_ESL_book; @Kaufman:2012aa]
+Preprocessing leakage arises when data-dependent transformation parameters are estimated using information that should be unavailable at evaluation time [@Kapoor:2023aa; @Kaufman:2012aa]. This most commonly occurs when steps such as scaling, imputation, or dimensionality reduction are learned on the full dataset prior to resampling [@Vabalas:2019aa]. Because transformation parameters are estimated using all rows before the data are split into folds, observations that later belong to assessment folds contribute to those parameters, which are then applied within each training fold, breaking training-test separation and tending to yield optimistic performance estimates [@Hastie:2009_ESL_book]. This failure mode does not require access to outcome labels: even unsupervised transformations can leak information when their parameters are estimated globally [@Kaufman:2012aa]. The general problem of optimistic evaluation due to leakage from preprocessing and evaluation design has been widely discussed in the applied machine learning literature [@Hastie:2009_ESL_book; @Kaufman:2012aa].
 
 Modern R frameworks provide the capability to avoid preprocessing leakage by embedding transformations within resampling-aware workflows. However, this isolation is typically optional rather than enforced, and leaky pipelines can run without warnings while yielding biased estimates if preprocessing is applied globally before resampling. Figure \@ref(fig:leakage-workflow) illustrates the distinction. In a leaky workflow, transformation parameters are estimated on the full dataset before resampling, so each fold’s assessment data influences the transformation applied to that fold’s training data. In a properly specified workflow, transformation parameters are estimated using only the training portion of each fold and then applied to that fold’s assessment portion.
 
@@ -73,7 +83,7 @@ knitr::include_graphics("figures/leaky_cv_workflow_AB.png")
 ```
 
 
-When \CRANpkg{fastml} executes its guarded resampling path (i.e., when workflows are fitted through `fastml_guarded_resample_fit`), it organizes preprocessing and model fitting fold-by-fold to reduce preprocessing-leakage risk. This should be understood as risk mitigation rather than a universal guarantee: users can still introduce leakage upstream via preprocessed inputs or externally constructed resamples, and other leakage sources may require an appropriate resampling design (e.g., grouped or blocked schemes).
+When \CRANpkg{fastml} executes its guarded resampling path (i.e., when workflows are fitted through `fastml_guarded_resample_fit`), it organizes preprocessing and model fitting fold-by-fold to reduce preprocessing-leakage risk (Section \ref{sec:introduction}).
 
 ### The guarded architecture
 Under guarded resampling, any data-dependent preprocessing is re-estimated within each resample. For each fold $k$, the procedure is:
@@ -87,7 +97,7 @@ Under guarded resampling, any data-dependent preprocessing is re-estimated withi
 - **Fit and evaluate within the fold**: Train the model on the preprocessed $D_{analysis}^{(k)}$ and evaluate it on the transformed $D_{assess}^{(k)}$, producing performance for fold $k$.
 
 
-Repeating these steps across folds ensures that, within the resampling process, data-dependent preprocessing parameters are estimated without access to the corresponding assessment data. This reduces preprocessing-leakage risk for workflow-based pipelines, while still requiring users to avoid upstream leakage sources that occur before resampling is invoked.
+Repeating these steps across folds ensures that, within the resampling process, data-dependent preprocessing parameters are estimated without access to the corresponding assessment data.
 
 ### Implementation in \CRANpkg{fastml}
 In \CRANpkg{fastml}, the guarded resampling behavior is implemented in the resampling engine used when the package executes its guarded resampling path. The core implementation is `fastml_guarded_resample_fit`, which iterates directly over \CRANpkg{rsample} [@Frick:2025_rsample_Rpkg] split objects. For each split $k$, the guarded resampling engine:
@@ -96,20 +106,21 @@ In \CRANpkg{fastml}, the guarded resampling behavior is implemented in the resam
 - Applies the fitted preprocessing to the assessment portion and evaluates the trained model on that fold’s assessment data.
 
 
-This structure ensures that, within the guarded resampling loop, recipes are trained on the analysis portion of each split and then applied to the corresponding assessment portion for evaluation. The guard also performs a structural check to detect pathological resampling definitions. In particular, it detects “full-analysis” splits, cases where the analysis indices cover the full dataset and therefore no holdout remains, and stops with an error when such a configuration is encountered. This check is implemented by inspecting resample indices (the `in_id` index sets), rather than by comparing full data objects directly. However, this safeguard does not prevent upstream preprocessing performed before calling `fastml_guarded_resample_fit`, nor does it guarantee that user-provided resamples or inputs are leakage-free.
+This structure ensures that, within the guarded resampling loop, recipes are trained on the analysis portion of each split and then applied to the corresponding assessment portion for evaluation. The guard also performs a structural check to detect pathological resampling definitions. In particular, it detects "full-analysis" splits, cases where the analysis indices cover the full dataset and therefore no holdout remains, and stops with an error when such a configuration is encountered. This check is implemented by inspecting resample indices (the `in_id` index sets), rather than by comparing full data objects directly. As noted in Section 1, upstream preprocessing or externally constructed resamples remain outside the scope of these guards.
 
-In addition to the resampling structure, \CRANpkg{fastml} includes a recipe-scanning guard implemented, which is not a full static analyzer and does not attempt to detect every potentially unsafe operation (e.g., arbitrary function calls, or code that reads data from files or writes outputs to files). Instead, it targets a narrower class of high-impact problems: it scans recipe steps for references to external environments or global objects (e.g., `.GlobalEnv`, parent frames, or environment inheritance patterns) and flags steps that appear to embed data objects (for example, steps that inherit from `data.frame`). Recipes flagged as depending on external environments or embedded data objects are rejected before model training begins, with an informative message. This reduces the risk of recipes implicitly depending on global state or carrying fold-external data inside step definitions, but it does not guarantee detection of all possible leakage or reproducibility hazards.
+In addition to the resampling structure, \CRANpkg{fastml} includes a recipe-scanning guard that is not a full static analyzer and does not attempt to detect every potentially unsafe operation (e.g., arbitrary function calls, or code that reads data from files or writes outputs to files). Instead, it targets a narrower class of high-impact problems: it scans recipe steps for references to external environments or global objects (e.g., `.GlobalEnv`, parent frames, or environment inheritance patterns) and flags steps that appear to embed data objects (for example, steps that inherit from `data.frame`). Recipes flagged as depending on external environments or embedded data objects are rejected before model training begins, with an informative message. This reduces the risk of recipes implicitly depending on global state or carrying fold-external data inside step definitions, but it does not guarantee detection of all possible leakage or reproducibility hazards.
 
-Taken together, \CRANpkg{fastml}’s guarded resampling functionality reduces leakage risk by (i) fitting workflows within each resample when executed through `fastml_guarded_resample_fit`, (ii) detecting full-analysis resampling failures by checking `in_id` indices, and (iii) blocking recipe steps that appear to reference external environments or embed external data objects. These safeguards lower the probability of common leakage mistakes in workflow-based modeling, but they should be interpreted as targeted protections rather than a universal guarantee against all leakage scenarios.
-Beyond preprocessing leakage, \CRANpkg{fastml} also supports resampling designs that reduce common evaluation artifacts. Grouped cross-validation keeps related rows together to reduce group-based leakage [@Kuhn:2013_APM], and blocked/rolling resampling modes surface warnings that correct ordering is required to avoid training on future information [@Hyndman:2018_forecasting]. These features reduce risk in common settings, but they do not eliminate the need for leakage-aware dataset construction upstream.
+Taken together, \CRANpkg{fastml}’s guarded resampling functionality reduces leakage risk by (i) fitting workflows within each resample when executed through `fastml_guarded_resample_fit`, (ii) detecting full-analysis resampling failures by checking `in_id` indices, and (iii) blocking recipe steps that appear to reference external environments or embed external data objects (Section \ref{sec:introduction}).
+
+Beyond preprocessing leakage, \CRANpkg{fastml} also supports resampling designs that reduce common evaluation artifacts. Grouped cross-validation keeps related rows together to reduce group-based leakage [@Kuhn:2013_APM], and blocked/rolling resampling modes surface warnings that correct ordering is required to avoid training on future information [@Hyndman:2018_forecasting].
 
 ### Resampling design for grouped and time-ordered data
 
 Fold-local preprocessing addresses a specific leakage mechanism: estimating data-dependent transformation parameters using information that should be unavailable at evaluation time. However, valid evaluation can still fail when the resampling design does not match the dependence structure of the data. Two common cases are grouped (clustered) data and time-ordered data.
 
-In grouped or clustered settings, optimistic evaluation can occur even when preprocessing is strictly fold-local. If correlated records from the same entity (e.g., repeated measurements from a patient, multiple samples from the same subject, or clustered observations from the same unit) are split across folds, models can exploit within-entity similarity and appear to generalize better than they truly do [@Roberts:2017aa]. To reduce this risk, \CRANpkg{fastml} supports grouped resampling designs in which all rows sharing a grouping identifier are assigned to the same split, using `group_cols` under the corresponding grouped resampling method. This can mitigate group-based leakage when the grouping variable captures the relevant dependence structure, but it is not a guarantee: leakage may persist if relatedness is only partially represented or if the chosen grouping identifier is incomplete.
+In grouped or clustered settings, optimistic evaluation can occur even when preprocessing is strictly fold-local. If correlated records from the same entity (e.g., repeated measurements from a patient, multiple samples from the same subject, or clustered observations from the same unit) are split across folds, models can exploit within-entity similarity and appear to generalize better than they truly do [@Roberts:2017aa]. To reduce this risk, \CRANpkg{fastml} supports grouped resampling designs in which all rows sharing a grouping identifier are assigned to the same split, using `group_cols` under the corresponding grouped resampling method. This can mitigate group-based leakage when the grouping variable captures the relevant dependence structure (Section \ref{sec:introduction}).
 
-In time-ordered settings, leakage can arise when the resampling scheme allows training data to include observations occurring after the assessment period, producing "future-to-past" contamination. This can occur without any explicit preprocessing mistake, purely because the split violates the temporal direction implied by the prediction task [@Bergmeir:2012aa]. \CRANpkg{fastml} supports blocked and rolling resampling modes intended for such settings, which rely on an explicit ordering variable (e.g., `block_col`) and associated block/window parameters. Because correct ordering is a prerequisite for valid time-aware evaluation, \CRANpkg{fastml} warns when the ordering required by the chosen resampling design is not provided. As with grouped designs, these options mitigate a common leakage route under appropriate configuration, but they cannot validate whether the supplied ordering fully captures the information flow in the underlying data-generating process [@Hyndman:2018_forecasting].
+In time-ordered settings, leakage can arise when the resampling scheme allows training data to include observations occurring after the assessment period, producing "future-to-past" contamination. This can occur without any explicit preprocessing mistake, purely because the split violates the temporal direction implied by the prediction task [@Bergmeir:2012aa]. \CRANpkg{fastml} supports blocked and rolling resampling modes intended for such settings, which rely on an explicit ordering variable (e.g., `block_col`) and associated block/window parameters. Because correct ordering is a prerequisite for valid time-aware evaluation, \CRANpkg{fastml} warns when the ordering required by the chosen resampling design is not provided. As with grouped designs, these options mitigate a common leakage route under appropriate configuration (Section \ref{sec:introduction}) [@Hyndman:2018_forecasting].
 
 These resampling designs therefore complement fold-local preprocessing: guarded resampling primarily targets preprocessing leakage within resampling, while grouped and time-aware resampling options help reduce leakage that arises from dependence structures and temporal ordering.
 
@@ -221,6 +232,8 @@ run_iteration <- function(seed) {
   )
 }
 ```
+In this simulation, `tune_params` is used to fix the number of trees at 50 rather than to define a tuning grid; when a single value is supplied for a parameter, fastml treats it as a fixed setting.
+
 We repeated the simulation for `n_sims` independent runs. In each run, we computed a leaky AUC (site-wise scaling performed globally before grouped CV) and a guarded AUC (fold-local preprocessing inside grouped resampling). We summarize the distribution of AUC values across runs and quantify inflation using the paired difference (Leaky minus Guarded) across simulation runs.
 
 ```{r, eval=FALSE, echo=TRUE} 
@@ -239,55 +252,49 @@ summary_stats <- simulation_results %>%
 
 print(summary_stats)
 ```
-Across 100 Monte Carlo runs, the leaky workflow achieved a mean ROC AUC of 0.809 (SD: 0.018), whereas the guarded workflow achieved a mean ROC AUC of 0.651 (SD: 0.046).
+The results of this simulation are reported in Section \ref{sec:simulation-results}.
 
-```{r, eval=FALSE, echo=TRUE} 
-diffs <- simulation_results$Leaky_AUC - simulation_results$Guarded_AUC
-mean_diff <- mean(diffs)
-se_diff <- sd(diffs) / sqrt(n_sims)
-ci <- mean_diff + c(-1, 1) * qt(0.975, df = n_sims - 1) * se_diff
+## Package interface {#sec:package-interface}
 
-mean_diff
-ci
-```
-The paired inflation, defined as Leaky AUC - Guarded AUC within each run, was 0.158 on average, with a 95% t-based confidence interval of $[0.149, 0.167]$.
+The central entry point is `fastml()`, a single function that coordinates data splitting, preprocessing, model fitting, evaluation, and (optionally) hyperparameter tuning. Its arguments are grouped by purpose:
 
-These results indicate a large and consistent upward bias in apparent discrimination when site-wise normalization is performed globally prior to grouped validation. The guarded workflow substantially reduces this bias by re-estimating preprocessing within each resample and applying fold-trained transformations only to the corresponding held-out site.
+- **Data**: `data` (unsplit), or `train_data`/`test_data` (pre-split); `label` (outcome column); `test_size` (holdout fraction, default 0.2).
+- **Algorithms**: `algorithms` (character vector or `"all"`); `algorithm_engines` (optional engine overrides); `task` (`"auto"`, `"classification"`, `"regression"`, or `"survival"`).
+- **Preprocessing**: `recipe` (user-supplied recipes object), `impute_method`, `encode_categoricals`, `scaling_methods`, `balance_method`.
+- **Resampling**: `resampling_method` (e.g., `"cv"`, `"repeatedcv"`, `"boot"`, `"grouped_cv"`, `"blocked_cv"`, `"rolling_origin"`, `"nested_cv"`, `"validation_split"`, `"none"`); `folds`, `repeats`, `group_cols`, `block_col`, `resamples` (user-supplied rsample object).
+- **Tuning**: `tune_params` (named list of grids per algorithm–engine pair); `tuning_strategy` (`"grid"` or `"bayes"`); `tuning_complexity` (`"quick"`, `"balanced"`, `"thorough"`, `"exhaustive"`); `use_default_tuning`.
+- **Evaluation**: `metric` (primary metric); `event_class`; `class_threshold`; `bootstrap_ci` (default `TRUE`); `bootstrap_samples`.
+- **Execution**: `n_cores` (parallel workers); `seed`; `verbose`; `audit_mode`.
 
-Figure \@ref(fig:auc-leaky-vs-guarded)A shows the distribution of ROC AUC values across runs for the leaky and guarded workflows. Figure \@ref(fig:auc-leaky-vs-guarded)B shows the paired within-run change in AUC, highlighting the systematic drop in performance when preprocessing is moved inside the resampling loop.
+**Supported algorithms.** fastml exposes the following algorithm families, each dispatched to one or more engines:
 
-```{r figure_2_codes, eval=FALSE, echo=TRUE} 
-p1 <- simulation_results %>%
-  pivot_longer(cols = c(Leaky_AUC, Guarded_AUC)) %>%
-  ggplot(aes(x = name, y = value, fill = name)) +
-  geom_violin(alpha = 0.3, trim = FALSE) +
-  geom_boxplot(width = 0.2, alpha = 0.8) +
-  scale_fill_manual(values = c("#99CC99", "#FF9999")) +
-  labs(title = "A. AUC Distribution", y = "ROC AUC", x = NULL) +
-  theme_minimal() + theme(legend.position = "none")
+- *Classification* (15 families): `logistic_reg`, `multinom_reg`, `decision_tree`, `C5_rules`, `rand_forest`, `xgboost`, `lightgbm`, `svm_linear`, `svm_rbf`, `nearest_neighbor`, `naive_Bayes`, `mlp`, `discrim_linear`, `discrim_quad`, `bag_tree`.
+- *Regression* (14 families): `linear_reg`, `ridge_reg`, `lasso_reg`, `elastic_net`, `decision_tree`, `rand_forest`, `xgboost`, `lightgbm`, `svm_linear`, `svm_rbf`, `nearest_neighbor`, `mlp`, `pls`, `bayes_glm`.
+- *Survival* (12 families): `cox_ph`, `penalized_cox`, `stratified_cox`, `time_varying_cox`, `survreg`, `parametric_surv`, `royston_parmar`, `piecewise_exp`, `rand_forest`, `rand_forest_survival`, `xgboost`, `xgboost_aft`. (Note: `rand_forest` and `rand_forest_survival` map to different engines -- ranger and aorsf, respectively.)
 
-p2 <- ggplot(simulation_results) +
-  geom_segment(aes(
-    x = "Leaky",
-    xend = "Guarded",
-    y = Leaky_AUC,
-    yend = Guarded_AUC
-  ),
-  alpha = 0.3) +
-  geom_point(aes(x = "Leaky", y = Leaky_AUC), color = "#FF9999") +
-  geom_point(aes(x = "Guarded", y = Guarded_AUC), color = "#99CC99") +
-  labs(title = "B. Paired Drop", y = "ROC AUC", x = NULL) +
-  theme_minimal()
+**Resampling methods.** Nine strategies are supported: `cv` (k-fold cross-validation, default for classification/regression), `repeatedcv`, `boot` (bootstrap), `grouped_cv` (requires `group_cols`), `blocked_cv` (requires `block_col`), `rolling_origin` (requires `initial_window` and `assess_window`), `nested_cv` (requires `outer_folds`), `validation_split`, and `none` (default for survival).
 
-p1 + p2
+**Return value and key methods.** `fastml()` returns an S3 object of class `fastml` that aggregates fitted models, the preprocessing specification, evaluation outputs, and (optionally) the data partitions (see Table \@ref(tab:fastml-object-table) for details). The object supports the following methods:
+
+- `predict.fastml(object, newdata)` -- applies the stored preprocessor and fitted model to new data; supports `type` options including `"class"`, `"prob"`, `"numeric"`, and `"survival"`.
+- `summary.fastml(object)` -- prints performance metrics, tuned parameters, and (for classification) confusion matrices.
+- `plot.fastml(object)` -- generates diagnostic visualizations including metric bar charts, ROC curves, calibration plots, residual diagnostics, and learning curves.
+- `save_fastml()` / `load_model()` -- serialization and deserialization of fastml objects via `saveRDS`/`readRDS`.
+
+**Minimal workflow example.** The simplest valid call requires only data and a label:
+
+```{r minimal-workflow-example, eval=FALSE, echo=TRUE}
+library(fastml)
+fm <- fastml(data = iris, label = "Species")
+summary(fm)
+predict(fm, newdata = new_obs)
 ```
 
-```{r auc-leaky-vs-guarded, fig.cap="Preprocessing placement under grouped cross-validation: (A) ROC AUC distributions for leaky versus guarded workflows; (B) paired ROC AUC showing inflation with global preprocessing.", fig.alt="A two-panel figure. Panel A compares the distribution of ROC AUC values for leaky and guarded workflows across simulation runs. Panel B shows paired points and connecting segments, with most guarded values lower than the corresponding leaky values.", out.width="100%"}
-knitr::include_graphics("figures/auc-leaky-vs-guarded.png")
-```
+**Explanation and exploration utilities.** `fastexplain(object, method)` provides post hoc model explanations via external packages, supporting 10 methods including DALEX-based variable importance and partial dependence, LIME, ICE, ALE, surrogate trees, interaction analysis, breakdown contributions, counterfactual explanations, fairness diagnostics, and modelStudio dashboards. `fastexplore(data)` provides pre-modeling exploratory diagnostics (variable summaries, missingness patterns, distributions, correlations, and visualizations) that remain architecturally separate from the training pipeline (Section \ref{sec:software-architecture-and-security}).
 
+**Parallel execution.** When `n_cores > 1`, fastml registers a \CRANpkg{doFuture} backend with `future::multisession` workers. Parallel plans are automatically restored on function exit, and seed handling is configured through `future.seed` to support deterministic parallel RNG streams. Bootstrap confidence intervals (`bootstrap_ci = TRUE`, default) are computed over `bootstrap_samples` (default 500) draws from the evaluation predictions. The package passes CRAN checks and includes a test suite covering core workflows; documentation is available through standard R help pages and a package vignette.
 
-This experiment demonstrates a concrete and practically relevant failure mode: site-wise normalization performed prior to grouped validation can substantially inflate apparent discrimination, even without access to outcome labels. The paired reductions in ROC AUC show that re-estimating preprocessing within each fold is necessary for valid evaluation when group-level structure is present. In fastml, guarded resampling reduces this class of error by fitting preprocessing and models within resamples when the guarded execution path is used; however, this protection applies only within that execution path and can be bypassed by upstream preprocessing or externally supplied, leaky inputs.
+As a rough guide, Case Study B (5-fold CV with three algorithms and tuning grids on N $\approx$ 8,500) completes in approximately 1.6 minutes on a single core (Intel Core i5-11400 @ 2.60 GHz) using R 4.5. Parallel execution with `n_cores = 4` reduces this to approximately 0.9 minutes. These timings are indicative and will vary with hardware, algorithm complexity, and dataset size.
 
 ## Native survival analysis implementation {#sec:native-survival}
 ### Survival support: learners, outcomes, and resampling
@@ -300,7 +307,28 @@ This experiment demonstrates a concrete and practically relevant failure mode: s
 Survival engines differ in what they naturally return (risk scores, linear predictors, survival curves, time quantiles, or distributional parameters). \CRANpkg{fastml} therefore standardizes predictions only to the extent needed for evaluation: Cox-type learners provide a risk score/linear predictor suitable for concordance-style evaluation [@Harrell:1982aa], parametric learners provide model-based predictions on the scale implied by the fitted distribution, and `xgboost_aft` provides predictions aligned with its AFT objective (typically on the log-time scale, with evaluation defined accordingly). When metrics require time-indexed quantities, evaluation uses explicitly supplied time points rather than assuming that every engine can natively return a full survival curve.
 
 **Fitting under resampling and tuning.** 
-\CRANpkg{fastml} uses conditional dispatch to choose between workflow-based fitting (via tidymodels abstractions) and direct engine calls. When resampling and/or hyperparameter tuning is requested and a method is supported through a resampling-aware workflow, \CRANpkg{fastml} fits preprocessing and model training within each split so that fold-local preprocessing is preserved. Methods that are not executed through the workflow-based resampling path are fit using their native interfaces and evaluated under the corresponding train/test or resampling configuration supported by the training pipeline. Practically, this means that “resampling-aware” fitting is method- and configuration-dependent, and survival resampling is more constrained than for classification/regression tasks.
+\CRANpkg{fastml} uses conditional dispatch to choose between workflow-based fitting (via tidymodels abstractions) and direct engine calls. When resampling and/or hyperparameter tuning is requested and a method is supported through a resampling-aware workflow, \CRANpkg{fastml} fits preprocessing and model training within each split so that fold-local preprocessing is preserved. Methods that are not executed through the workflow-based resampling path are fit using their native interfaces and evaluated under the corresponding train/test or resampling configuration supported by the training pipeline. Practically, this means that "resampling-aware" fitting is method- and configuration-dependent, and survival resampling is more constrained than for classification/regression tasks.
+
+A minimal survival call illustrates the unified interface. The example below uses `cox_ph`, which depends only on the \CRANpkg{survival} package (always available). Additional survival algorithms such as `penalized_cox` and `rand_forest_survival` are available when the optional \CRANpkg{censored} package is installed.
+
+```{r minimal-survival-example, eval=TRUE, echo=TRUE}
+library(fastml)
+library(survival)
+library(censored)
+
+lung_df <- lung[complete.cases(lung), ]
+lung_df$status <- lung_df$status - 1  # recode from 1/2 to 0/1
+
+fm_surv <- fastml(
+  data       = lung_df,
+  label      = c("time", "status"),
+  algorithms = "cox_ph",
+  metric     = "c_index",
+  seed       = 2025
+)
+
+summary(fm_surv, type = "metrics")
+```
 
 **Explicit non-support and constraints.** 
 The survival interface is intentionally scoped. Not all survival data structures and evaluation designs are supported in every backend. For example, the `xgboost_aft` path supports right-censoring through interval bounds but does not accept counting-process (start-stop) outcomes. More generally, some combinations of survival method, resampling design, and tuning configuration are restricted by the training pipeline (and may be rejected with an error) rather than silently coerced. These constraints are treated as part of the package’s design: \CRANpkg{fastml} aims to make supported survival workflows easy to execute correctly, while failing fast when a requested configuration is not implemented or would be ambiguous.
@@ -354,22 +382,19 @@ Many R workflows store fitted models, preprocessing artifacts, predictions, and 
 
 The object represents either a resampling-based workflow or a fixed holdout workflow. When resampling is requested and executed, the object records the resampling plan and summary performance outputs associated with that plan. When a single train-test split is used, resampling-related fields are absent or `NULL`, and reported metrics refer to the holdout/test evaluation.
 
-
-
-
 ```{r fastml-object-table, results="asis"}
 fastml_object_table <- data.frame(
   Slot = c(
-    "`models`",
-    "`preprocessor`",
-    "`predictions`",
-    "`performance`",
-    "`metric`",
-    "`best_model_name`",
-    "`resampling_plan`",
-    "`raw_train_data`, `raw_test_data`",
-    "`processed_train_data`, `processed_test_data`",
-    "`audit`"
+    "\\texttt{models}",
+    "\\texttt{preprocessor}",
+    "\\texttt{predictions}",
+    "\\texttt{performance}",
+    "\\texttt{metric}",
+    "\\texttt{best\\_model\\_name}",
+    "\\texttt{resampling\\_plan}",
+    "\\texttt{raw\\_train\\_data}, \\texttt{raw\\_test\\_data}",
+    "\\texttt{processed\\_train\\_data}, \\texttt{processed\\_test\\_data}",
+    "\\texttt{audit}"
   ),
   Description = c(
     "Fitted model objects, indexed by algorithm and engine",
@@ -384,8 +409,8 @@ fastml_object_table <- data.frame(
     "Audit log entries and a flagged indicator"
   ),
   `Practical guarantee` = c(
-    "Models are stored as fitted objects; downstream `predict` and `plot` methods are intended to use stored fits rather than refitting. Reproducibility depends on package versions and environment consistency.",
-    "The stored preprocessor corresponds to the final training split (`train_data`), not to per-fold analysis subsets. Fold-local preprocessing occurs inside resampling when that path is used, but the stored final preprocessor is trained on the training split used for the final fit.",
+    "Models are stored as fitted objects; downstream \\texttt{predict} and \\texttt{plot} methods are intended to use stored fits rather than refitting. Reproducibility depends on package versions and environment consistency.",
+    "The stored preprocessor corresponds to the final training split (\\texttt{train\\_data}), not to per-fold analysis subsets. Fold-local preprocessing occurs inside resampling when that path is used, but the stored final preprocessor is trained on the training split used for the final fit.",
     "Predictions stored here are the holdout or test predictions produced during evaluation. Training-set predictions and per-fold resampling predictions are not necessarily stored in the same slot by default.",
     "Metrics are computed from evaluation outputs, typically holdout or test predictions. If resampling is used, summary performance reflects the resampling results recorded by the resampling layer.",
     "Defines the main comparison target used in model reporting within the object.",
@@ -393,7 +418,7 @@ fastml_object_table <- data.frame(
     "Encodes how resampling was defined when resampling is executed; used for reporting and consistency.",
     "Enables inspection of the exact splits used. This supports auditability, but the object may include data and therefore is not data-free.",
     "Supports inspection of preprocessing output and helps detect unexpected preprocessing behavior; this is an audit convenience, not a mathematical guarantee of leakage absence.",
-    "When `audit_mode = TRUE`, the audit structure records security-related warnings or flags. It is not a full training provenance log."
+    "When \\texttt{audit\\_mode = TRUE}, the audit structure records security-related warnings or flags. It is not a full training provenance log."
   ),
   check.names = FALSE
 )
@@ -403,6 +428,7 @@ knitr::kable(
   booktabs = TRUE,
   escape = FALSE
 )
+cat("\n\n\\emph{Note}: This table lists the principal user-facing components. The full object contains additional fields (e.g., \\texttt{task}, \\texttt{label}, \\texttt{event\\_class}, \\texttt{engine\\_names}, \\texttt{resampling\\_results}, \\texttt{metric\\_bootstrap}) that support internal dispatch and are accessible for advanced use.\n")
 ```
 
 
@@ -430,7 +456,7 @@ Before initiating automated model training, workflows commonly include an explor
 
 First, `fastexplore` is not called internally by `fastml` and does not participate in model fitting, recipe estimation inside resampling, or evaluation. Second, its default behavior is low side-effect: it returns structured summaries (tables and plots) without writing to disk. Disk output is explicitly opt-in through arguments such as `save_results` or `render_report`.
 
-The outputs of `fastexplore` are intended to inform modeling configuration decisions (for example, whether to impute, transform, or remove features), but they do not automatically alter the training pipeline. Any actions based on diagnostics must be encoded explicitly by the user in the subsequent modeling call.
+In practice, `fastexplore` produces variable-level summaries (types, unique counts, descriptive statistics), missingness diagnostics (per-variable rates, missing-data pattern visualizations including UpSet plots), distribution checks (normality tests, skewness detection), correlation analysis (pairwise matrices with configurable thresholds for flagging high collinearity), and grouped visualizations (histograms, boxplots, bar charts, heatmaps, and scatterplots). These outputs are intended to inform modeling configuration decisions (for example, whether to impute, transform, or remove features), but they do not automatically alter the training pipeline. Any actions based on diagnostics must be encoded explicitly by the user in the subsequent modeling call.
 
 ## Comparison with existing frameworks
 The R ecosystem offers several mature frameworks for machine learning. To contextualize \CRANpkg{fastml}, we compare it against four widely used alternatives: \CRANpkg{caret} [@caret_kuhn:2008aa] (legacy unified interface), \CRANpkg{tidymodels} [@tidymodels_Kuhn:2020aa] (modular workflow system), \CRANpkg{mlr3} [@mlr3_Lang:2019aa] (object-oriented framework with a strong benchmarking culture), and \CRANpkg{h2o} [@Fryda:2024_h2o_Rpkg] (an AutoML platform with an internal training/evaluation engine). The comparison below combines (i) architectural differences relevant to leakage risk, survival modeling, and workflow ergonomics, and (ii) external benchmarks conducted for this paper. Implementation details described as properties of \CRANpkg{fastml} refer to its current codebase; statements about other frameworks reflect their documented behavior and typical usage patterns rather than properties established by \CRANpkg{fastml}’s code.
@@ -438,11 +464,11 @@ The R ecosystem offers several mature frameworks for machine learning. To contex
 ### Feature comparison matrix
 Frameworks differ in where they sit on the flexibility-to-automation spectrum and in how explicitly users must assemble preprocessing, resampling, model fitting, and evaluation. \CRANpkg{caret} provides a largely unified training interface; \CRANpkg{tidymodels} emphasizes explicit composition (recipes + model specification + workflow + rsample); \CRANpkg{mlr3} provides an object-oriented task/learner design with strong support for benchmarking; and \CRANpkg{h2o} provides an integrated AutoML system with its own training and evaluation engine. \CRANpkg{fastml} adopts a single-call façade that orchestrates preprocessing, fitting, and evaluation while exposing a guarded resampling path and diagnostics intended to reduce common workflow errors.
 
-A key comparison dimension is how preprocessing is coupled to evaluation. \CRANpkg{tidymodels} and \CRANpkg{mlr3} are flexible enough to express both leakage-safe and leakage-prone workflows; leakage-resistant evaluation is obtained when preprocessing is estimated on the analysis portion of each resample and then applied to the corresponding assessment data. \CRANpkg{fastml}’s guarded resampling path is designed to re-estimate preprocessing within each resample when that execution mode is used, reducing the risk of preprocessing leakage under supported configurations. This should be interpreted as risk reduction under specific execution paths rather than a universal guarantee, because users can still introduce leakage upstream (e.g., by supplying preprocessed inputs or externally constructed resamples) (Section \@ref(sec:guarded-resampling)).
+A key comparison dimension is how preprocessing is coupled to evaluation. \CRANpkg{tidymodels} and \CRANpkg{mlr3} are flexible enough to express both leakage-safe and leakage-prone workflows; leakage-resistant evaluation is obtained when preprocessing is estimated on the analysis portion of each resample and then applied to the corresponding assessment data. \CRANpkg{fastml}’s guarded resampling path is designed to re-estimate preprocessing within each resample when that execution mode is used, reducing the risk of preprocessing leakage under supported configurations. This should be interpreted as risk reduction rather than a universal guarantee (Section \ref{sec:introduction}; Section \ref{sec:guarded-resampling}).
 
-Survival-model support also differs across ecosystems in both breadth and evaluation tooling. \CRANpkg{caret}, \CRANpkg{tidymodels}, and \CRANpkg{mlr3} offer survival modeling through different abstractions and extension packages (e.g., \CRANpkg{censored} package [@Hvitfeldt:2025_censored_Rpkg]), while \CRANpkg{fastml} exposes a set of survival methods through a unified interface and dispatches between parsnip-based workflows and native engines depending on whether resampling/tuning is requested (Section \@ref(sec:native-survival)). The practical set of methods available to any wrapper framework ultimately depends on engine availability and on which internal execution path is invoked.
+Survival-model support also differs across ecosystems in both breadth and evaluation tooling. \CRANpkg{caret}, \CRANpkg{tidymodels}, and \CRANpkg{mlr3} offer survival modeling through different abstractions and extension packages (e.g., \CRANpkg{censored} package [@Hvitfeldt:2025_censored_Rpkg]), while \CRANpkg{fastml} exposes a set of survival methods through a unified interface and dispatches between parsnip-based workflows and native engines depending on whether resampling/tuning is requested (Section \ref{sec:native-survival}). The practical set of methods available to any wrapper framework ultimately depends on engine availability and on which internal execution path is invoked.
 
-Finally, extensibility and "safety" features should be interpreted precisely. \CRANpkg{fastml} includes preventive recipe validation plus optional audit-mode instrumentation aimed at surfacing common sources of hidden dependencies and side effects (Section \@ref(sec:software-architecture-and-security)). These utilities improve auditability under an instrumented execution path, but they do not constitute a security boundary inside R. Table \@ref(tab:framework-comparison-table) highlights differences in design philosophy, safety enforcement, and domain-specific support.
+Finally, extensibility and "safety" features should be interpreted precisely. \CRANpkg{fastml} includes preventive recipe validation plus optional audit-mode instrumentation aimed at surfacing common sources of hidden dependencies and side effects (Section \ref{sec:software-architecture-and-security}). These utilities improve auditability under an instrumented execution path, but they do not constitute a security boundary inside R. Table \@ref(tab:framework-comparison-table) highlights differences in design philosophy, safety enforcement, and domain-specific support.
 
 
   
@@ -452,47 +478,59 @@ framework_comparison_table <- data.frame(
     "Interface philosophy",
     "Preprocessing and leakage control",
     "Survival analysis support",
-    "Extensibility and safety"
+    "Extensibility and safety",
+    "Parallel execution",
+    "Model explainability"
   ),
   caret = c(
-    "Unified wrapper; function-based syntax such as `train`.",
+    "Unified wrapper; function-based syntax such as \\texttt{train}.",
     "Manual; users must prevent leakage explicitly.",
     "Basic support, primarily Cox proportional hazards.",
-    "Standard execution inside the R session."
+    "Standard execution inside the R session.",
+    "Via \\CRANpkg{doParallel} or similar foreach backends.",
+    "Limited built-in support; variable importance for some models."
   ),
   tidymodels = c(
     "Modular pipeline built from recipes, model specifications, workflows, and resamples.",
     "Optional and user-assembled; leakage-safe workflows are possible but not enforced.",
     "Expanding support, including extensions such as \\CRANpkg{censored}.",
-    "Standard execution inside the R session."
+    "Standard execution inside the R session.",
+    "Via \\CRANpkg{future} with explicit plan registration.",
+    "Via \\CRANpkg{DALEXtra} and \\CRANpkg{vetiver}."
   ),
   mlr3 = c(
     "Object-oriented design with tasks, learners, and graphs.",
     "Robust graph-based pipelines can express leakage-safe evaluation.",
-    "Extensive support via extensions such as \\CRANpkg{mlr3proba}.",
-    "Standard execution inside the R session."
+    "Extensive support via extensions.",
+    "Standard execution inside the R session.",
+    "Via \\CRANpkg{future} with \\CRANpkg{mlr3} parallelization options.",
+    "Via \\CRANpkg{iml} and \\CRANpkg{DALEX}."
   ),
   h2o = c(
     "Integrated AutoML engine.",
     "Automated preprocessing and evaluation inside the H2O engine.",
     "Standard survival support including Cox and AFT variants.",
-    "Engine-isolated execution on the Java backend."
+    "Engine-isolated execution on the Java backend.",
+    "Native multi-threaded execution on the Java backend.",
+    "Built-in SHAP and variable importance."
   ),
   fastml = c(
-    "Guarded facade with a simplified single-function call (`fastml`).",
+    "Guarded facade with a simplified single-function call (\\texttt{fastml}).",
     "Guarded resampling re-estimates preprocessing within folds on supported execution paths.",
     "Unified interface spanning penalized Cox, native XGBoost AFT, and piecewise exponential models.",
-    "Preventive recipe validation plus optional audit instrumentation."
+    "Preventive recipe validation plus optional audit instrumentation.",
+    "Via \\CRANpkg{doFuture} with \\texttt{n\\_cores} argument.",
+    "Integrated \\texttt{fastexplain} with 10 explanation methods."
   ),
   check.names = FALSE
 )
 names(framework_comparison_table) <- c(
   "Feature",
-  "\\\\CRANpkg{caret}",
-  "\\\\CRANpkg{tidymodels}",
-  "\\\\CRANpkg{mlr3}",
-  "\\\\CRANpkg{h2o}",
-  "\\\\CRANpkg{fastml}"
+  "caret",
+  "tidymodels",
+  "mlr3",
+  "h2o",
+  "fastml"
 )
 knitr::kable(
   framework_comparison_table,
@@ -500,12 +538,64 @@ knitr::kable(
   booktabs = TRUE,
   escape = FALSE
 )
-cat("\n\n\\emph{Note}: \\CRANpkg{mlr3proba} is currently removed from CRAN; archived versions remain available.\n")
+cat("\n")
 ```
 
 
 
 # Results
+
+## Simulation results {#sec:simulation-results}
+
+Across 100 Monte Carlo runs, the leaky workflow achieved a mean ROC AUC of 0.809 (SD: 0.018), whereas the guarded workflow achieved a mean ROC AUC of 0.651 (SD: 0.046).
+
+```{r, eval=FALSE, echo=TRUE}
+diffs <- simulation_results$Leaky_AUC - simulation_results$Guarded_AUC
+mean_diff <- mean(diffs)
+se_diff <- sd(diffs) / sqrt(n_sims)
+ci <- mean_diff + c(-1, 1) * qt(0.975, df = n_sims - 1) * se_diff
+
+mean_diff
+ci
+```
+The paired inflation, defined as Leaky AUC - Guarded AUC within each run, was 0.158 on average, with a 95% t-based confidence interval of $[0.149, 0.167]$.
+
+These results indicate a large and consistent upward bias in apparent discrimination when site-wise normalization is performed globally prior to grouped validation. The guarded workflow substantially reduces this bias by re-estimating preprocessing within each resample and applying fold-trained transformations only to the corresponding held-out site.
+
+Figure \@ref(fig:auc-leaky-vs-guarded)A shows the distribution of ROC AUC values across runs for the leaky and guarded workflows. Figure \@ref(fig:auc-leaky-vs-guarded)B shows the paired within-run change in AUC, highlighting the systematic drop in performance when preprocessing is moved inside the resampling loop.
+
+```{r figure_2_codes, eval=FALSE, echo=TRUE}
+p1 <- simulation_results %>%
+  pivot_longer(cols = c(Leaky_AUC, Guarded_AUC)) %>%
+  ggplot(aes(x = name, y = value, fill = name)) +
+  geom_violin(alpha = 0.3, trim = FALSE) +
+  geom_boxplot(width = 0.2, alpha = 0.8) +
+  scale_fill_manual(values = c("#99CC99", "#FF9999")) +
+  labs(title = "A. AUC Distribution", y = "ROC AUC", x = NULL) +
+  theme_minimal() + theme(legend.position = "none")
+
+p2 <- ggplot(simulation_results) +
+  geom_segment(aes(
+    x = "Leaky",
+    xend = "Guarded",
+    y = Leaky_AUC,
+    yend = Guarded_AUC
+  ),
+  alpha = 0.3) +
+  geom_point(aes(x = "Leaky", y = Leaky_AUC), color = "#FF9999") +
+  geom_point(aes(x = "Guarded", y = Guarded_AUC), color = "#99CC99") +
+  labs(title = "B. Paired Drop", y = "ROC AUC", x = NULL) +
+  theme_minimal()
+
+p1 + p2
+```
+
+```{r auc-leaky-vs-guarded, fig.cap="Preprocessing placement under grouped cross-validation: (A) ROC AUC distributions for leaky versus guarded workflows; (B) paired ROC AUC showing inflation with global preprocessing.", fig.alt="A two-panel figure. Panel A compares the distribution of ROC AUC values for leaky and guarded workflows across simulation runs. Panel B shows paired points and connecting segments, with most guarded values lower than the corresponding leaky values.", out.width="100%"}
+knitr::include_graphics("figures/auc-leaky-vs-guarded.png")
+```
+
+This experiment demonstrates a concrete and practically relevant failure mode: site-wise normalization performed prior to grouped validation can substantially inflate apparent discrimination, even without access to outcome labels. The paired reductions in ROC AUC show that re-estimating preprocessing within each fold is necessary for valid evaluation when group-level structure is present. In fastml, guarded resampling reduces this class of error by fitting preprocessing and models within resamples when the guarded execution path is used (Section \ref{sec:introduction}).
+
 ## Benchmarks
 
 ### Benchmark A: usability and code efficiency
@@ -588,7 +678,7 @@ fm$performance$logistic_reg
 ```
 Because both implementations use the same model engine (`glm`), the same training/test partition, and equivalent preprocessing steps, the outputs shown above can be compared directly. When preprocessing choices are matched, the two approaches yield the same holdout metrics, confirming that \CRANpkg{fastml} dispatches to the underlying \CRANpkg{tidymodels} engine without altering the fitted model.
 
-Beyond code volume, the comparison highlights a difference in where correctness effort is concentrated. In a manual \CRANpkg{tidymodels} workflow, the user must explicitly define and correctly sequence each preprocessing step, assemble a workflow object, generate predictions, and compute metrics. Each added step creates an opportunity for omission or mis-ordering. \CRANpkg{fastml} reduces this surface area by bundling common preprocessing, fitting, and evaluation into a single call with safe defaults. This lowers the chance of accidental leakage within the supported pipeline, though users remain responsible for avoiding leakage in upstream data preparation, as discussed in Section \@ref(sec:guarded-resampling).
+Beyond code volume, the comparison highlights a difference in where correctness effort is concentrated. In a manual \CRANpkg{tidymodels} workflow, the user must explicitly define and correctly sequence each preprocessing step, assemble a workflow object, generate predictions, and compute metrics. Each added step creates an opportunity for omission or mis-ordering. \CRANpkg{fastml} reduces this surface area by bundling common preprocessing, fitting, and evaluation into a single call with safe defaults. This lowers the chance of accidental leakage within the supported pipeline (Section \ref{sec:introduction}).
 
 ### Benchmark B: survival analysis across data scales
 To evaluate survival modeling behavior under different data regimes, we conducted an external benchmark comparing classical baselines with fastml-exposed survival engines across datasets of substantially different sizes. This benchmark is intended to illustrate how a single interface can be used to run multiple survival model classes under a consistent evaluation plan. The benchmark is "external" in the sense that all splits, metrics, and summaries are defined by the experimental code in this paper rather than being properties enforced by \CRANpkg{fastml} itself. The complete reproducibility code for this benchmark is provided in the supplementary file `survival_benchmark.R`.
@@ -613,17 +703,17 @@ Because some survival engines may return risk scores whose sign convention diffe
 For each dataset–model combination, we report the mean concordance across resamples with the corresponding standard deviation, and $95\%$ confidence intervals computed from the empirical quantiles of resample scores. Because cross-validation fold estimates are not independent, these intervals are descriptive summaries of resampling variability rather than formal inferential confidence intervals [@Bengio:2004aa].
 
 **Results reporting.** 
-Table \@ref(tab:external-survival-table) reports mean C-index $\pm$ SD with $95%$ confidence intervals computed over the resamples (5 folds $\times$ 3 repeats = 15 evaluations). All numeric values in such a table are external experimental results from this study’s benchmarking code.
+Table \@ref(tab:external-survival-table) reports mean C-index $\pm$ SD with $95\%$ confidence intervals computed over the resamples (5 folds $\times$ 3 repeats = 15 evaluations). All numeric values in such a table are external experimental results from this study’s benchmarking code.
 
 
 ```{r external-survival-table, results="asis"}
 external_survival_table <- data.frame(
   Dataset = c("Lung (N = 228)", "Rotterdam (N = 2,982)", "Flchain (N = 7,874)"),
-  `Cox PH (Baseline)` = c("0.631 +/- 0.064 (0.599 to 0.663)", "0.690 +/- 0.014 (0.683 to 0.697)", "0.794 +/- 0.013 (0.787 to 0.800)"),
-  `Weibull AFT (Baseline)` = c("0.633 +/- 0.062 (0.601 to 0.664)", "0.690 +/- 0.014 (0.683 to 0.697)", "0.794 +/- 0.013 (0.788 to 0.801)"),
-  `fastml (Penalized Cox)` = c("0.641 +/- 0.066 (0.607 to 0.674)", "0.695 +/- 0.015 (0.687 to 0.702)", "0.793 +/- 0.012 (0.787 to 0.799)"),
-  `fastml (XGBoost AFT)` = c("0.618 +/- 0.050 (0.593 to 0.644)", "0.705 +/- 0.012 (0.699 to 0.711)", "0.795 +/- 0.014 (0.788 to 0.802)"),
-  `fastml (RF Survival)` = c("0.644 +/- 0.061 (0.613 to 0.675)", "0.711 +/- 0.015 (0.704 to 0.719)", "0.799 +/- 0.013 (0.793 to 0.806)"),
+  `Cox PH (Baseline)` = c("0.631 +/- 0.064 (0.530 to 0.716)", "0.690 +/- 0.014 (0.669 to 0.713)", "0.794 +/- 0.013 (0.775 to 0.817)"),
+  `Weibull AFT (Baseline)` = c("0.633 +/- 0.062 (0.535 to 0.716)", "0.690 +/- 0.014 (0.669 to 0.712)", "0.794 +/- 0.013 (0.776 to 0.817)"),
+  `fastml (Penalized Cox)` = c("0.641 +/- 0.066 (0.528 to 0.739)", "0.695 +/- 0.015 (0.673 to 0.718)", "0.793 +/- 0.012 (0.776 to 0.816)"),
+  `fastml (XGBoost AFT)` = c("0.618 +/- 0.050 (0.521 to 0.700)", "0.705 +/- 0.012 (0.690 to 0.724)", "0.795 +/- 0.014 (0.778 to 0.819)"),
+  `fastml (RF Survival)` = c("0.641 +/- 0.063 (0.517 to 0.734)", "0.712 +/- 0.014 (0.688 to 0.730)", "0.799 +/- 0.013 (0.784 to 0.823)"),
   check.names = FALSE
 )
 knitr::kable(
@@ -682,9 +772,9 @@ Model explanation is often desirable in diagnostic applications. \CRANpkg{fastml
 fastexplain(fm_bc, method = "dalex")
 ```
 ### Case study B: mixed-type clinical regression (hypertension)
-The second example demonstrates resampling-based regression benchmarking in a larger, mixed-type clinical dataset. Using NHANES data (N $\approx$ 10,000 after filtering to observed outcomes) [@Pruim:2025_NHANES_aa], the objective is to predict systolic blood pressure (`BPSysAve`) from demographic, lifestyle, and laboratory variables. We compare three model families: elastic net (regularized linear model) [@Zou:2005aa], random forest (bagging ensemble), and \CRANpkg{LightGBM} (gradient boosting) [@Ke:2017aa]. Hyperparameters are tuned using a predefined grid under 5-fold cross-validation.
+The second example demonstrates resampling-based regression benchmarking in a larger, mixed-type clinical dataset. Using NHANES data (N $\approx$ 8,500 after filtering to observed outcomes) [@Pruim:2025_NHANES_aa], the objective is to predict systolic blood pressure (`BPSysAve`) from demographic, lifestyle, and laboratory variables. We compare three model families: elastic net (regularized linear model) [@Zou:2005aa], random forest (bagging ensemble), and \CRANpkg{LightGBM} (gradient boosting) [@Ke:2017aa]. Hyperparameters are tuned using a predefined grid under 5-fold cross-validation.
 
-This design reflects a practical goal: evaluate whether a linear model is sufficient, or whether nonlinear learners provide measurable gains under a fixed and transparent tuning budget. Engine availability is an external requirement (e.g., \CRANpkg{LightGBM} must be installed and accessible), and performance will vary with the tuning grid; thus, results should be presented as outcomes of the specified benchmarking design rather than as general statements about the algorithms.
+This design reflects a practical goal: evaluate whether a linear model is sufficient, or whether nonlinear learners provide measurable gains under a fixed and transparent tuning budget. Engine availability is an external requirement (e.g., LightGBM via the \CRANpkg{bonsai} package must be installed and accessible), and performance will vary with the tuning grid; thus, results should be presented as outcomes of the specified benchmarking design rather than as general statements about the algorithms.
 
 ```{r case-study-b, eval=TRUE, echo=TRUE} 
 library(fastml)
@@ -745,13 +835,16 @@ These case studies demonstrate two applied patterns that recur in biomedical mod
 # Conclusion
 The R ecosystem provides increasingly capable machine-learning tooling, but correct evaluation still depends on how users structure preprocessing, resampling, and model selection. A common failure mode is leakage introduced by global data-dependent operations (e.g., imputation, scaling, feature construction) performed before resampling. Such issues can bias performance estimates even when outcome labels are never explicitly used [@Kapoor:2023aa].
 
-\CRANpkg{fastml} is motivated by reducing the practical risk of these errors through a constrained interface and guarded evaluation paths. When \CRANpkg{fastml} executes its guarded resampling path, workflows are fitted within resamples so that data-dependent preprocessing is estimated on analysis splits and then applied to the corresponding assessment splits. This design can substantially reduce leakage risk in typical cross-validation setups, but it is not a universal guarantee: users can still bypass fold-local estimation by supplying preprocessed inputs, by constructing resamples upstream, or by otherwise encoding leakage before calling the package.
+\CRANpkg{fastml} is motivated by reducing the practical risk of these errors through a constrained interface and guarded evaluation paths. When \CRANpkg{fastml} executes its guarded resampling path, workflows are fitted within resamples so that data-dependent preprocessing is estimated on analysis splits and then applied to the corresponding assessment splits. This design can substantially reduce leakage risk in typical cross-validation setups (Section \ref{sec:introduction}).
 
 \CRANpkg{fastml} also extends the same single-call workflow style to survival modeling. In addition to dispatching standard survival learners through established engines, \CRANpkg{fastml} includes native implementations for selected survival methods (e.g., XGBoost AFT with interval bounds and a piecewise-exponential model implemented through flexsurv utilities). This enables side-by-side benchmarking of multiple survival model classes under one interface, while keeping the evaluation design (holdout vs. resampling) explicit in the analysis.
 
-With respect to operational safety, \CRANpkg{fastml} includes audit utilities and sandbox helpers intended to surface risky patterns in user-defined functions and recipe steps. In the current implementation, recipe validation and audit logging can be invoked by `fastml` when `audit_mode = TRUE`, and the audit layer can flag `.GlobalEnv`-style dependencies and I/O-related symbol usage. The more general sandboxed-execution helpers exist but are not invoked by the default training path, and the audit layer is better characterized as warning/logging infrastructure rather than a hard enforcement mechanism that blocks all unsafe operations.
+With respect to operational safety, \CRANpkg{fastml} includes audit utilities intended to surface risky patterns in user-defined functions and recipe steps when `audit_mode = TRUE`. In the current implementation, recipe validation and audit logging can flag `.GlobalEnv`-style dependencies and I/O-related symbol usage. The audit layer is best characterized as warning/logging infrastructure rather than a hard enforcement mechanism that blocks all unsafe operations.
 
 The empirical results presented in this paper (performance comparisons, model rankings, and usability examples) should be interpreted as outcomes of the experimental designs we executed, defined by specific datasets, preprocessing choices, tuning grids, random seeds, and resampling plans, rather than as properties guaranteed by the implementation. Likewise, any claims about reduced boilerplate relative to alternative frameworks should be treated as qualitative observations or externally measured comparisons, not as invariant guarantees.
+
+**Limitations.**
+Several limitations should be noted. First, guarded resampling protects within the pipeline but not against upstream leakage (e.g., preprocessed inputs supplied by the user). Second, audit mode is observational rather than preventive for all patterns; it flags common risks but cannot intercept arbitrary unsafe operations. Third, survival resampling support is more constrained than for classification and regression tasks, with some method–resampling–tuning combinations explicitly unsupported. Fourth, portability of saved fastml objects depends on R and package versions, since fitted model objects may contain external pointers or version-dependent components. Finally, \CRANpkg{fastml} does not currently support model stacking or ensemble combination; this is noted as a direction for future work.
 
 Future work will focus on expanding the set of supported workflows while preserving evaluation clarity. Two concrete directions are (i) model combination strategies (e.g., stacking/super learning) implemented in a way that keeps resampling and leakage considerations explicit [@vanDerLaan:2007aa], and (ii) improved deployment ergonomics (e.g., generating standardized prediction wrappers and deployment-ready artifacts). These are planned extensions rather than current capabilities and will require careful design to maintain the package’s emphasis on transparent evaluation and auditable outputs.
 
