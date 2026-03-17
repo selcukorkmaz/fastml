@@ -29,7 +29,8 @@
       "Bash(Rscript -e 'devtools::load_all\\(\\); testthat::test_dir\\(\"tests/testthat\", stop_on_failure = FALSE\\)' 2>&1 | tail -40)",
       "Bash(Rscript -e 'devtools::load_all\\(\\); testthat::test_file\\(\"tests/testthat/test-bugfixes-round2.R\"\\)' 2>&1)",
       "Bash(Rscript -e 'devtools::load_all\\(\\); testthat::test_dir\\(\"tests/testthat\", stop_on_failure = FALSE\\)' 2>&1 | tail -30)",
-      "Bash(Rscript -e 'devtools::load_all\\(\\); testthat::test_dir\\(\"tests/testthat\", stop_on_failure = FALSE\\)' 2>&1 | tail -50)"
+      "Bash(Rscript -e 'devtools::load_all\\(\\); testthat::test_dir\\(\"tests/testthat\", stop_on_failure = FALSE\\)' 2>&1 | tail -50)",
+      "Bash(ls:*)"
     ]
   }
 }

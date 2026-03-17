@@ -116,7 +116,7 @@ These resampling designs therefore complement fold-local preprocessing: guarded 
 ### Failure-mode demonstration: impact of improper batch correction
 A central motivation for guarded resampling is that preprocessing leakage can arise even in workflows that otherwise appear methodologically careful. In multi-site or multi-center studies, a particularly common failure mode is improper batch correction, where site-specific normalization is performed globally prior to resampling. Although often intended to reduce heterogeneity, such preprocessing can incorporate information from held-out groups and inflate apparent performance estimates [@Luo:2010aa].
 
-To demonstrate this failure mode and to illustrate the consequences of global preprocessing under grouped validation, we conducted a Monte Carlo simulation contrasting improper global batch correction with fold-specific preprocessing embedded in a resampling workflow. This simulation is presented as *external experimental evidence in the paper*, not as a built-in demonstration performed automatically by the package. The extent to which fastml’s guarded resampling path is used depends on internal execution logic and the configuration of the modeling call.
+To demonstrate this failure mode and to illustrate the consequences of global preprocessing under grouped validation, we conducted a Monte Carlo simulation contrasting improper global batch correction with fold-specific preprocessing embedded in a resampling workflow. This simulation is presented as *external experimental evidence in the paper*, not as a built-in demonstration performed automatically by the package. The extent to which fastml’s guarded resampling path is used depends on internal execution logic and the configuration of the modeling call. The complete reproducibility code for this simulation is provided in the supplementary file `failure_mode_simulation.R`.
 
 **Simulation setting.**
 
@@ -526,7 +526,7 @@ train_data <- training(split)
 test_data  <- testing(split)
 ```
 **\CRANpkg{tidymodels} implementation (explicit pipeline).**
-A tidymodels workflow typically requires the user to explicitly define preprocessing, assemble a workflow, fit the model, generate predictions, and compute metrics. The recipe below includes steps that are common in general-purpose templates (for example, novel/unknown/dummy handling), although this particular dataset is entirely numeric. These steps are included to reflect a typical reusable tidymodels template rather than a dataset-specific minimal recipe.
+A tidymodels workflow typically requires the user to explicitly define preprocessing, assemble a workflow, fit the model, generate predictions, and compute metrics. Because the Pima dataset is entirely numeric, the `step_novel`, `step_unknown`, and `step_dummy` calls below are no-ops for this particular dataset; a minimal, dataset-specific recipe could omit them. We retain them here to illustrate the typical boilerplate a practitioner writes when building a reusable template that must also handle nominal predictors. The code-volume comparison should therefore be read as reflecting a common template-driven workflow rather than the minimal possible recipe for this dataset.
 
 ```{r benchmark-a-tidymodels, eval=TRUE, echo=TRUE} 
 library(tidymodels)
@@ -586,14 +586,12 @@ fm <- fastml(
 
 fm$performance$logistic_reg
 ```
-In this comparison, both implementations yielded numerically equivalent performance metrics on the held-out test set. This demonstrates that \CRANpkg{fastml} preserves the computational integrity of the underlying \CRANpkg{tidymodels} engine when identical model specifications are used.
+Because both implementations use the same model engine (`glm`), the same training/test partition, and equivalent preprocessing steps, the outputs shown above can be compared directly. When preprocessing choices are matched, the two approaches yield the same holdout metrics, confirming that \CRANpkg{fastml} dispatches to the underlying \CRANpkg{tidymodels} engine without altering the fitted model.
 
-While \CRANpkg{fastml} significantly reduces code volume, its most important contribution is minimizing the risk of methodological error through architectural constraints. Manual \CRANpkg{tidymodels} workflows place the burden of correctness predominantly on the user, who must explicitly define and sequence numerous independent components, such as imputation, dummy encoding, and zero-variance filtering. In such workflows, every added step creates a new opportunity for omission or data leakage.
-
-In contrast, \CRANpkg{fastml} treats methodological correctness as an architectural requirement rather than a user responsibility. By enforcing a structured pipeline with safe defaults, the framework significantly reduces the cognitive load required to build a valid model. This ensures critical preprocessing steps are applied consistently and minimizes common failure modes, such as leaking test data into training statistics.
+Beyond code volume, the comparison highlights a difference in where correctness effort is concentrated. In a manual \CRANpkg{tidymodels} workflow, the user must explicitly define and correctly sequence each preprocessing step, assemble a workflow object, generate predictions, and compute metrics. Each added step creates an opportunity for omission or mis-ordering. \CRANpkg{fastml} reduces this surface area by bundling common preprocessing, fitting, and evaluation into a single call with safe defaults. This lowers the chance of accidental leakage within the supported pipeline, though users remain responsible for avoiding leakage in upstream data preparation, as discussed in Section \@ref(sec:guarded-resampling).
 
 ### Benchmark B: survival analysis across data scales
-To evaluate survival modeling behavior under different data regimes, we conducted an external benchmark comparing classical baselines with fastml-exposed survival engines across datasets of substantially different sizes. This benchmark is intended to illustrate how a single interface can be used to run multiple survival model classes under a consistent evaluation plan. The benchmark is "external" in the sense that all splits, metrics, and summaries are defined by the experimental code in this paper rather than being properties enforced by \CRANpkg{fastml} itself.
+To evaluate survival modeling behavior under different data regimes, we conducted an external benchmark comparing classical baselines with fastml-exposed survival engines across datasets of substantially different sizes. This benchmark is intended to illustrate how a single interface can be used to run multiple survival model classes under a consistent evaluation plan. The benchmark is "external" in the sense that all splits, metrics, and summaries are defined by the experimental code in this paper rather than being properties enforced by \CRANpkg{fastml} itself. The complete reproducibility code for this benchmark is provided in the supplementary file `survival_benchmark.R`.
 
 **Datasets.** 
 We used widely available survival datasets representing distinct scales:
@@ -608,8 +606,11 @@ Performance was estimated using repeated 5-fold cross-validation (3 repeats). Fo
 **Models compared.** 
 We evaluated two classical baselines implemented outside \CRANpkg{fastml} using the same resampling splits and metric definitions: Cox proportional hazards (`survival::coxph`) and Weibull AFT (`survival::survreg`), alongside fastml-exposed survival methods (e.g., penalized Cox, random-forest survival, and XGBoost AFT) using fixed, pre-specified engine settings. To avoid confounding evaluation with model selection, hyperparameter tuning was not performed in this benchmark; any non-default parameter settings were chosen a priori and held constant within each dataset.
 
-**Uncertainty summaries.** 
-For each dataset–model combination, we report the mean concordance across resamples with the corresponding standard deviation, and $95%$ confidence intervals computed from the empirical quantiles of resample scores. Because cross-validation fold estimates are not independent, these intervals are descriptive summaries of resampling variability rather than formal inferential confidence intervals [@Bengio:2004aa].
+**Concordance standardization.**
+Because some survival engines may return risk scores whose sign convention differs from the standard (higher risk $=$ shorter survival), raw concordance values below 0.5 are replaced by $1 - C$ to ensure a consistent directionality across all models. This "standardized" C-index always lies in $[0.5, 1]$, where 0.5 indicates no discrimination.
+
+**Uncertainty summaries.**
+For each dataset–model combination, we report the mean concordance across resamples with the corresponding standard deviation, and $95\%$ confidence intervals computed from the empirical quantiles of resample scores. Because cross-validation fold estimates are not independent, these intervals are descriptive summaries of resampling variability rather than formal inferential confidence intervals [@Bengio:2004aa].
 
 **Results reporting.** 
 Table \@ref(tab:external-survival-table) reports mean C-index $\pm$ SD with $95%$ confidence intervals computed over the resamples (5 folds $\times$ 3 repeats = 15 evaluations). All numeric values in such a table are external experimental results from this study’s benchmarking code.
@@ -665,8 +666,7 @@ fm_bc <- fastml(
   label         = "Class",
   algorithms    = c("logistic_reg", "rand_forest", "xgboost"),
   metric        = "roc_auc",
-  event_class   = "second",
-  impute_method = "medianImpute"
+  event_class   = "second"
 )
 
 summary(fm_bc, type = "metrics")
@@ -676,10 +676,10 @@ The summary output provides a compact comparison of model performance under a co
 
 Model explanation is often desirable in diagnostic applications. \CRANpkg{fastml} provides `fastexplain` for post hoc explanations via external explainability tooling. The availability of specific explanation artifacts (e.g., permutation importance, SHAP-style outputs) depends on installed explainer packages and on model/engine compatibility [@Lundberg:2017aa]; therefore, explanation figures should be reported only when they are produced in the paper’s software environment.
 
-```{r, eval=TRUE, echo=TRUE} 
-# Optional: explanation outputs depend on installed explainers 
+```{r, eval=TRUE, echo=TRUE}
+# Optional: explanation outputs depend on installed explainers
 #           and model compatibility
-fastexplain(fm_bc, algorithm = "rand_forest")
+fastexplain(fm_bc, method = "dalex")
 ```
 ### Case study B: mixed-type clinical regression (hypertension)
 The second example demonstrates resampling-based regression benchmarking in a larger, mixed-type clinical dataset. Using NHANES data (N $\approx$ 10,000 after filtering to observed outcomes) [@Pruim:2025_NHANES_aa], the objective is to predict systolic blood pressure (`BPSysAve`) from demographic, lifestyle, and laboratory variables. We compare three model families: elastic net (regularized linear model) [@Zou:2005aa], random forest (bagging ensemble), and \CRANpkg{LightGBM} (gradient boosting) [@Ke:2017aa]. Hyperparameters are tuned using a predefined grid under 5-fold cross-validation.
@@ -728,8 +728,8 @@ fm_bp <- fastml(
     ),
     lightgbm = list(
       lightgbm = list(
-        num_leaves    = c(20, 31),
-        learning_rate = c(0.05, 0.1)
+        tree_depth    = c(20, 31),
+        learn_rate    = c(0.05, 0.1)
       )
     )
   )
