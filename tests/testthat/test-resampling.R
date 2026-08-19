@@ -288,7 +288,7 @@ test_that("nested CV tuning uses inner folds and outer metrics match manual eval
       finalized <- tune::finalize_workflow(workflow_spec, best_params)
       outer_train <- rsample::analysis(outer_split)
       outer_assess <- rsample::assessment(outer_split)
-      fitted <- workflows::fit(finalized, data = outer_train)
+      fitted <- parsnip::fit(finalized, data = outer_train)
       preds <- predict(fitted, new_data = outer_assess)$.pred
       expected_rmse <- yardstick::rmse_vec(truth = outer_assess$y, estimate = preds)
 

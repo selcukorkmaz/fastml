@@ -73,7 +73,17 @@ surrogate_tree <- function(object, maxdepth = 3, data = c("train", "test"), ...)
         }
         baked
       },
-      error = function(e) newdata
+      error = function(e) {
+        warning(sprintf(
+          paste0(
+            "Could not apply the fitted recipe to the explanation data: %s\n",
+            "Falling back to the unprocessed data; the explanation below ",
+            "describes the model on raw features and may not be meaningful."
+          ),
+          conditionMessage(e)
+        ), call. = FALSE)
+        newdata
+      }
     )
 
     prob <- tryCatch(

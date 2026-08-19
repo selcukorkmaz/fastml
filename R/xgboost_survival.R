@@ -518,7 +518,7 @@ predict_risk.fastml_native_survival <- function(fit, newdata, ...) {
   if (missing(newdata)) {
     stop("Please supply 'newdata' when calling predict_risk().")
   }
-  baked <- tryCatch(recipes::bake(fit$recipe, new_data = newdata), error = function(e) newdata)
+  baked <- fastml_bake_or_abort(fit$recipe, newdata, "predict_risk()")
   predictors <- fastml_prepare_native_survival_predictors(fit, baked, newdata)
   if (inherits(fit$fit, "coxph")) {
     res <- tryCatch(stats::predict(fit$fit, newdata = predictors, type = "lp"), error = function(e) NULL)
@@ -734,7 +734,7 @@ predict_survival.fastml_native_survival <- function(fit, newdata, times, ...) {
   }
   times <- as.numeric(times)
   times <- times[is.finite(times) & times >= 0]
-  baked <- tryCatch(recipes::bake(fit$recipe, new_data = newdata), error = function(e) newdata)
+  baked <- fastml_bake_or_abort(fit$recipe, newdata, "predict_survival()")
   predictors <- fastml_prepare_native_survival_predictors(fit, baked, newdata)
   n <- nrow(newdata)
   if (inherits(fit$fit, "coxph")) {

@@ -303,7 +303,17 @@ explain_stability <- function(object,
         # Bake the permuted data before prediction
         processed_data <- tryCatch(
           recipes::bake(local_preprocessor, new_data = newdata),
-          error = function(e) newdata  # Fall back to original if baking fails
+          error = function(e) {
+            warning(sprintf(
+              paste0(
+                "Could not apply the fitted recipe to the explanation data: %s\n",
+                "Falling back to the unprocessed data; the explanation below ",
+                "describes the model on raw features and may not be meaningful."
+              ),
+              conditionMessage(e)
+            ), call. = FALSE)
+            newdata
+          }
         )
         # Remove label if present in baked data
         if (label %in% names(processed_data)) {

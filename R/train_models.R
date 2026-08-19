@@ -684,7 +684,8 @@ fastml_run_nested_cv <- function(workflow_spec,
         ir_metrics <- tryCatch(
           tune::collect_metrics(entry, summarize = TRUE),
           error = function(e) {
-            if (is.data.frame(entry) && all(c(".metric", ".estimate") %in% names(entry))) {
+            if (is.data.frame(entry) && ".metric" %in% names(entry) &&
+                any(c(".estimate", "mean") %in% names(entry))) {
               entry
             } else {
               NULL
@@ -702,7 +703,12 @@ fastml_run_nested_cv <- function(workflow_spec,
           match_rows <- match_rows[cmp, , drop = FALSE]
         }
         if (nrow(match_rows) > 0) {
-          fold_score <- match_rows$.estimate[1]
+          # collect_metrics(summarize = TRUE) reports the score in `mean`;
+          # `.estimate` appears only in unsummarized (per-resample) output. Read
+          # whichever is present rather than assuming one, since indexing a tibble
+          # for a missing column returns NULL and silently disables this branch.
+          score_col <- intersect(c("mean", ".estimate"), names(match_rows))[1]
+          fold_score <- if (!is.na(score_col)) match_rows[[score_col]][1] else NULL
           if (!is.null(fold_score) && length(fold_score) == 1 &&
               is.finite(fold_score) &&
               ((lower_is_better && fold_score < best_score) ||
@@ -951,9 +957,12 @@ fastml_collect_tune_resample_summary <- function(tune_results, best_params, task
 #'   instead of fastml's optimized defaults. Default is \code{FALSE}.
 #' @param warn_engine_defaults Logical. If \code{TRUE} (default), warn when fastml's
 #'   default engine differs from parsnip's default.
-#' @param n_cores Integer number of cores requested for parallel processing.
-#'   Used to decide whether tuning/resampling should run in parallel and to
-#'   configure engine thread settings when supported.
+#' @param n_cores Integer number of parallel worker processes used to evaluate
+#'   resamples and tuning candidates. Sizes the worker pool only, and decides
+#'   whether tuning/resampling runs in parallel.
+#' @param engine_threads Integer number of threads passed to engines that accept
+#'   a thread count (\code{num.threads}, \code{num_threads}, \code{nthread}).
+#'   Total CPU demand is approximately \code{n_cores * engine_threads}.
 #' @param verbose Logical. If \code{TRUE}, print informational messages about
 #'   engine selection and parameter overrides.
 #' @param event_class Character string identifying the positive class when computing
@@ -1034,6 +1043,7 @@ train_models <- function(train_data,
                          use_parsnip_defaults = FALSE,
                          warn_engine_defaults = TRUE,
                          n_cores = 1,
+                         engine_threads = 1,
                          verbose = FALSE,
                          event_class = "first",
                          class_threshold = 0.5,
@@ -1060,11 +1070,16 @@ train_models <- function(train_data,
   }, add = TRUE)
   set.seed(seed)
 
+  # `n_cores` sizes the worker pool; `engine_threads` sizes the thread pool each
+  # engine is given. These are deliberately separate: driving both from one
+  # argument meant a request for k cores could demand up to k^2 threads and
+  # contend with itself on engines that thread aggressively.
   n_cores_val <- fastml_normalize_threads(n_cores)
+  engine_threads_val <- fastml_normalize_threads(engine_threads)
   allow_par_base <- !is.null(n_cores_val) && n_cores_val > 1L
   determinism_warnings <- list()
   add_determinism_warning <- function(algo, engine, engine_args) {
-    reason <- fastml_engine_determinism_warning(algo, engine, task, n_cores_val, engine_args)
+    reason <- fastml_engine_determinism_warning(algo, engine, task, engine_threads_val, engine_args)
     if (!is.null(reason)) {
       determinism_warnings[[length(determinism_warnings) + 1]] <<- list(
         algo = algo,
@@ -1481,7 +1496,7 @@ train_models <- function(train_data,
         use_default_tuning || (!is.null(tune_params) && length(tune_params) > 0)
       spec_is_parsnip <- FALSE
       apply_seed_defaults <- function() {
-        engine_args <<- fastml_apply_engine_seed(engine_args, algo, engine, seed, n_cores_val, task)
+        engine_args <<- fastml_apply_engine_seed(engine_args, algo, engine, seed, engine_threads_val, task)
         add_determinism_warning(algo, engine, engine_args)
       }
 
@@ -1740,7 +1755,7 @@ train_models <- function(train_data,
             params$seed <- seed_val
           }
 
-          threads_val <- n_cores_val
+          threads_val <- engine_threads_val
           if (!is.null(engine_args$nthread)) {
             threads_val <- as.integer(engine_args$nthread[[1]])
             engine_args$nthread <- NULL
@@ -2308,8 +2323,27 @@ train_models <- function(train_data,
       }
 
       if (inherits(spec, "fastml_native_survival")) {
+        # Announce the execution path: which of the two survival paths a method
+        # takes is method- and configuration-dependent, so a user expecting
+        # workflow-based fitting should be told when a native engine is used.
+        if (verbose) {
+          message(sprintf(
+            paste0(
+              "Algorithm '%s' is fitted through its native engine rather than a ",
+              "parsnip workflow; preprocessing is applied once via the fitted ",
+              "recipe rather than re-estimated per resample."
+            ),
+            algo
+          ))
+        }
         models[[algo]] <- spec
       } else {
+        if (verbose) {
+          message(sprintf(
+            "Algorithm '%s' is fitted through a parsnip workflow (guarded resampling path).",
+            algo
+          ))
+        }
         wf <- workflows::workflow() %>%
           workflows::add_recipe(recipe) %>%
           workflows::add_model(spec)
@@ -3023,7 +3057,7 @@ train_models <- function(train_data,
       engine <- engines[[engine_index]]
       tuning_seed_base <- fastml_tuning_seed(seed, offset = algo_index * 100L + engine_index)
       engine_args <- resolve_engine_params(engine_params, algo, engine)
-      engine_args <- fastml_apply_engine_seed(engine_args, algo, engine, seed, n_cores_val, task)
+      engine_args <- fastml_apply_engine_seed(engine_args, algo, engine, seed, engine_threads_val, task)
       add_determinism_warning(algo, engine, engine_args)
 
       # Get default parameters for this engine
@@ -3123,12 +3157,19 @@ train_models <- function(train_data,
 
       do_tuning <- perform_tuning && !all(vapply(engine_tune_params, is.null, logical(1)))
 
-      # Apply engine_args to model_spec via set_engine before creating workflow
+      # Apply engine_args to model_spec via set_engine before creating workflow.
+      # parsnip::set_engine() replaces the engine arguments already attached to a
+      # specification rather than adding to them, so calling it again here would
+      # silently discard the defaults the spec builder set -- LightGBM's
+      # counts/bagging_freq/verbose, an xgboost early-stopping configuration, or
+      # sparsediscrim's regularization_method. Merge instead, letting the values
+      # assembled above win only on the keys they actually define.
       model_spec_base <- if (inherits(model_spec, "model_spec")) model_spec else model_spec[[1]]
       if (length(engine_args) > 0) {
+        merged_args <- fastml_merge_engine_args(model_spec_base$eng_args, engine_args)
         model_spec_base <- do.call(
           parsnip::set_engine,
-          c(list(model_spec_base, engine = engine), engine_args)
+          c(list(model_spec_base, engine = engine), merged_args)
         )
       }
 

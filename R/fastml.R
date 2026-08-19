@@ -91,7 +91,17 @@
 #' @param warn_engine_defaults Logical. If \code{TRUE} (default), warns when fastml's
 #'   default engine differs from parsnip's default. Set to \code{FALSE} to suppress
 #'   these warnings. Warnings are only shown once per algorithm per session.
-#' @param n_cores An integer specifying the number of CPU cores to use for parallel processing. Default is \code{1}.
+#' @param n_cores An integer specifying the number of parallel worker processes used to
+#'   evaluate resamples and tuning candidates. Default is \code{1} (sequential). This sizes
+#'   the worker pool only; it does not change how many threads an individual engine uses,
+#'   which is controlled by \code{engine_threads}.
+#' @param engine_threads An integer specifying the number of threads passed to engines that
+#'   accept a thread count (for example \code{num.threads} for \pkg{ranger},
+#'   \code{num_threads} for \pkg{lightgbm}, \code{nthread} for \pkg{xgboost}). Default is
+#'   \code{1}. Total CPU demand is approximately \code{n_cores * engine_threads}, so raising
+#'   both above the number of available cores will oversubscribe the machine and can be
+#'   slower than either alone. Values greater than \code{1} may also make some engines
+#'   nondeterministic; a warning is issued where that applies.
 #' @param stratify Logical indicating whether to use stratified sampling when splitting the data. Only applied to random holdout splitting. Default is \code{TRUE} for classification and \code{FALSE} for regression.
 #' @param impute_method Method for handling missing values. Options include:
 #'   \describe{
@@ -317,6 +327,7 @@ fastml <- function(data = NULL,
                    use_parsnip_defaults = FALSE,
                    warn_engine_defaults = TRUE,
                    n_cores = 1,
+                   engine_threads = 1,
                    stratify = TRUE,
                    impute_method = "error",
                    encode_categoricals = TRUE,
@@ -1235,6 +1246,7 @@ fastml <- function(data = NULL,
       use_parsnip_defaults = use_parsnip_defaults,
       warn_engine_defaults = warn_engine_defaults,
       n_cores = n_cores,
+      engine_threads = engine_threads,
       verbose = verbose,
       event_class = event_class,
       class_threshold = class_threshold,
@@ -1728,6 +1740,7 @@ fastml <- function(data = NULL,
           use_parsnip_defaults = use_parsnip_defaults,
           warn_engine_defaults = warn_engine_defaults,
           n_cores = n_cores,
+          engine_threads = engine_threads,
           verbose = verbose,
           event_class = event_class,
           start_col = start_col,
@@ -1811,7 +1824,22 @@ fastml <- function(data = NULL,
         }
         baked
       },
-      error = function(e) test_data
+      # Training has already succeeded here, so this is reported rather than
+      # fatal; but the stored copy is left unprocessed, and downstream use of
+      # processed_test_data would otherwise silently mix the two representations.
+      error = function(e) {
+        warning(sprintf(
+          paste0(
+            "Could not apply the fitted recipe to the test data when assembling ",
+            "the result object: %s\n",
+            "`processed_test_data` therefore holds the unprocessed test data. ",
+            "Reported model performance is unaffected, but treat that component ",
+            "as raw rather than preprocessed."
+          ),
+          conditionMessage(e)
+        ), call. = FALSE)
+        test_data
+      }
     )
   }
 

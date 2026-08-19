@@ -254,6 +254,42 @@ fastml_normalize_seed <- function(seed) {
   seed
 }
 
+#' Merge engine arguments onto a specification's existing ones
+#'
+#' `parsnip::set_engine()` replaces any engine arguments already attached to a
+#' model specification rather than adding to them. When arguments are applied in
+#' a second pass, the defaults a spec builder established would therefore be
+#' lost. This helper evaluates the existing quosures and overlays `new_args` on
+#' top, so spec defaults survive unless explicitly overridden.
+#'
+#' @param existing The `eng_args` element of a `model_spec` (a list of quosures),
+#'   or `NULL`.
+#' @param new_args Named list of engine arguments to apply.
+#'
+#' @return A named list suitable for `do.call(parsnip::set_engine, ...)`.
+#' @keywords internal
+#' @noRd
+fastml_merge_engine_args <- function(existing, new_args) {
+  if (is.null(new_args)) {
+    new_args <- list()
+  }
+  if (is.null(existing) || length(existing) == 0) {
+    return(new_args)
+  }
+  existing_vals <- list()
+  for (nm in names(existing)) {
+    if (!nzchar(nm)) next
+    val <- tryCatch(rlang::eval_tidy(existing[[nm]]), error = function(e) NULL)
+    if (!is.null(val)) {
+      existing_vals[[nm]] <- val
+    }
+  }
+  if (length(existing_vals) == 0) {
+    return(new_args)
+  }
+  utils::modifyList(existing_vals, new_args)
+}
+
 fastml_normalize_threads <- function(n_cores) {
   if (is.null(n_cores) || length(n_cores) == 0 || is.na(n_cores[[1]])) {
     return(NULL)

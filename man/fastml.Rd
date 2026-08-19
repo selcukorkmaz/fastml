@@ -33,6 +33,7 @@ fastml(
   use_parsnip_defaults = FALSE,
   warn_engine_defaults = TRUE,
   n_cores = 1,
+  engine_threads = 1,
   stratify = TRUE,
   impute_method = "error",
   encode_categoricals = TRUE,
@@ -168,7 +169,18 @@ Use \code{print_default_differences()} to see all differences.}
 default engine differs from parsnip's default. Set to \code{FALSE} to suppress
 these warnings. Warnings are only shown once per algorithm per session.}
 
-\item{n_cores}{An integer specifying the number of CPU cores to use for parallel processing. Default is \code{1}.}
+\item{n_cores}{An integer specifying the number of parallel worker processes used to
+evaluate resamples and tuning candidates. Default is \code{1} (sequential). This sizes
+the worker pool only; it does not change how many threads an individual engine uses,
+which is controlled by \code{engine_threads}.}
+
+\item{engine_threads}{An integer specifying the number of threads passed to engines that
+accept a thread count (for example \code{num.threads} for \pkg{ranger},
+\code{num_threads} for \pkg{lightgbm}, \code{nthread} for \pkg{xgboost}). Default is
+\code{1}. Total CPU demand is approximately \code{n_cores * engine_threads}, so raising
+both above the number of available cores will oversubscribe the machine and can be
+slower than either alone. Values greater than \code{1} may also make some engines
+nondeterministic; a warning is issued where that applies.}
 
 \item{stratify}{Logical indicating whether to use stratified sampling when splitting the data. Only applied to random holdout splitting. Default is \code{TRUE} for classification and \code{FALSE} for regression.}
 

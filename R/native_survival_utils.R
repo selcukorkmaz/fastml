@@ -8,6 +8,43 @@
 #' @noRd
 NULL
 
+#' Apply a stored recipe, or abort
+#'
+#' Applies a fitted recipe to new data on a prediction path. Failure is fatal
+#' rather than silently ignored: falling back to unpreprocessed data would make
+#' the model predict on features it was not trained on, producing
+#' plausible-looking but meaningless output. A `NULL` recipe means there is
+#' nothing to apply, and `new_data` is returned unchanged.
+#'
+#' @param recipe A prepped recipe, or `NULL`.
+#' @param new_data Data to bake.
+#' @param context Short description of the calling path, used in the message.
+#'
+#' @return The baked data, or `new_data` when `recipe` is `NULL`.
+#' @keywords internal
+#' @noRd
+fastml_bake_or_abort <- function(recipe, new_data, context) {
+  if (is.null(recipe)) {
+    return(new_data)
+  }
+  tryCatch(
+    recipes::bake(recipe, new_data = new_data),
+    error = function(e) {
+      stop(sprintf(
+        paste0(
+          "Could not apply the stored preprocessing recipe in %s: %s\n",
+          "The new data must contain the same columns, types, and factor levels ",
+          "as the training data. fastml does not fall back to unpreprocessed ",
+          "data, because doing so would return predictions from a model applied ",
+          "to features it was not trained on."
+        ),
+        context,
+        conditionMessage(e)
+      ), call. = FALSE)
+    }
+  )
+}
+
 fastml_prepare_native_survival_predictors <- function(model, baked_newdata, original_newdata) {
   if (is.null(baked_newdata)) {
     baked_newdata <- data.frame()

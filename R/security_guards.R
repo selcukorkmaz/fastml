@@ -112,6 +112,15 @@ fastml_recipe_step_contains_external_reference <- function(step, depth = 0, max_
     return(fastml_recipe_step_contains_external_reference(body(step), depth + 1, max_depth))
   }
 
+  # Checked before the generic list branch below: data frames and tibbles are
+  # themselves lists, so recursing into their columns would report FALSE and the
+  # embedded-data pattern this guard targets would never be flagged. Only nested
+  # components count as embedded data; the step object handed in at depth 0 is not
+  # itself expected to be a data frame.
+  if (depth > 0 && (is.data.frame(step) || inherits(step, "tbl_df"))) {
+    return(TRUE)
+  }
+
   if (is.list(step)) {
     for (element in step) {
       if (fastml_recipe_step_contains_external_reference(element, depth + 1, max_depth)) {
@@ -151,10 +160,6 @@ fastml_recipe_step_contains_external_reference <- function(step, depth = 0, max_
     return(FALSE)
   }
 
-  if (inherits(step, "data.frame") || inherits(step, "tbl_df")) {
-    return(TRUE)
-  }
-
   FALSE
 }
 
@@ -182,11 +187,25 @@ fastml_detect_leaky_recipe_steps <- function(recipe) {
   unique(flagged)
 }
 
+# A prepped recipe carries no `trained` flag of its own, so testing
+# `recipe$trained` never fires. Trained state is read from the step flags via
+# recipes::fully_trained(), with the training-set record `tr_info` as a fallback
+# for a prepped recipe that has no steps.
+fastml_recipe_is_trained <- function(recipe) {
+  if (isTRUE(recipe$trained)) {
+    return(TRUE)
+  }
+  if (!is.null(recipe$tr_info)) {
+    return(TRUE)
+  }
+  isTRUE(tryCatch(recipes::fully_trained(recipe), error = function(...) FALSE))
+}
+
 fastml_validate_user_recipe <- function(recipe, audit_env = NULL) {
   if (!inherits(recipe, "recipe")) {
     stop("`recipe` must be a recipes::recipe object.")
   }
-  if (isTRUE(recipe$trained)) {
+  if (fastml_recipe_is_trained(recipe)) {
     stop("Pretrained recipes are not allowed; provide an untrained recipe.")
   }
   leaky_steps <- fastml_detect_leaky_recipe_steps(recipe)

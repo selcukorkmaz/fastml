@@ -20,9 +20,10 @@ fastml_setup_parallel <- function(n_cores, seed) {
     }
 
     # CAPTURE: Register doFuture and save the PREVIOUS backend info.
-    # registerDoFuture() returns the old backend which we restore on cleanup.
+    # registerDoFuture() takes no arguments and returns the old backend
+    # (a list of fun/data/info) which we restore on cleanup.
     # See: https://dofuture.futureverse.org/reference/registerDoFuture.html
-    old_do_par <- doFuture::registerDoFuture(flavor = "%dofuture%")
+    old_do_par <- doFuture::registerDoFuture()
 
     seed_val <- fastml_normalize_seed(seed)
     options(future.seed = if (!is.null(seed_val)) seed_val else TRUE)
@@ -38,9 +39,17 @@ fastml_setup_parallel <- function(n_cores, seed) {
     future::plan(old_plan)
     options(future.seed = old_future_seed)
 
-    # If we changed the foreach backend, restore the previous one
+    # If we changed the foreach backend, restore the previous one. When no
+    # backend was registered before this call, registerDoFuture() reports the
+    # previous data/info hooks as NULL; passing those straight back to
+    # setDoPar() leaves foreach in a state where getDoParName() errors for the
+    # rest of the session, so the sequential default is registered instead.
     if (!is.null(old_do_par)) {
-      do.call(foreach::setDoPar, args = old_do_par)
+      if (is.function(old_do_par$info)) {
+        do.call(foreach::setDoPar, args = old_do_par)
+      } else {
+        foreach::registerDoSEQ()
+      }
     }
   }
 

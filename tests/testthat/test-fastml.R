@@ -457,7 +457,13 @@ test_that("regression model successful.", {
 
 
 test_that("multicore tasks successful.", {
+  # CRAN coverage of the parallel path is provided by test-parallel-setup.R,
+  # whose structural tests catch the same defects in ~4s; this end-to-end run
+  # costs ~20s, almost all of it multisession worker startup, so it is gated.
   skip_on_cran()
+  skip_if_not_installed("future")
+  skip_if_not_installed("doFuture")
+
   res <- fastml(
     data = iris[, -5],
     label = "Sepal.Length",

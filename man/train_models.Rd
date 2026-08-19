@@ -37,6 +37,7 @@ train_models(
   use_parsnip_defaults = FALSE,
   warn_engine_defaults = TRUE,
   n_cores = 1,
+  engine_threads = 1,
   verbose = FALSE,
   event_class = "first",
   class_threshold = 0.5,
@@ -151,9 +152,13 @@ instead of fastml's optimized defaults. Default is \code{FALSE}.}
 \item{warn_engine_defaults}{Logical. If \code{TRUE} (default), warn when fastml's
 default engine differs from parsnip's default.}
 
-\item{n_cores}{Integer number of cores requested for parallel processing.
-Used to decide whether tuning/resampling should run in parallel and to
-configure engine thread settings when supported.}
+\item{n_cores}{Integer number of parallel worker processes used to evaluate
+resamples and tuning candidates. Sizes the worker pool only, and decides
+whether tuning/resampling runs in parallel.}
+
+\item{engine_threads}{Integer number of threads passed to engines that accept
+a thread count (\code{num.threads}, \code{num_threads}, \code{nthread}).
+Total CPU demand is approximately \code{n_cores * engine_threads}.}
 
 \item{verbose}{Logical. If \code{TRUE}, print informational messages about
 engine selection and parameter overrides.}

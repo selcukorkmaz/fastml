@@ -107,66 +107,16 @@ process_model <- function(model_obj,
                           multiclass_auc = "macro") {
   # If the model object is a tuning result, finalize the workflow
   if (inherits(model_obj, "tune_results")) {
-    select_metric <- metric
-    select_best_safe <- function(metric_name) {
-      tryCatch(tune::select_best(model_obj, metric = metric_name),
-               error = function(e) e)
-    }
-    best_params <- select_best_safe(select_metric)
-    select_error <- NULL
-    if (inherits(best_params, "error")) {
-      select_error <- best_params
-      available_metrics <- tryCatch(
-        unique(tune::collect_metrics(model_obj)$.metric),
-        error = function(e) NULL
-      )
-      if (!is.null(available_metrics) && length(available_metrics) > 0) {
-        fallback_priority <- switch(task,
-          classification = c("logloss", "brier_score", "roc_auc", "accuracy", "kap",
-                             "sens", "spec", "precision", "f_meas"),
-          regression = c("rmse", "rsq", "mae"),
-          survival = c("c_index", "uno_c", "ibs", "rmst_diff"),
-          c()
-        )
-        candidate_metrics <- c(
-          fallback_priority[fallback_priority %in% available_metrics],
-          setdiff(available_metrics, fallback_priority)
-        )
-        candidate_metrics <- unique(setdiff(candidate_metrics, select_metric))
-        for (cand in candidate_metrics) {
-          res <- select_best_safe(cand)
-          if (!inherits(res, "error")) {
-            best_params <- res
-            warning(sprintf(
-              "Metric '%s' unavailable for model '%s'; selecting best by '%s'.",
-              select_metric,
-              model_id,
-              cand
-            ), call. = FALSE)
-            break
-          }
-        }
-      }
-    }
-    if (inherits(best_params, "error") || is.null(best_params)) {
-      warning(paste(
-        "Could not select best parameters for model",
-        model_id,
-        ":",
-        conditionMessage(select_error)
-      ))
+    final_model <- finalize_tuned_model(
+      model_obj = model_obj,
+      model_id = model_id,
+      task = task,
+      metric = metric,
+      train_data = train_data
+    )
+    if (is.null(final_model)) {
       return(NULL)
     }
-
-    model_spec <- workflows::pull_workflow_spec(model_obj)
-    model_recipe <- workflows::pull_workflow_preprocessor(model_obj)
-
-    final_model_spec <- tune::finalize_model(model_spec, best_params)
-    final_workflow <- workflows::workflow() %>%
-      workflows::add_recipe(model_recipe) %>%
-      workflows::add_model(final_model_spec)
-
-    final_model <- parsnip::fit(final_workflow, data = train_data)
   } else if (inherits(model_obj, "fastml_native_survival")) {
     # Native survival model fitted outside parsnip/workflows
     final_model <- model_obj
@@ -798,13 +748,29 @@ process_model <- function(model_obj,
       surv_obj <- survival::Surv(test_data[[time_col]], test_status_clean)
     }
 
-    # Prepare data for prediction depending on model type
+    # Prepare data for prediction depending on model type.
+    # Failure to apply the stored recipe is fatal rather than silently ignored:
+    # predicting on unpreprocessed features would yield plausible-looking but
+    # meaningless metrics, which is worse than no result at all.
     pred_new_data <- test_data
-    if (inherits(final_model, "fastml_native_survival")) {
+    if (inherits(final_model, "fastml_native_survival") &&
+        !is.null(final_model$recipe)) {
       pred_new_data <- tryCatch(
         recipes::bake(final_model$recipe, new_data = test_data),
-        error = function(e)
-          test_data
+        error = function(e) {
+          stop(sprintf(
+            paste0(
+              "Could not apply the stored preprocessing recipe for model '%s' to ",
+              "the evaluation data: %s\n",
+              "The evaluation data must contain the same columns, types, and ",
+              "factor levels as the training data. fastml does not fall back to ",
+              "unpreprocessed data, because doing so would report metrics for a ",
+              "model evaluated on features it was not trained on."
+            ),
+            model_id,
+            conditionMessage(e)
+          ), call. = FALSE)
+        }
       )
     }
 
@@ -1234,10 +1200,43 @@ process_model <- function(model_obj,
         extract_pred(pred_vals)
       }
     }, error = function(e) {
+      # The original condition is reported rather than discarded: without it the
+      # user sees only NA risk scores (or a second, unrelated failure) and has no
+      # way to tell which engine call went wrong.
+      primary_msg <- conditionMessage(e)
       if (inherits(final_model, "fastml_native_survival")) {
+        warning(sprintf(
+          paste0(
+            "Risk prediction failed for model '%s'; risk scores are NA and ",
+            "survival metrics for this model will be unavailable. Original error: %s"
+          ),
+          model_id,
+          primary_msg
+        ), call. = FALSE)
         rep(NA_real_, nrow(test_data))
       } else {
-        extract_pred(predict(final_model, new_data = test_data))
+        warning(sprintf(
+          paste0(
+            "Risk prediction failed for model '%s'; retrying with a default ",
+            "prediction call. Original error: %s"
+          ),
+          model_id,
+          primary_msg
+        ), call. = FALSE)
+        tryCatch(
+          extract_pred(predict(final_model, new_data = test_data)),
+          error = function(e2) {
+            stop(sprintf(
+              paste0(
+                "Risk prediction failed for model '%s'. Original error: %s\n",
+                "The fallback prediction call also failed: %s"
+              ),
+              model_id,
+              primary_msg,
+              conditionMessage(e2)
+            ), call. = FALSE)
+          }
+        )
       }
     })
 
@@ -2114,3 +2113,85 @@ process_model <- function(model_obj,
 
   return(list(performance = perf, predictions = data_metrics))
 }
+
+#' Finalize a tuned workflow
+#'
+#' Selects the best hyperparameter configuration from a `tune_results` object and
+#' refits the corresponding workflow on the full training data. If the requested
+#' metric is unavailable, other metrics are tried in a task-specific priority
+#' order and the substitution is reported with a warning.
+#'
+#' @param model_obj A `tune_results` object.
+#' @param model_id Identifier used in diagnostic messages.
+#' @param task One of `"classification"`, `"regression"`, or `"survival"`.
+#' @param metric Name of the metric used to select the best configuration.
+#' @param train_data Training data used to refit the finalized workflow.
+#'
+#' @return A fitted workflow, or `NULL` (with a warning) when no configuration
+#'   could be selected.
+#'
+#' @keywords internal
+#' @noRd
+finalize_tuned_model <- function(model_obj, model_id, task, metric, train_data) {
+  select_metric <- metric
+  select_best_safe <- function(metric_name) {
+    tryCatch(tune::select_best(model_obj, metric = metric_name),
+             error = function(e) e)
+  }
+  best_params <- select_best_safe(select_metric)
+  select_error <- NULL
+  if (inherits(best_params, "error")) {
+    select_error <- best_params
+    available_metrics <- tryCatch(
+      unique(tune::collect_metrics(model_obj)$.metric),
+      error = function(e) NULL
+    )
+    if (!is.null(available_metrics) && length(available_metrics) > 0) {
+      fallback_priority <- switch(task,
+        classification = c("logloss", "brier_score", "roc_auc", "accuracy", "kap",
+                           "sens", "spec", "precision", "f_meas"),
+        regression = c("rmse", "rsq", "mae"),
+        survival = c("c_index", "uno_c", "ibs", "rmst_diff"),
+        c()
+      )
+      candidate_metrics <- c(
+        fallback_priority[fallback_priority %in% available_metrics],
+        setdiff(available_metrics, fallback_priority)
+      )
+      candidate_metrics <- unique(setdiff(candidate_metrics, select_metric))
+      for (cand in candidate_metrics) {
+        res <- select_best_safe(cand)
+        if (!inherits(res, "error")) {
+          best_params <- res
+          warning(sprintf(
+            "Metric '%s' unavailable for model '%s'; selecting best by '%s'.",
+            select_metric,
+            model_id,
+            cand
+          ), call. = FALSE)
+          break
+        }
+      }
+    }
+  }
+  if (inherits(best_params, "error") || is.null(best_params)) {
+    warning(paste(
+      "Could not select best parameters for model",
+      model_id,
+      ":",
+      conditionMessage(select_error)
+    ))
+    return(NULL)
+  }
+
+  model_spec <- workflows::pull_workflow_spec(model_obj)
+  model_recipe <- workflows::pull_workflow_preprocessor(model_obj)
+
+  final_model_spec <- tune::finalize_model(model_spec, best_params)
+  final_workflow <- workflows::workflow() %>%
+    workflows::add_recipe(model_recipe) %>%
+    workflows::add_model(final_model_spec)
+
+  parsnip::fit(final_workflow, data = train_data)
+}
+
