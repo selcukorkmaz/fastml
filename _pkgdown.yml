@@ -1,0 +1,134 @@
+url: https://selcukorkmaz.github.io/fastml/
+
+# Shared palette, typography, and footer come from the leakdown template
+# package; only this package's accent and navigation are declared locally.
+template:
+  package: leakdown
+  bslib:
+    primary: "#B85C2E"
+
+home:
+  title: "fastml: guarded resampling workflows for safe and automated machine learning"
+  description: >
+    Train, tune, and compare models with preprocessing and fitting re-estimated
+    inside every resampling split, so performance estimates stay honest.
+
+navbar:
+  structure:
+    left: [reference, tutorial, news]
+    right: [guardedverse, search, github, lightswitch]
+  components:
+    guardedverse:
+      text: guardedverse
+      href: https://selcukorkmaz.github.io/guardedverse/
+      aria-label: The guardedverse package family
+    # fastml ships no vignettes; the long-form tutorial is a separate Quarto
+    # book, linked rather than vendored so it can be revised without a package
+    # release. One entry, not two.
+    tutorial:
+      text: Tutorial
+      href: https://selcukorkmaz.github.io/fastml-tutorial/
+
+reference:
+  - title: Fit and compare
+    desc: The main entry points for training and benchmarking models.
+    contents:
+      - fastml
+      - train_models
+      - availableMethods
+      - process_model
+
+  - title: Explore and explain
+    desc: >
+      Data exploration before fitting, and model-agnostic explanation
+      afterwards (SHAP, LIME, ALE, ICE, surrogates, counterfactuals).
+    contents:
+      - fastexplore
+      - fastexplain
+      - explain_dalex
+      - explain_lime
+      - explain_ale
+      - explain_stability
+      - plot_ice
+      - surrogate_tree
+      - counterfactual_explain
+      - interaction_strength
+
+  - title: Predict
+    contents:
+      - predict.fastml
+      - predict_model.model_fit
+      - predict_risk
+      - predict_survival
+
+  - title: Inspect results
+    desc: Summaries, plots, and accessors for a fitted fastml object.
+    contents:
+      - summary.fastml
+      - plot.fastml
+      - plot.fastml_stability
+      - print.fastml_stability
+      - get_best_model_idx
+      - get_best_model_names
+      - get_best_workflows
+      - fastml_compute_holdout_results
+
+  - title: Defaults and tuning configuration
+    desc: >
+      Inspect and control the engine defaults and tuning grids fastml applies,
+      including where they differ from the parsnip defaults.
+    contents:
+      - compare_defaults
+      - get_default_differences
+      - print_default_differences
+      - get_default_engine
+      - get_default_params
+      - get_default_params_with_warnings
+      - get_default_tune_params
+      - get_engine_names
+      - get_expanded_tune_params
+      - get_model_engine_names
+      - get_parsnip_default_engine
+      - get_parsnip_default_params
+      - get_tuning_complexity
+      - get_tuning_params_for_complexity
+      - estimate_tuning_time
+      - recommend_tuning_config
+      - print_tuning_presets
+      - tuning_config
+      - defaults_registry
+      - validate_defaults_registry
+      - warn_default_override
+      - reset_default_warnings
+
+  - title: Save and load
+    contents:
+      - save_fastml
+      - save.fastml
+      - load_model
+
+  - title: internal
+    contents:
+      - .fastml_warned_defaults
+      - align_survival_curve
+      - assign_risk_group
+      - build_survfit_matrix
+      - clamp01
+      - compute_ibrier
+      - compute_rmst_difference
+      - compute_survreg_matrix
+      - compute_tau_limit
+      - compute_uno_c_index
+      - convert_survival_predictions
+      - create_censor_eval
+      - determine_round_digits
+      - extract_survreg_components
+      - fastml_guard_validate_indices
+      - fastml_normalize_survival_status
+      - fastml_prepare_explainer_inputs
+      - flatten_and_rename_models
+      - format_default_override_warning
+      - get_surv_info
+      - map_brier_values
+      - resolve_positive_class
+      - sanitize

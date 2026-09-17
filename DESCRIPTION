@@ -101,3 +101,4 @@ Suggests:
     pec
 RoxygenNote: 7.3.3
 Config/testthat/edition: 3
+Config/Needs/website: selcukorkmaz/leakdown
