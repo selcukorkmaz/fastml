@@ -23,3 +23,12 @@ Rscript1aa814787f6
 ^paper\.md$
 ^paper\.bib$
 ^fastml\.pdf$
+
+# Community guidelines: repository-only. README links to them by absolute URL,
+# because a relative link would dangle inside the installed package.
+^CONTRIBUTING\.md$
+^CODE_OF_CONDUCT\.md$
+^paper\.html$
+^Figure1\.jpeg$
+^dev$
+^paper-figures$

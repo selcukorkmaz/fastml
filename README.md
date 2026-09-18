@@ -390,6 +390,38 @@ fastml is intended for users who require reliable performance estimation under c
 
 It prioritizes correctness-oriented defaults and workflow clarity over maximum flexibility.
 
+## Citation
+
+If you use fastml in published work, please cite the package:
+
+```r
+citation("fastml")
+```
+
+The methodology behind guarded resampling — and a quantification, through Monte
+Carlo simulation and applied case studies, of how much preprocessing placement
+alone inflates measured performance — is described in the accompanying
+manuscript:
+
+> Korkmaz S, Goksuluk D, Karaismailoglu E (2026). *fastml: Guarded Resampling
+> Workflows for Safer Automated Machine Learning in R.* arXiv:2604.05225.
+> <https://doi.org/10.48550/arXiv.2604.05225>
+
+## Contributing and support
+
+Questions, bug reports and pull requests are all welcome, and the [issue
+tracker](https://github.com/selcukorkmaz/fastml/issues) is the place for all
+three — including questions, so that answers stay searchable.
+
+A performance estimate that looks too good is worth reporting even when nothing
+errors: a silent bias is the class of problem this package exists to prevent.
+
+- [Contributing guidelines](https://github.com/selcukorkmaz/fastml/blob/main/CONTRIBUTING.md)
+  — how to report a bug, propose a feature, set up for development, and run the
+  test suite
+- [Code of Conduct](https://github.com/selcukorkmaz/fastml/blob/main/CODE_OF_CONDUCT.md)
+  — expected of everyone taking part
+
 ## Links
 
 - [Tutorial & Documentation](https://selcukorkmaz.github.io/fastml-tutorial/)

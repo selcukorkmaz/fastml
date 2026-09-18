@@ -11,6 +11,7 @@ on:
     paths:
       - 'paper.md'
       - 'paper.bib'
+      - 'paper-figures/**'
       - '.github/workflows/draft-pdf.yaml'
   workflow_dispatch:
 
