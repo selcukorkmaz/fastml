@@ -370,6 +370,11 @@ fastml_select_best_config <- function(tuned, metric) {
   if (usable(best)) {
     return(best[, param_names, drop = FALSE])
   }
+  # Past this point `best` is known to be unusable -- it is missing parameter
+  # columns, or carries NA in them. Returning it anyway would satisfy the
+  # caller's `!is.null(best_params)` guard and send NA parameters into
+  # `finalize_workflow()`, so every remaining exit reports failure as NULL.
+  #
   # Fall back to identifying the configuration by .config and recovering its
   # parameter values from rows that carry them.
   all_metrics <- tryCatch(
@@ -377,12 +382,12 @@ fastml_select_best_config <- function(tuned, metric) {
     error = function(e) NULL
   )
   if (is.null(all_metrics) || !".config" %in% names(all_metrics)) {
-    return(best)
+    return(NULL)
   }
   scored <- all_metrics[all_metrics$.metric == metric, , drop = FALSE]
   scored <- scored[is.finite(scored$mean), , drop = FALSE]
   if (nrow(scored) == 0) {
-    return(best)
+    return(NULL)
   }
   # Metric direction is read from the yardstick metric itself where possible,
   # and otherwise from the set of metrics fastml treats as lower-is-better.
@@ -405,7 +410,7 @@ fastml_select_best_config <- function(tuned, metric) {
       return(tibble::as_tibble(row))
     }
   }
-  best
+  NULL
 }
 
 fastml_nested_select_params <- function(inner_results,
@@ -854,15 +859,42 @@ fastml_run_nested_cv <- function(workflow_spec,
     }
   }
 
-  final_workflow <- if (!is.null(final_params) && is.data.frame(final_params) && nrow(final_params) > 0) {
+  # A parameter column that is entirely NA cannot be finalised on: the fit fails
+  # later with "missing value where TRUE/FALSE needed", far from the cause. Treat
+  # such a selection as no selection at all.
+  final_params_usable <- !is.null(final_params) && is.data.frame(final_params) &&
+    nrow(final_params) > 0 && ncol(final_params) > 0 &&
+    !any(vapply(final_params, function(v) all(is.na(v)), logical(1)))
+
+  if (!is.null(final_params) && is.data.frame(final_params) &&
+      nrow(final_params) > 0 && !final_params_usable) {
+    warning(
+      "Nested tuning produced incomplete parameter values; fitting the final model with defaults.",
+      call. = FALSE
+    )
+    final_params <- NULL
+  }
+
+  final_workflow <- if (final_params_usable) {
     finalize_workflow(workflow_spec, final_params)
   } else {
     workflow_spec
   }
 
-  final_model <- fastml_with_seed(seed, function() {
-    parsnip::fit(final_workflow, data = train_data)
-  })
+  # The outer fits are guarded individually; this one was not, so a failure here
+  # escaped nested cross-validation with no indication of where it came from.
+  final_model <- tryCatch(
+    fastml_with_seed(seed, function() {
+      parsnip::fit(final_workflow, data = train_data)
+    }),
+    error = function(e) {
+      stop(
+        sprintf("Nested cross-validation could not fit the final model: %s",
+                conditionMessage(e)),
+        call. = FALSE
+      )
+    }
+  )
 
   list(
     final_model = final_model,
@@ -2785,39 +2817,28 @@ train_models <- function(train_data,
 
     return(models)
   } else if (task == "classification") {
+    base_metric_fns <- list(
+      accuracy    = accuracy_metric,
+      kap         = kap_metric,
+      sens        = sens_metric,
+      spec        = spec_metric,
+      precision   = precision_metric,
+      f_meas      = f_meas_metric,
+      roc_auc     = roc_auc,
+      logloss     = logloss_metric,
+      brier_score = brier_metric,
+      ece         = ece_metric
+    )
+
     if(is.null(summaryFunction)){
-      metrics <- metric_set(
-        accuracy_metric,
-        kap_metric,
-        sens_metric,
-        spec_metric,
-        precision_metric,
-        f_meas_metric,
-        roc_auc,
-        logloss = logloss_metric,
-        brier_score = brier_metric,
-        ece = ece_metric
-      )
+      metrics <- fastml_build_metric_set(base_metric_fns)
     }else{
 
       newClassMetric <- new_class_metric(summaryFunction, "maximize")
 
-      assign(metric, newClassMetric)
+      base_metric_fns[[metric]] <- newClassMetric
 
-      metrics <- metric_set(
-        accuracy_metric,
-        kap_metric,
-        sens_metric,
-        spec_metric,
-        precision_metric,
-        f_meas_metric,
-        roc_auc,
-        logloss = logloss_metric,
-        brier_score = brier_metric,
-        ece = ece_metric,
-        !!sym(metric)
-      )
-
+      metrics <- fastml_build_metric_set(base_metric_fns)
 
     }
   } else {
@@ -3490,25 +3511,32 @@ train_models <- function(train_data,
             attr(roc_auc_h2o, "direction") <- attr(yardstick::roc_auc, "direction")
             attr(roc_auc_h2o, "metric_name") <- attr(yardstick::roc_auc, "metric_name")
 
-            my_metrics <- metric_set(
-              accuracy_metric,
-              kap_metric,
-              sens_metric,
-              spec_metric,
-              precision_metric,
-              f_meas_metric,
-              roc_auc = roc_auc_h2o,
-              logloss = logloss_metric,
+            my_metrics <- fastml_build_metric_set(list(
+              accuracy    = accuracy_metric,
+              kap         = kap_metric,
+              sens        = sens_metric,
+              spec        = spec_metric,
+              precision   = precision_metric,
+              f_meas      = f_meas_metric,
+              roc_auc     = roc_auc_h2o,
+              logloss     = logloss_metric,
               brier_score = brier_metric,
-              ece = ece_metric
-            )
+              ece         = ece_metric
+            ))
 
             allow_par <- FALSE
           }
 
           else if(engine == "LiblineaR"){
 
-            my_metrics <- metric_set(accuracy_metric, kap_metric, sens_metric, spec_metric, precision_metric, f_meas_metric)
+            my_metrics <- fastml_build_metric_set(list(
+              accuracy  = accuracy_metric,
+              kap       = kap_metric,
+              sens      = sens_metric,
+              spec      = spec_metric,
+              precision = precision_metric,
+              f_meas    = f_meas_metric
+            ))
             allow_par <- allow_par_base
 
           }else{

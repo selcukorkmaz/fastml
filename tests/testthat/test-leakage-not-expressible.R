@@ -66,6 +66,13 @@ test_that("every preprocessing argument compiles to an untrained recipe", {
     balance_downsample   = list(balance_method = "downsample")
   )
 
+  # The balancing steps come from themis, and fastml errors rather than
+  # silently dropping them when it is absent. Drop those cases instead of
+  # skipping the whole test, which covers arguments that do not need it.
+  if (!requireNamespace("themis", quietly = TRUE)) {
+    cases <- cases[!grepl("^balance_", names(cases))]
+  }
+
   for (nm in names(cases)) {
     args <- c(list(data = d, label = "class", algorithms = "logistic_reg",
                    resampling_method = "cv", folds = 3,

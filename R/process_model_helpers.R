@@ -1716,6 +1716,79 @@ fastml_resolve_estimate_name <- function(data, estimate_quo) {
   NULL
 }
 
+# yardstick's own metrics are group-aware: `tune` hands the metric set a data
+# frame grouped by the tuning parameters and `.config`, and relies on each
+# metric returning one row per group. The class-metric wrappers inherit that
+# for free because they delegate to the real yardstick function. The
+# probability-metric wrappers below compute a single value over the whole frame
+# and build their result tibble by hand, so without this adapter every
+# configuration collapses into one row whose parameter and `.config` columns are
+# NA. `select_best()` then returns all-NA parameters, `finalize_workflow()`
+# finalises on them, and every fit fails -- which is how nested cross-validation
+# came to produce nothing whenever it was actually tuning.
+#
+# This wraps such a metric so that, when handed a grouped data frame, it is
+# applied once per group and the group keys are restored alongside the result.
+fastml_metric_by_groups <- function(fun) {
+  # `fun` must be forced here: each wrapper rebinds its own name
+  # (`roc_fun <- fastml_metric_by_groups(roc_fun)`), so leaving the argument as a
+  # promise would make it resolve to the wrapped function and recurse forever.
+  force(fun)
+  function(data, truth, ..., estimator = NULL, na_rm = TRUE,
+           event_level = NULL, case_weights = NULL) {
+    truth_quo <- rlang::enquo(truth)
+    dots <- rlang::enquos(...)
+    call_one <- function(d, cw) {
+      rlang::inject(fun(d, !!truth_quo, !!!dots, estimator = estimator,
+                        na_rm = na_rm, event_level = event_level,
+                        case_weights = cw))
+    }
+    if (!is.data.frame(data) || !dplyr::is_grouped_df(data)) {
+      return(call_one(data, case_weights))
+    }
+    idx <- dplyr::group_rows(data)
+    keys <- dplyr::group_keys(data)
+    flat <- dplyr::ungroup(data)
+    parts <- lapply(idx, function(rows) {
+      cw <- if (!is.null(case_weights) && length(case_weights) == nrow(flat)) {
+        case_weights[rows]
+      } else {
+        case_weights
+      }
+      call_one(flat[rows, , drop = FALSE], cw)
+    })
+    # Repeat each group's keys as many times as that group produced rows, rather
+    # than assuming exactly one, so a metric that reports per class still aligns.
+    counts <- vapply(parts, function(p) if (is.data.frame(p)) nrow(p) else 0L,
+                     integer(1))
+    keys <- keys[rep(seq_len(nrow(keys)), counts), , drop = FALSE]
+    dplyr::bind_cols(keys, dplyr::bind_rows(parts))
+  }
+}
+
+# `yardstick::metric_set()` names each member from the *text of the argument*
+# (`names(fns) <- vapply(quo_fns, get_quo_label, character(1))`), ignoring both
+# any name supplied at the call site and the metric's own `metric_name`
+# attribute. Passing wrapper objects held in variables such as `accuracy_metric`
+# therefore registers the metric as "accuracy_metric", while the tibble the
+# wrapper returns reports `.metric = "accuracy"`. `tune::select_best()` and
+# friends validate against the registered names, so every metric except
+# `roc_auc` -- the one whose variable happens to be named after it -- was
+# unselectable.
+#
+# Building the call from symbols evaluated in an environment whose bindings
+# carry the intended names makes the label and the reported `.metric` agree.
+fastml_build_metric_set <- function(fns) {
+  fns <- fns[!vapply(fns, is.null, logical(1))]
+  if (length(fns) == 0 || is.null(names(fns)) || any(!nzchar(names(fns)))) {
+    stop("fastml_build_metric_set() requires a fully named list of metrics.",
+         call. = FALSE)
+  }
+  env <- rlang::new_environment(fns, parent = baseenv())
+  call <- rlang::call2("metric_set", !!!rlang::syms(names(fns)), .ns = "yardstick")
+  rlang::eval_bare(call, env)
+}
+
 fastml_configured_roc_auc <- function(multiclass_auc, event_class = NULL) {
   multiclass_auc <- fastml_normalize_multiclass_auc(multiclass_auc)
 
@@ -1723,9 +1796,9 @@ fastml_configured_roc_auc <- function(multiclass_auc, event_class = NULL) {
   # `case_weights`, and passes `event_level` for metrics that accept it. These
   # must be named formals. Left to fall into `...`, they are captured by the
   # probability-column resolution below and read as column selectors, and the
-  # metric then returns NA rather than erroring. That is how every
-  # probability metric in the set came back empty under tuning while the
-  # class metrics, whose wrappers already declared these arguments, worked.
+  # metric then returns NA rather than erroring, for every input. The separate
+  # reason these metrics collapsed to a single NA row per fold under tuning is
+  # grouping; see fastml_metric_by_groups() above.
   roc_fun <- function(data, truth, ..., estimator = NULL, na_rm = TRUE,
                        event_level = NULL, case_weights = NULL) {
     na_result <- function(estimator_value) {
@@ -1875,6 +1948,7 @@ fastml_configured_roc_auc <- function(multiclass_auc, event_class = NULL) {
     })
   }
 
+  roc_fun <- fastml_metric_by_groups(roc_fun)
   class(roc_fun) <- class(yardstick::roc_auc)
   attr(roc_fun, "direction") <- attr(yardstick::roc_auc, "direction")
   attr(roc_fun, "metric_name") <- attr(yardstick::roc_auc, "metric_name")
@@ -1886,9 +1960,9 @@ fastml_configured_logloss <- function(event_class = NULL) {
   # `case_weights`, and passes `event_level` for metrics that accept it. These
   # must be named formals. Left to fall into `...`, they are captured by the
   # probability-column resolution below and read as column selectors, and the
-  # metric then returns NA rather than erroring. That is how every
-  # probability metric in the set came back empty under tuning while the
-  # class metrics, whose wrappers already declared these arguments, worked.
+  # metric then returns NA rather than erroring, for every input. The separate
+  # reason these metrics collapsed to a single NA row per fold under tuning is
+  # grouping; see fastml_metric_by_groups() above.
   logloss_fun <- function(data, truth, ..., estimator = NULL, na_rm = TRUE,
                            event_level = NULL, case_weights = NULL) {
     tryCatch({
@@ -1937,6 +2011,7 @@ fastml_configured_logloss <- function(event_class = NULL) {
     })
   }
 
+  logloss_fun <- fastml_metric_by_groups(logloss_fun)
   class(logloss_fun) <- class(yardstick::roc_auc)
   attr(logloss_fun, "direction") <- "minimize"
   attr(logloss_fun, "metric_name") <- "logloss"
@@ -1948,9 +2023,9 @@ fastml_configured_brier_score <- function(event_class = NULL) {
   # `case_weights`, and passes `event_level` for metrics that accept it. These
   # must be named formals. Left to fall into `...`, they are captured by the
   # probability-column resolution below and read as column selectors, and the
-  # metric then returns NA rather than erroring. That is how every
-  # probability metric in the set came back empty under tuning while the
-  # class metrics, whose wrappers already declared these arguments, worked.
+  # metric then returns NA rather than erroring, for every input. The separate
+  # reason these metrics collapsed to a single NA row per fold under tuning is
+  # grouping; see fastml_metric_by_groups() above.
   brier_fun <- function(data, truth, ..., estimator = NULL, na_rm = TRUE,
                          event_level = NULL, case_weights = NULL) {
     tryCatch({
@@ -1999,6 +2074,7 @@ fastml_configured_brier_score <- function(event_class = NULL) {
     })
   }
 
+  brier_fun <- fastml_metric_by_groups(brier_fun)
   class(brier_fun) <- class(yardstick::roc_auc)
   attr(brier_fun, "direction") <- "minimize"
   attr(brier_fun, "metric_name") <- "brier_score"
@@ -2010,9 +2086,9 @@ fastml_configured_ece <- function(event_class = NULL) {
   # `case_weights`, and passes `event_level` for metrics that accept it. These
   # must be named formals. Left to fall into `...`, they are captured by the
   # probability-column resolution below and read as column selectors, and the
-  # metric then returns NA rather than erroring. That is how every
-  # probability metric in the set came back empty under tuning while the
-  # class metrics, whose wrappers already declared these arguments, worked.
+  # metric then returns NA rather than erroring, for every input. The separate
+  # reason these metrics collapsed to a single NA row per fold under tuning is
+  # grouping; see fastml_metric_by_groups() above.
   ece_fun <- function(data, truth, ..., estimator = NULL, na_rm = TRUE,
                        event_level = NULL, case_weights = NULL) {
     tryCatch({
@@ -2061,6 +2137,7 @@ fastml_configured_ece <- function(event_class = NULL) {
     })
   }
 
+  ece_fun <- fastml_metric_by_groups(ece_fun)
   class(ece_fun) <- class(yardstick::roc_auc)
   attr(ece_fun, "direction") <- "minimize"
   attr(ece_fun, "metric_name") <- "ece"

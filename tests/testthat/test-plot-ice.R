@@ -16,6 +16,7 @@ iris_binary$Species <- factor(iris_binary$Species)
 
 # Helper to train model and skip if training fails
 train_model_or_skip <- function(data, label, algorithms = "decision_tree") {
+  err <- NULL
   model <- tryCatch(
     suppressWarnings(fastml(
       data = data,
@@ -23,10 +24,16 @@ train_model_or_skip <- function(data, label, algorithms = "decision_tree") {
       algorithms = algorithms,
       resampling_method = "none"
     )),
-    error = function(e) NULL
+    error = function(e) {
+      err <<- conditionMessage(e)
+      NULL
+    }
   )
+  # Report why, rather than skipping silently: these tests train successfully on
+  # their own, so a skip here means something earlier in the run changed state.
   if (is.null(model) || is.null(model$models) || length(model$models) == 0) {
-    skip("Model training failed")
+    skip(paste("Model training failed:",
+               if (is.null(err)) "no models were returned" else err))
   }
   model
 }

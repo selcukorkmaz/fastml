@@ -2,11 +2,13 @@
 # fitting procedure. It previously produced an estimate only when it was not
 # tuning, which is the one case in which it has no purpose.
 #
-# The chain was: probability metrics returned NA inside the metric set, so
-# select_best() could not choose a configuration; the unfinalized workflow was
-# fitted anyway and failed inside the engine; every outer fold failed; and the
-# run fell back to ordinary resampling, recording selection$source as "none"
-# with nothing to indicate that no nested estimate had been produced.
+# The chain was: the probability-metric wrappers were not group-aware, so where
+# tune hands the metric set a frame grouped by the tuning parameters and
+# .config, every configuration collapsed into one row whose parameter columns
+# were NA; select_best() returned that row; finalize_workflow() finalised on
+# NAs; the fit failed inside the engine; every outer fold failed; and the run
+# fell back to ordinary resampling, recording selection$source as "none" with
+# nothing to indicate that no nested estimate had been produced.
 
 skip_if_not_installed("ranger")
 
@@ -54,9 +56,9 @@ test_that("the configuration carried into the returned model is fully specified"
   fm <- nested(use_default_tuning = TRUE)
   final <- fm$nested_cv[[1]]$final_params
   expect_false(is.null(final))
-  # tune attaches hyperparameter columns only to the class-metric rows, so a
-  # configuration chosen on roc_auc must have its values recovered rather than
-  # read directly. NA here is what previously reached the engine.
+  # Every metric now reports one row per configuration, carrying that
+  # configuration's hyperparameter values, so a selection made on roc_auc is
+  # fully specified. NA here is what previously reached the engine.
   expect_false(any(vapply(final, function(v) all(is.na(v)), logical(1))))
 })
 

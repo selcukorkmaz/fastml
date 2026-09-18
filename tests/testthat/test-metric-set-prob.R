@@ -86,3 +86,52 @@ test_that("the configured event_class governs, not the forwarded event_level", {
     m_first(d, truth = y, .pred_pos)$.estimate, configured
   )))
 })
+
+test_that("probability metrics report one row per group", {
+  # `tune` hands the metric set a frame grouped by the tuning parameters and
+  # `.config`, and relies on each metric returning one row per group. The class
+  # wrappers inherit that by delegating to yardstick; these compute their own
+  # value and so must restore the group keys themselves. Collapsing to a single
+  # row is what left `select_best()` with NA hyperparameters.
+  d <- preds()
+  d$.config <- rep(c("cfg1", "cfg2"), length.out = nrow(d))
+  d$mtry <- rep(c(1L, 2L), length.out = nrow(d))
+  g <- dplyr::group_by(d, mtry, .config)
+
+  for (nm in names(prob_metrics())) {
+    out <- prob_metrics()[[nm]](g, truth = y, .pred_neg)
+    expect_true(all(c("mtry", ".config") %in% names(out)), info = nm)
+    expect_identical(nrow(out), 2L, info = nm)
+    expect_setequal(out$.config, c("cfg1", "cfg2"))
+    expect_true(all(is.finite(out$.estimate)), info = nm)
+  }
+})
+
+test_that("an ungrouped frame still yields a single row", {
+  d <- preds()
+  for (nm in names(prob_metrics())) {
+    out <- prob_metrics()[[nm]](d, truth = y, .pred_neg)
+    expect_identical(nrow(out), 1L, info = nm)
+    expect_false(".config" %in% names(out), info = nm)
+    expect_true(is.finite(out$.estimate), info = nm)
+  }
+})
+
+test_that("the metric set registers the names it reports", {
+  # metric_set() names each member from the text of the argument, ignoring both
+  # a name supplied at the call site and the metric's own metric_name attribute.
+  # Where the registered name and the reported .metric disagree,
+  # tune::select_best() rejects the metric as absent from the set.
+  fns <- c(
+    list(accuracy = fastml_wrap_basic_metric(yardstick::accuracy),
+         sens     = fastml_wrap_event_level_metric(yardstick::sens, "first")),
+    prob_metrics()
+  )
+  ms <- fastml_build_metric_set(fns)
+  expect_identical(tibble::as_tibble(ms)$metric, names(fns))
+
+  d <- preds()
+  out <- ms(d, truth = y, estimate = .pred_class, .pred_neg, .pred_pos)
+  expect_setequal(out$.metric, names(fns))
+  expect_true(all(is.finite(out$.estimate)))
+})
