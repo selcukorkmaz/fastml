@@ -1719,7 +1719,15 @@ fastml_resolve_estimate_name <- function(data, estimate_quo) {
 fastml_configured_roc_auc <- function(multiclass_auc, event_class = NULL) {
   multiclass_auc <- fastml_normalize_multiclass_auc(multiclass_auc)
 
-  roc_fun <- function(data, truth, ..., estimator = NULL) {
+  # yardstick's metric_set() always calls its members with `na_rm` and
+  # `case_weights`, and passes `event_level` for metrics that accept it. These
+  # must be named formals. Left to fall into `...`, they are captured by the
+  # probability-column resolution below and read as column selectors, and the
+  # metric then returns NA rather than erroring. That is how every
+  # probability metric in the set came back empty under tuning while the
+  # class metrics, whose wrappers already declared these arguments, worked.
+  roc_fun <- function(data, truth, ..., estimator = NULL, na_rm = TRUE,
+                       event_level = NULL, case_weights = NULL) {
     na_result <- function(estimator_value) {
       tibble::tibble(
         .metric = "roc_auc",
@@ -1774,6 +1782,11 @@ fastml_configured_roc_auc <- function(multiclass_auc, event_class = NULL) {
       # Use the vector-based approach to avoid NSE issues
       if (identical(estimator, "binary")) {
         truth_levels <- fastml_truth_levels(truth_col)
+        # `event_level` is accepted so that metric_set() can pass it without it
+        # falling into `...`, but it is deliberately not used. metric_set()
+        # forwards its own default of "first" whether or not the caller asked
+        # for it, so honouring it would silently override an event_class of
+        # "second" on every metric computed through a set.
         event_use <- if (!is.null(event_class) && event_class %in% c("first", "second")) {
           event_class
         } else {
@@ -1799,6 +1812,8 @@ fastml_configured_roc_auc <- function(multiclass_auc, event_class = NULL) {
             truth_vec <- factor(truth_vec)
           }
 
+          # See above: the configured event_class governs, not the forwarded
+          # event_level.
           event_level_use <- if (!is.null(event_class) && event_class %in% c("first", "second")) {
             event_class
           } else {
@@ -1867,7 +1882,15 @@ fastml_configured_roc_auc <- function(multiclass_auc, event_class = NULL) {
 }
 
 fastml_configured_logloss <- function(event_class = NULL) {
-  logloss_fun <- function(data, truth, ..., estimator = NULL) {
+  # yardstick's metric_set() always calls its members with `na_rm` and
+  # `case_weights`, and passes `event_level` for metrics that accept it. These
+  # must be named formals. Left to fall into `...`, they are captured by the
+  # probability-column resolution below and read as column selectors, and the
+  # metric then returns NA rather than erroring. That is how every
+  # probability metric in the set came back empty under tuning while the
+  # class metrics, whose wrappers already declared these arguments, worked.
+  logloss_fun <- function(data, truth, ..., estimator = NULL, na_rm = TRUE,
+                           event_level = NULL, case_weights = NULL) {
     tryCatch({
       if (!is.data.frame(data)) {
         return(tibble::tibble(
@@ -1921,7 +1944,15 @@ fastml_configured_logloss <- function(event_class = NULL) {
 }
 
 fastml_configured_brier_score <- function(event_class = NULL) {
-  brier_fun <- function(data, truth, ..., estimator = NULL) {
+  # yardstick's metric_set() always calls its members with `na_rm` and
+  # `case_weights`, and passes `event_level` for metrics that accept it. These
+  # must be named formals. Left to fall into `...`, they are captured by the
+  # probability-column resolution below and read as column selectors, and the
+  # metric then returns NA rather than erroring. That is how every
+  # probability metric in the set came back empty under tuning while the
+  # class metrics, whose wrappers already declared these arguments, worked.
+  brier_fun <- function(data, truth, ..., estimator = NULL, na_rm = TRUE,
+                         event_level = NULL, case_weights = NULL) {
     tryCatch({
       if (!is.data.frame(data)) {
         return(tibble::tibble(
@@ -1975,7 +2006,15 @@ fastml_configured_brier_score <- function(event_class = NULL) {
 }
 
 fastml_configured_ece <- function(event_class = NULL) {
-  ece_fun <- function(data, truth, ..., estimator = NULL) {
+  # yardstick's metric_set() always calls its members with `na_rm` and
+  # `case_weights`, and passes `event_level` for metrics that accept it. These
+  # must be named formals. Left to fall into `...`, they are captured by the
+  # probability-column resolution below and read as column selectors, and the
+  # metric then returns NA rather than erroring. That is how every
+  # probability metric in the set came back empty under tuning while the
+  # class metrics, whose wrappers already declared these arguments, worked.
+  ece_fun <- function(data, truth, ..., estimator = NULL, na_rm = TRUE,
+                       event_level = NULL, case_weights = NULL) {
     tryCatch({
       if (!is.data.frame(data)) {
         return(tibble::tibble(

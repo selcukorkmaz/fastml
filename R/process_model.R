@@ -2084,7 +2084,12 @@ process_model <- function(model_obj,
     pred <- predictions$.pred
     data_metrics <- tibble::tibble(truth = test_data[[label]], estimate = pred)
     metrics_set <- if (is.null(metrics)) {
-      yardstick::metric_set(yardstick::rmse, yardstick::rsq, yardstick::mae)
+      # rsq is squared Pearson correlation and is invariant to location and
+      # scale, so it cannot see a biased or mis-scaled prediction. rsq_trad is
+      # the variance-explained quantity most readers assume when they see an
+      # R-squared, and the two diverge exactly when predictions are biased.
+      yardstick::metric_set(yardstick::rmse, yardstick::rsq,
+                            yardstick::rsq_trad, yardstick::mae)
     } else {
       if (!is.function(metrics)) {
         stop("'metrics' must be a yardstick::metric_set() function or NULL.")
@@ -2135,8 +2140,20 @@ process_model <- function(model_obj,
 finalize_tuned_model <- function(model_obj, model_id, task, metric, train_data) {
   select_metric <- metric
   select_best_safe <- function(metric_name) {
-    tryCatch(tune::select_best(model_obj, metric = metric_name),
-             error = function(e) e)
+    # Selecting on a probability metric returns NA hyperparameters, because
+    # tune attaches those columns only to the class-metric rows, so the
+    # configuration is recovered by `.config` where necessary. The recovery
+    # helper reports failure by returning NULL, whereas the caller below
+    # distinguishes success from failure by testing for an error condition, so
+    # a NULL is converted back into one.
+    out <- tryCatch(fastml_select_best_config(model_obj, metric_name),
+                    error = function(e) e)
+    if (is.null(out) || (is.data.frame(out) && nrow(out) == 0)) {
+      out <- simpleError(
+        sprintf("No configuration could be selected for metric '%s'.", metric_name)
+      )
+    }
+    out
   }
   best_params <- select_best_safe(select_metric)
   select_error <- NULL

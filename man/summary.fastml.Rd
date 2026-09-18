@@ -7,7 +7,7 @@
 \method{summary}{fastml}(
   object,
   algorithm = "best",
-  type = c("all", "metrics", "params", "conf_mat"),
+  type = c("all", "metrics", "params", "grid", "conf_mat"),
   sort_metric = NULL,
   show_ci = FALSE,
   brier_times = NULL,
@@ -49,7 +49,12 @@ It is designed to be informative and readable, helping users quickly interpret m
 \details{
 For classification tasks, the summary includes metrics such as Accuracy, F1 Score, Kappa,
 Precision, ROC AUC, Sensitivity, and Specificity. A confusion matrix is also provided for the best model(s).
-For regression tasks, the summary reports RMSE, R-squared, and MAE.
+For regression tasks, the summary reports RMSE, two forms of R-squared, and
+MAE. `rsq` is squared Pearson correlation and is invariant to location and
+scale; `rsq_trad` is one minus the residual sum of squares over the total
+sum of squares. The two agree when predictions are unbiased and correctly
+scaled, and diverge when they are not, so a large gap between them is a sign
+of miscalibration rather than of weak association.
 
 Users can control the type of output with the `type` argument:
 `metrics` displays model performance metrics.

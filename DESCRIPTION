@@ -1,7 +1,7 @@
 Package: fastml
 Type: Package
-Title: Guarded Resampling Workflows for Safe and Automated Machine Learning in R
-Version: 0.7.9
+Title: Guarded Resampling Workflows for Leakage-Aware Machine Learning in R
+Version: 0.7.10
 Authors@R: c(person("Selcuk", "Korkmaz", email="selcukorkmaz@gmail.com", role=c("aut", "cre"),
                     comment = c(ORCID = "0000-0003-4632-6850")), 
              person("Dincer", "Goksuluk", email="dincer.goksuluk@gmail.com", role="aut",
@@ -50,7 +50,7 @@ Imports:
     tidyr,
     purrr,
     survival,
-    xgboost
+    xgboost (>= 1.7.8)
 Suggests:
     testthat (>= 3.0.0),
     withr,
@@ -73,11 +73,14 @@ Suggests:
     aorsf,
     censored,
     crayon,
+    ceterisParibus,
     kernlab,
     klaR,
     kknn,
     keras,
     lightgbm,
+    bonsai,
+    lme4,
     rstanarm,
     patchwork,
     GGally,
@@ -90,9 +93,12 @@ Suggests:
     gridExtra,
     htmlwidgets,
     kableExtra,
+    modeldata,
     moments,
     naniar,
+    nnet,
     plotly,
+    rpart,
     scales,
     skimr,
     sparsediscrim,

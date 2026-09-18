@@ -109,3 +109,73 @@ fastml_describe_resampling <- function(plan) {
 `%||%` <- function(x, y) {
   if (is.null(x)) y else x
 }
+
+# Group identifier for one or more grouping columns, used by the grouped and
+# grouped time-ordered splitting rules.
+fastml_group_id <- function(df, group_cols) {
+  group_df <- df[, group_cols, drop = FALSE]
+  if (length(group_cols) == 1) {
+    group_df[[1]]
+  } else {
+    interaction(group_df, drop = TRUE)
+  }
+}
+
+# Locate the cut point for a time-ordered holdout that also keeps groups intact.
+#
+# `df` is assumed to be sorted in ascending order of the ordering variable. A
+# cut `c` splits rows 1..c from rows (c+1)..n. A cut is admissible only when no
+# group spans it, so that both guarantees hold simultaneously: every training
+# row precedes every test row, and no group contributes rows to both sides.
+# Groups whose occurrences are interleaved in time can make every interior cut
+# inadmissible, in which case no split satisfies both constraints and we stop
+# rather than silently relaxing one of them.
+fastml_grouped_time_cut <- function(df, group_cols, target_cut) {
+  n_rows <- nrow(df)
+  group_id <- fastml_group_id(df, group_cols)
+  if (any(is.na(group_id))) {
+    stop("Grouping columns contain missing values, which are not supported for grouped time-ordered holdout splitting.", call. = FALSE)
+  }
+
+  # Unused factor levels would make tapply() emit NA entries for groups that
+  # are not present, so drop them before the interval scan.
+  if (is.factor(group_id)) {
+    group_id <- droplevels(group_id)
+  }
+
+  idx <- seq_len(n_rows)
+  first_idx <- tapply(idx, group_id, min)
+  last_idx <- tapply(idx, group_id, max)
+
+  # A group spanning [first, last] rules out every cut in [first, last - 1].
+  # Accumulate those intervals with a difference array so the scan is linear.
+  blocked <- integer(n_rows + 1L)
+  spans <- which(last_idx > first_idx)
+  for (g in spans) {
+    blocked[first_idx[[g]]] <- blocked[first_idx[[g]]] + 1L
+    blocked[last_idx[[g]]] <- blocked[last_idx[[g]]] - 1L
+  }
+  coverage <- cumsum(blocked)[seq_len(n_rows)]
+
+  admissible <- which(coverage == 0L)
+  admissible <- admissible[admissible >= 1L & admissible <= n_rows - 1L]
+
+  if (length(admissible) == 0L) {
+    stop(
+      paste0(
+        "No time-ordered holdout split keeps groups intact: the groups given by '",
+        paste(group_cols, collapse = ", "),
+        "' are interleaved in the order given by the ordering variable, so every ",
+        "cut point would place at least one group on both sides. Supply only one ",
+        "of 'block_col' and 'group_cols', or pre-split the data with 'train_data' ",
+        "and 'test_data'."
+      ),
+      call. = FALSE
+    )
+  }
+
+  distance <- abs(admissible - target_cut)
+  # Ties resolve toward the later cut, which retains more training data.
+  best <- admissible[which(distance == min(distance))]
+  max(best)
+}

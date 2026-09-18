@@ -1,6 +1,6 @@
 <img src="man/figures/fastml_hex.png" align="right" width="85"/>
 
-# fastml: Guarded Resampling Workflows for Safe and Automated Machine Learning in R
+# fastml: Guarded Resampling Workflows for Leakage-Aware Machine Learning in R
 
 <!-- badges: start -->
 [![CRAN status](https://www.r-pkg.org/badges/version/fastml)](https://CRAN.R-project.org/package=fastml)
@@ -11,7 +11,7 @@
 [![R](https://img.shields.io/badge/R%20%3E%3D-4.1.0-blue.svg)](https://cran.r-project.org/)
 <!-- badges: end -->
 
-**Guarded Resampling Workflows for Safe and Automated Machine Learning in R**
+**Guarded Resampling Workflows for Leakage-Aware Machine Learning in R**
 
 fastml is an R package for training, evaluating, and comparing machine learning models with a guarded resampling workflow. Rather than introducing new learning algorithms, fastml focuses on **reducing leakage risk** by keeping preprocessing, model fitting, and evaluation aligned within supported resampling paths.
 

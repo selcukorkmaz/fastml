@@ -300,7 +300,8 @@ get_expanded_tune_params <- function(algo, train_data, label, engine) {
            trees = c(50, 500),
            tree_depth = c(1, 10),
            learn_rate = c(-3, -0.5),  # 0.001 to ~0.3
-           loss_reduction = c(0, 10),
+           # log10 scale, as elsewhere in this registry; documented range [0, 10]
+           loss_reduction = c(-10, 1),
            min_n = c(1, 15),
            sample_size = c(0.5, 1.0),
            mtry = c(0.5, 1.0)  # As proportion for xgboost
@@ -311,7 +312,8 @@ get_expanded_tune_params <- function(algo, train_data, label, engine) {
            trees = c(50, 500),
            tree_depth = c(2, 12),
            learn_rate = c(-3, -0.5),
-           loss_reduction = c(0, 10),
+           # log10 scale, as elsewhere in this registry; documented range [0, 10]
+           loss_reduction = c(-10, 1),
            min_n = c(5, 50),
            sample_size = c(0.5, 1.0),
            mtry = c(0.5, 1.0)
@@ -346,13 +348,15 @@ get_expanded_tune_params <- function(algo, train_data, label, engine) {
 
          # SVM Linear
          "svm_linear" = list(
-           cost = c(-4, 4),
+           # dials::cost() is stored on a base-2 logarithmic scale, not base 10.
+           cost = c(log2(1e-4), log2(1e4)),
            margin = c(0.01, 0.2)
          ),
 
          # SVM RBF
          "svm_rbf" = list(
-           cost = c(-4, 4),
+           # dials::cost() is stored on a base-2 logarithmic scale, not base 10.
+           cost = c(log2(1e-4), log2(1e4)),
            rbf_sigma = c(-10, 0)
          ),
 

@@ -9,7 +9,12 @@
 #' @details
 #' For classification tasks, the summary includes metrics such as Accuracy, F1 Score, Kappa,
 #' Precision, ROC AUC, Sensitivity, and Specificity. A confusion matrix is also provided for the best model(s).
-#' For regression tasks, the summary reports RMSE, R-squared, and MAE.
+#' For regression tasks, the summary reports RMSE, two forms of R-squared, and
+#' MAE. `rsq` is squared Pearson correlation and is invariant to location and
+#' scale; `rsq_trad` is one minus the residual sum of squares over the total
+#' sum of squares. The two agree when predictions are unbiased and correctly
+#' scaled, and diverge when they are not, so a large gap between them is a sign
+#' of miscalibration rather than of weak association.
 #'
 #' Users can control the type of output with the `type` argument:
 #' `metrics` displays model performance metrics.
@@ -60,7 +65,7 @@
 #' @export
 summary.fastml <- function(object,
                                  algorithm = "best",
-                                 type = c("all", "metrics", "params", "conf_mat"),
+                                 type = c("all", "metrics", "params", "grid", "conf_mat"),
                                  sort_metric = NULL,
                                  show_ci = FALSE,
                                  brier_times = NULL,
@@ -73,7 +78,7 @@ summary.fastml <- function(object,
   # Validate 'type' argument
   type <- match.arg(type, several.ok = TRUE)
   if ("all" %in% type) {
-    type <- c("metrics", "params", "conf_mat")
+    type <- c("metrics", "params", "grid", "conf_mat")
   }
 
   performance <- object$performance
@@ -216,7 +221,7 @@ summary.fastml <- function(object,
   if (task == "classification") {
     desired_metrics <- c("accuracy", "f_meas", "kap", "precision", "sens", "spec", "roc_auc", "logloss", "brier_score", "ece")
   } else if (task == "regression") {
-    desired_metrics <- c("rmse", "rsq", "mae")
+    desired_metrics <- c("rmse", "rsq", "rsq_trad", "mae")
   } else if (task == "survival") {
     current_metric_names <- unique(performance_df$.metric)
     base_surv_metrics <- c("c_index", "uno_c", "ibs")
@@ -728,6 +733,7 @@ summary.fastml <- function(object,
     brier_score = "Brier Score",
     ece = "ECE",
     rsq = "R-squared",
+    rsq_trad = "R-squared (trad)",
     mae = "MAE",
     rmse = "RMSE",
     c_index = "Harrell C-index",
@@ -864,7 +870,19 @@ summary.fastml <- function(object,
   # ============================================================
   if (has_cv_metrics && cv_metric_col %in% colnames(performance_wide)) {
     cat("-- Table 1: Model Selection (Cross-Validation) --\n")
-    cat("Note: This table determines the best model.\n\n")
+    cat("Note: This table determines the best model.\n")
+    # Under nested resampling the estimate describes the procedure, not the
+    # object that is returned. Users will otherwise attach the former to the
+    # latter, so the distinction and the selection rule are stated here.
+    if (identical(cv_source, "nested_cv")) {
+      cat("Note: this is a nested cross-validation estimate of the tuning and",
+          "fitting\n      procedure, not of the returned model. The returned",
+          "model uses the single\n      configuration with the best mean inner",
+          "score pooled over the outer folds,\n      refitted on the full",
+          "training set, and its performance is not estimated\n      by the",
+          "figure above.\n")
+    }
+    cat("\n")
 
     # Build CV selection table
     cv_select_df <- data.frame(
@@ -909,11 +927,21 @@ summary.fastml <- function(object,
   # ============================================================
   if (has_cv_metrics) {
     cat("-- Table 2: Final Evaluation (Test Set) --\n")
-    cat("Note: For reporting only; selection was based on CV above.\n\n")
+    cat("Note: For reporting only; selection was based on CV above.\n")
   } else {
     # No CV - this is the only table, and it determines selection
-    cat("-- Performance Metrics (Holdout) --\n\n")
+    cat("-- Performance Metrics (Holdout) --\n")
   }
+  # The estimand of the interval is narrow enough that it is easy to misread as
+  # ordinary uncertainty about model performance. The qualification therefore
+  # travels with the numbers rather than living only in the documentation.
+  if (isTRUE(show_ci_available)) {
+    cat("Note: intervals resample the held-out predictions of a single fitted",
+        "model.\n      They exclude training, tuning and model-selection",
+        "variability, and are\n      narrower than intervals that refit the",
+        "pipeline per replicate.\n")
+  }
+  cat("\n")
 
   # Build holdout table header (no CV columns)
   header <- c("Model", "Engine", sapply(desired_metrics, function(m) {
@@ -1660,6 +1688,33 @@ summary.fastml <- function(object,
       if (!any_success && failure_detected) {
         # All attempts failed; ensure user sees the generic warning once more.
         cat("Could not extract final fitted model details.\n")
+      }
+    }
+  }
+
+  # The grid that was actually searched. The selected configuration alone
+  # cannot reveal a grid that differs from the one requested, because a
+  # selected value looks the same whether it was named by the user or
+  # interpolated from a range the package substituted.
+  if ("grid" %in% type && !is.null(object$tuning_grid) &&
+      length(object$tuning_grid) > 0) {
+    cat("Tuning grid searched (values as passed to the engine):\n\n")
+    for (algo_nm in names(object$tuning_grid)) {
+      for (eng_nm in names(object$tuning_grid[[algo_nm]])) {
+        entry <- object$tuning_grid[[algo_nm]][[eng_nm]]
+        strategy <- if (is.null(entry$strategy)) "grid" else entry$strategy
+        cat(sprintf("%s (%s), search = %s\n", algo_nm, eng_nm, strategy))
+        pars <- entry$parameters
+        if (is.null(pars) || nrow(pars) == 0) {
+          cat("  no tuned parameters\n\n")
+          next
+        }
+        for (i in seq_len(nrow(pars))) {
+          cat(sprintf("  %-16s %-8s %s\n",
+                      pars$parameter[i], paste0("[", pars$source[i], "]"),
+                      pars$values[i]))
+        }
+        cat("\n")
       }
     }
   }

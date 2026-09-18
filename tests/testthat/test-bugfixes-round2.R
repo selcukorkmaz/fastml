@@ -91,18 +91,19 @@ test_that("get_default_engine errors for unknown algorithm", {
 # guard here ensures the package itself does not write deleted objects back into
 # the user's global environment while auditing hook side effects.
 
-test_that("security guard does not restore deleted globals into .GlobalEnv", {
-  src_path <- file.path(getwd(), "R", "security_guards.R")
-  if (!file.exists(src_path)) {
-    src_path <- system.file("R", "security_guards.R", package = "fastml")
-  }
-  if (!file.exists(src_path) || length(readLines(src_path)) == 0) {
-    skip("Cannot locate security_guards.R source")
-  }
-  src <- readLines(src_path)
+# Assert against the loaded namespace rather than the R/ sources, which are not
+# shipped in an installed package. Reading them made these checks skip silently
+# everywhere the package is checked from a tarball, i.e. on CRAN.
+fastml_deparsed_namespace <- function() {
+  ns <- asNamespace("fastml")
+  fns <- Filter(is.function, mget(ls(ns, all.names = TRUE), envir = ns,
+                                  ifnotfound = list(NULL)))
+  unlist(lapply(fns, function(f) deparse(body(f), control = NULL)))
+}
 
-  assign_lines <- grep('assign.*pre_values.*\\.GlobalEnv', src)
-  expect_length(assign_lines, 0)
+test_that("security guard does not restore deleted globals into .GlobalEnv", {
+  src <- fastml_deparsed_namespace()
+  expect_length(grep("assign.*pre_values.*GlobalEnv", src), 0)
 })
 
 test_that("added globals can still be cleaned up without restoring deletions", {
@@ -125,37 +126,21 @@ test_that("added globals can still be cleaned up without restoring deletions", {
 # ---------- Fix #3: logistic_reg/multinom_reg pre-loop swap ------------------
 
 test_that("in-loop logistic_reg swap was removed from train_models", {
-  src_path <- file.path(getwd(), "R", "train_models.R")
-  if (!file.exists(src_path)) {
-    src_path <- system.file("R", "train_models.R", package = "fastml")
-  }
-  if (!file.exists(src_path) || length(readLines(src_path)) == 0) {
-    skip("Cannot locate train_models.R source")
-  }
-  src <- readLines(src_path)
-  # The old in-loop swap line should no longer exist
-  in_loop_swap <- grep(
-    'n_class > 2 && algo == "logistic_reg".*algo.*=.*"multinom_reg"',
-    src
+  src <- deparse(body(fastml:::train_models), control = NULL)
+  # The old in-loop swap should no longer exist
+  expect_length(
+    grep('n_class > 2 && algo == "logistic_reg"', src, fixed = TRUE),
+    0
   )
-  expect_length(in_loop_swap, 0)
 })
 
 test_that("pre-loop multiclass swap exists in train_models", {
-  src_path <- file.path(getwd(), "R", "train_models.R")
-  if (!file.exists(src_path)) {
-    src_path <- system.file("R", "train_models.R", package = "fastml")
-  }
-  if (!file.exists(src_path) || length(readLines(src_path)) == 0) {
-    skip("Cannot locate train_models.R source")
-  }
-  src <- readLines(src_path)
-  # Pre-loop swap should exist: algorithms[...logistic_reg...] <- "multinom_reg"
-  pre_loop_swap <- grep(
-    'algorithms\\[algorithms == "logistic_reg"\\] <- "multinom_reg"',
-    src
+  src <- deparse(body(fastml:::train_models), control = NULL)
+  expect_gt(
+    length(grep('algorithms[algorithms == "logistic_reg"] <- "multinom_reg"',
+                src, fixed = TRUE)),
+    0
   )
-  expect_true(length(pre_loop_swap) > 0)
 })
 
 # ---------- Fix #1: selected_outer_id in nested CV --------------------------

@@ -1,14 +1,19 @@
 library(testthat)
 library(dplyr)
 
+# sanitize() is called through its namespace throughout this file: xtable also
+# exports a sanitize(), and it is attached transitively by the explanation
+# utilities, so a bare call resolves to the wrong function in a full-suite run
+# even though it resolves correctly when this file is run alone.
+
 test_that("sanitize errors with invalid input type", {
   expect_error(
-    sanitize(123),
+    fastml::sanitize(123),
     "Input must be a data frame or a character vector"
   )
 
   expect_error(
-    sanitize(list(a = 1, b = 2)),
+    fastml::sanitize(list(a = 1, b = 2)),
     "Input must be a data frame or a character vector"
   )
 })
@@ -16,7 +21,7 @@ test_that("sanitize errors with invalid input type", {
 test_that("sanitize cleans data frame column names with colons", {
   df <- data.frame(a = 1, `b:c` = 2, check.names = FALSE)
 
-  result <- sanitize(df)
+  result <- fastml::sanitize(df)
 
   expect_false("b:c" %in% names(result))
   expect_true("bc" %in% names(result) || "b_c" %in% names(result))
@@ -25,7 +30,7 @@ test_that("sanitize cleans data frame column names with colons", {
 test_that("sanitize cleans data frame column names with slashes", {
   df <- data.frame(a = 1, `b/c` = 2, check.names = FALSE)
 
-  result <- sanitize(df)
+  result <- fastml::sanitize(df)
 
   expect_false("b/c" %in% names(result))
   expect_true(any(grepl("b_c", names(result))))
@@ -34,7 +39,7 @@ test_that("sanitize cleans data frame column names with slashes", {
 test_that("sanitize cleans data frame column names with spaces", {
   df <- data.frame(a = 1, `b c` = 2, check.names = FALSE)
 
-  result <- sanitize(df)
+  result <- fastml::sanitize(df)
 
   expect_false("b c" %in% names(result))
   expect_true(any(grepl("b_c", names(result))))
@@ -43,7 +48,7 @@ test_that("sanitize cleans data frame column names with spaces", {
 test_that("sanitize leaves clean column names unchanged", {
   df <- data.frame(a = 1, b_c = 2, normal_name = 3)
 
-  result <- sanitize(df)
+  result <- fastml::sanitize(df)
 
   expect_equal(names(result), names(df))
 })
@@ -57,7 +62,7 @@ test_that("sanitize handles mixed column names", {
     check.names = FALSE
   )
 
-  result <- sanitize(df)
+  result <- fastml::sanitize(df)
 
   expect_equal(names(result)[1], "clean_name")
   expect_false(any(grepl("[: /]", names(result))))
@@ -66,7 +71,7 @@ test_that("sanitize handles mixed column names", {
 test_that("sanitize works with character vectors", {
   vec <- c("clean_name", "dirty:name", "with/slash", "with space")
 
-  result <- sanitize(vec)
+  result <- fastml::sanitize(vec)
 
   expect_true(is.character(result))
   expect_equal(length(result), 4)
@@ -77,7 +82,7 @@ test_that("sanitize works with character vectors", {
 test_that("sanitize returns data frame for data frame input", {
   df <- data.frame(a = 1, `b:c` = 2, check.names = FALSE)
 
-  result <- sanitize(df)
+  result <- fastml::sanitize(df)
 
   expect_true(is.data.frame(result))
 })
@@ -85,7 +90,7 @@ test_that("sanitize returns data frame for data frame input", {
 test_that("sanitize returns character vector for character input", {
   vec <- c("a", "b:c")
 
-  result <- sanitize(vec)
+  result <- fastml::sanitize(vec)
 
   expect_true(is.character(result))
   expect_false(is.data.frame(result))
@@ -94,7 +99,7 @@ test_that("sanitize returns character vector for character input", {
 test_that("sanitize preserves data in data frame", {
   df <- data.frame(`value:col` = c(1, 2, 3), check.names = FALSE)
 
-  result <- sanitize(df)
+  result <- fastml::sanitize(df)
 
   expect_equal(nrow(result), 3)
   expect_equal(result[[1]], c(1, 2, 3))
@@ -103,7 +108,7 @@ test_that("sanitize preserves data in data frame", {
 test_that("sanitize handles empty data frame", {
   df <- data.frame()
 
-  result <- sanitize(df)
+  result <- fastml::sanitize(df)
 
   expect_true(is.data.frame(result))
   expect_equal(ncol(result), 0)
@@ -112,7 +117,7 @@ test_that("sanitize handles empty data frame", {
 test_that("sanitize handles empty character vector", {
   vec <- character(0)
 
-  result <- sanitize(vec)
+  result <- fastml::sanitize(vec)
 
   expect_true(is.character(result))
   expect_equal(length(result), 0)
@@ -121,7 +126,7 @@ test_that("sanitize handles empty character vector", {
 test_that("sanitize handles data frame with no special characters", {
   df <- data.frame(a = 1, b = 2, c_d = 3)
 
-  result <- sanitize(df)
+  result <- fastml::sanitize(df)
 
   expect_equal(names(result), names(df))
 })
@@ -129,7 +134,7 @@ test_that("sanitize handles data frame with no special characters", {
 test_that("sanitize handles complex special character combinations", {
   vec <- c("a:b/c d", "x::y", "m/n/o")
 
-  result <- sanitize(vec)
+  result <- fastml::sanitize(vec)
 
   expect_false(any(grepl("[:/]", result)))
   expect_false(any(grepl(" ", result)))

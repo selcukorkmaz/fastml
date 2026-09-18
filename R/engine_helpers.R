@@ -64,7 +64,6 @@ availableMethods <- function(type = c("classification", "regression", "survival"
         "cox_ph",
         "penalized_cox",
         "stratified_cox",
-        "time_varying_cox",
         "survreg",
         "royston_parmar",
         "parametric_surv",

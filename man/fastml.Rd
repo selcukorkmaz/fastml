@@ -12,11 +12,13 @@ fastml(
   algorithms = "all",
   task = "auto",
   test_size = 0.2,
+  test_size_tolerance = 0.05,
   resampling_method = if (identical(task, "survival")) "none" else "cv",
   folds = ifelse(grepl("cv", resampling_method), 10, 25),
   repeats = NULL,
   group_cols = NULL,
   block_col = NULL,
+  strata_cols = NULL,
   block_size = NULL,
   initial_window = NULL,
   assess_window = NULL,
@@ -53,7 +55,7 @@ fastml(
   verbose = FALSE,
   eval_times = NULL,
   survival_metric_convention = "fastml",
-  bootstrap_ci = TRUE,
+  bootstrap_ci = FALSE,
   bootstrap_samples = 500,
   bootstrap_seed = NULL,
   at_risk_threshold = 0.1,
@@ -63,7 +65,7 @@ fastml(
 )
 }
 \arguments{
-\item{data}{A data frame containing the complete dataset. If both `train_data` and `test_data` are `NULL`, `fastml()` will split this into training and testing sets according to `test_size` and `stratify`. When `group_cols` is supplied, the holdout keeps groups intact; when `block_col` is supplied, the holdout uses the last rows in time order. Defaults to `NULL`.}
+\item{data}{A data frame containing the complete dataset. If both `train_data` and `test_data` are `NULL`, `fastml()` will split this into training and testing sets according to `test_size` and `stratify`. When `group_cols` is supplied, the holdout keeps groups intact; when `block_col` is supplied, the holdout uses the last rows in time order; when both are supplied, the holdout is cut at the latest point that keeps every group intact, so both guarantees hold at once. Defaults to `NULL`.}
 
 \item{train_data}{A data frame pre-split for model training. If provided, `test_data` must also be supplied, and no internal splitting will occur. Defaults to `NULL`.}
 
@@ -81,7 +83,19 @@ or survival based on the data. Survival is detected when `label` is a
 character vector of length 2 that matches time and status columns in the data.
 You may also explicitly set to "classification", "regression", or "survival".}
 
-\item{test_size}{A numeric value between 0 and 1 indicating the proportion of the data to use for testing. For grouped holdout, this is applied to groups; for time-ordered holdout, it selects the final proportion of rows. Default is \code{0.2}.}
+\item{test_size}{A numeric value between 0 and 1 indicating the proportion of the data to use for testing. For grouped holdout, this is applied to groups; for time-ordered holdout, it selects the final proportion of rows; for grouped time-ordered holdout it is a target that is met as closely as an intact-group cut allows, with a warning when the realized proportion differs from it by more than \code{test_size_tolerance}. Default is \code{0.2}.}
+
+\item{test_size_tolerance}{A numeric value giving how far the realized test
+proportion may fall from \code{test_size} before a warning is issued. This
+applies only to the grouped time-ordered holdout, where the cut must fall
+between whole groups and the requested proportion is therefore a target
+rather than a constraint. There is no principled value for it, since how
+much departure matters depends on the sample size and on how the test
+estimate will be used, so it is exposed rather than fixed. The default of
+\code{0.05} is a reporting threshold chosen to be small enough to catch a
+materially different split while not warning on the rounding that whole
+group boundaries inevitably produce. Set it to \code{0} to be told the
+realized proportion whenever it differs at all.}
 
 \item{resampling_method}{A string specifying the resampling method for model evaluation. Default is \code{"cv"}
 (cross-validation) for classification/regression. Other options include \code{"none"}, \code{"boot"},
@@ -106,7 +120,16 @@ in the training data and cannot contain missing values.}
 
 \item{block_col}{Single column name that defines the ordering variable for
 \code{resampling_method = "blocked_cv"} or \code{"rolling_origin"}. Data must already be sorted in
-ascending order by this column to avoid leakage from future observations.}
+ascending order by this column to avoid leakage from future observations. When
+\code{group_cols} is also supplied, the holdout split is cut at the admissible point
+nearest the requested \code{test_size} at which no group spans the cut, so that every
+training row precedes every test row and no group appears on both sides; if the groups
+are interleaved in time so that no such point exists, \code{fastml()} stops rather than
+relaxing either guarantee.}
+
+\item{strata_cols}{Optional character vector naming the columns that define
+strata for \code{stratified_cox}. When \code{NULL} (the default), columns whose
+names begin with \code{"strata"} are used, which is the historical behaviour.}
 
 \item{block_size}{Positive integer specifying the block size for \code{"blocked_cv"}.}
 
@@ -132,9 +155,27 @@ class, "second" treats the second level as positive. Use
 
 \item{recipe}{A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.}
 
-\item{tune_params}{A named list of tuning ranges for each algorithm and engine
-pair. Example: \code{list(rand_forest = list(ranger = list(mtry = c(1, 3))))}
-will override the defaults for the ranger engine. Default is \code{NULL}.}
+\item{tune_params}{A named list of candidate tuning values for each algorithm
+  and engine pair. Example:
+  \code{list(rand_forest = list(ranger = list(mtry = c(1, 3))))} searches
+  \code{mtry} at 1 and 3 for the ranger engine.
+
+  Every value supplied here is treated as a candidate to be searched, not as
+  the endpoint of an interval, whatever the number of values given. Writing
+  \code{min_n = c(20, 50)} searches exactly 20 and 50, and does not
+  interpolate between them. The grid is widened where necessary so that each
+  requested value is used, even when it lies outside the package default
+  range for that parameter.
+
+  Values are given on the parameter's natural scale. A learning rate of
+  \code{0.05} means 0.05, and a penalty of \code{0.01} means 0.01, even
+  though \pkg{dials} stores these parameters logarithmically. The grid that
+  was actually searched is recorded in the \code{tuning_grid} component of
+  the returned object and printed by \code{summary()}, so the specification
+  supplied here can be checked against the one that was used.
+
+  Default is \code{NULL}, in which case the package defaults documented in
+  \code{\link{availableMethods}} and the package vignette are used.}
 
 \item{engine_params}{A named list of engine-level arguments to pass directly
 to the underlying model fitting functions. Use this for fixed settings that
@@ -280,7 +321,20 @@ Brier/IBS normalization; when `eval_times` is `NULL`, time-dependent Brier
 metrics are omitted.}
 
 \item{bootstrap_ci}{Logical indicating whether bootstrap confidence intervals
-should be computed for performance metrics. Applies to all task types.}
+  should be computed for performance metrics. Applies to all task types.
+  Defaults to \code{FALSE}.
+
+  The estimand is narrow. The model is fitted once and the bootstrap resamples
+  the fixed vector of held-out predictions, so the interval describes
+  uncertainty from the evaluation sample \emph{conditional on that fitted
+  model}. It does not propagate uncertainty from training-data variability,
+  from tuning, or from any other part of model development, and it is
+  therefore narrower than an interval that refitted the whole pipeline within
+  each replicate. Read as ordinary uncertainty about model performance it
+  overstates precision, which is why it is not computed unless requested.
+  Computing it also dominates run time, accounting for about 85 percent of
+  elapsed time on a Cox fit to the \code{rotterdam} data, which falls from
+  roughly 19 seconds to roughly 2.9 seconds with it disabled.}
 
 \item{bootstrap_samples}{Integer giving the number of bootstrap resamples to
 use when \code{bootstrap_ci = TRUE}. Defaults to 500.}
@@ -310,7 +364,13 @@ on each cross-validation fold (memory intensive). This enables
 and assess explanation stability. Default is \code{FALSE}.}
 }
 \value{
-An object of class \code{fastml} containing the best model, performance metrics, and other information.
+An object of class \code{fastml} containing the best model,
+  performance metrics, and other information. Among its components,
+  \code{resampling_plan} records the resampling design that was used,
+  \code{preprocessor} the preprocessing specification, and
+  \code{tuning_grid} the tuning grid that was actually searched, listed per
+  algorithm and engine with each parameter marked as coming from the user or
+  from the package defaults.
 }
 \description{
 Trains and evaluates multiple classification or regression models automatically detecting the task based on the target variable type.

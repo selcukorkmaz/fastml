@@ -8,7 +8,7 @@
 #' detects the task based on the target variable type and can perform advanced hyperparameter tuning
 #' using various tuning strategies.
 #'
-#' @param data A data frame containing the complete dataset. If both `train_data` and `test_data` are `NULL`, `fastml()` will split this into training and testing sets according to `test_size` and `stratify`. When `group_cols` is supplied, the holdout keeps groups intact; when `block_col` is supplied, the holdout uses the last rows in time order. Defaults to `NULL`.
+#' @param data A data frame containing the complete dataset. If both `train_data` and `test_data` are `NULL`, `fastml()` will split this into training and testing sets according to `test_size` and `stratify`. When `group_cols` is supplied, the holdout keeps groups intact; when `block_col` is supplied, the holdout uses the last rows in time order; when both are supplied, the holdout is cut at the latest point that keeps every group intact, so both guarantees hold at once. Defaults to `NULL`.
 #' @param train_data A data frame pre-split for model training. If provided, `test_data` must also be supplied, and no internal splitting will occur. Defaults to `NULL`.
 #' @param test_data A data frame pre-split for model evaluation. If provided, `train_data` must also be supplied, and no internal splitting will occur. Defaults to `NULL`.
 #' @param label A string specifying the name of the target variable. For
@@ -20,7 +20,18 @@
 #'   or survival based on the data. Survival is detected when `label` is a
 #'   character vector of length 2 that matches time and status columns in the data.
 #'   You may also explicitly set to "classification", "regression", or "survival".
-#' @param test_size A numeric value between 0 and 1 indicating the proportion of the data to use for testing. For grouped holdout, this is applied to groups; for time-ordered holdout, it selects the final proportion of rows. Default is \code{0.2}.
+#' @param test_size A numeric value between 0 and 1 indicating the proportion of the data to use for testing. For grouped holdout, this is applied to groups; for time-ordered holdout, it selects the final proportion of rows; for grouped time-ordered holdout it is a target that is met as closely as an intact-group cut allows, with a warning when the realized proportion differs from it by more than \code{test_size_tolerance}. Default is \code{0.2}.
+#' @param test_size_tolerance A numeric value giving how far the realized test
+#'   proportion may fall from \code{test_size} before a warning is issued. This
+#'   applies only to the grouped time-ordered holdout, where the cut must fall
+#'   between whole groups and the requested proportion is therefore a target
+#'   rather than a constraint. There is no principled value for it, since how
+#'   much departure matters depends on the sample size and on how the test
+#'   estimate will be used, so it is exposed rather than fixed. The default of
+#'   \code{0.05} is a reporting threshold chosen to be small enough to catch a
+#'   materially different split while not warning on the rounding that whole
+#'   group boundaries inevitably produce. Set it to \code{0} to be told the
+#'   realized proportion whenever it differs at all.
 #' @param resampling_method A string specifying the resampling method for model evaluation. Default is \code{"cv"}
 #'   (cross-validation) for classification/regression. Other options include \code{"none"}, \code{"boot"},
 #'   \code{"repeatedcv"}, \code{"grouped_cv"}, \code{"blocked_cv"}, \code{"rolling_origin"}, and \code{"nested_cv"}.
@@ -38,9 +49,17 @@
 #'   \code{resampling_method = "grouped_cv"} or when grouped nested cross-validation is desired.
 #'   All rows that share the same combination of values remain together in every fold. Columns must exist
 #'   in the training data and cannot contain missing values.
+#' @param strata_cols Optional character vector naming the columns that define
+#'   strata for \code{stratified_cox}. When \code{NULL} (the default), columns whose
+#'   names begin with \code{"strata"} are used, which is the historical behaviour.
 #' @param block_col Single column name that defines the ordering variable for
 #'   \code{resampling_method = "blocked_cv"} or \code{"rolling_origin"}. Data must already be sorted in
-#'   ascending order by this column to avoid leakage from future observations.
+#'   ascending order by this column to avoid leakage from future observations. When
+#'   \code{group_cols} is also supplied, the holdout split is cut at the admissible point
+#'   nearest the requested \code{test_size} at which no group spans the cut, so that every
+#'   training row precedes every test row and no group appears on both sides; if the groups
+#'   are interleaved in time so that no such point exists, \code{fastml()} stops rather than
+#'   relaxing either guarantee.
 #' @param block_size Positive integer specifying the block size for \code{"blocked_cv"}.
 #' @param initial_window Positive integer giving the number of observations in the initial training
 #'   window for \code{"rolling_origin"} resampling.
@@ -61,9 +80,27 @@
 #'   change model rankings on imbalanced data.
 #' @param exclude A character vector specifying the names of the columns to be excluded from the training process.
 #' @param recipe A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.
-#' @param tune_params A named list of tuning ranges for each algorithm and engine
-#'   pair. Example: \code{list(rand_forest = list(ranger = list(mtry = c(1, 3))))}
-#'   will override the defaults for the ranger engine. Default is \code{NULL}.
+#' @param tune_params A named list of candidate tuning values for each algorithm
+#'   and engine pair. Example:
+#'   \code{list(rand_forest = list(ranger = list(mtry = c(1, 3))))} searches
+#'   \code{mtry} at 1 and 3 for the ranger engine.
+#'
+#'   Every value supplied here is treated as a candidate to be searched, not as
+#'   the endpoint of an interval, whatever the number of values given. Writing
+#'   \code{min_n = c(20, 50)} searches exactly 20 and 50, and does not
+#'   interpolate between them. The grid is widened where necessary so that each
+#'   requested value is used, even when it lies outside the package default
+#'   range for that parameter.
+#'
+#'   Values are given on the parameter's natural scale. A learning rate of
+#'   \code{0.05} means 0.05, and a penalty of \code{0.01} means 0.01, even
+#'   though \pkg{dials} stores these parameters logarithmically. The grid that
+#'   was actually searched is recorded in the \code{tuning_grid} component of
+#'   the returned object and printed by \code{summary()}, so the specification
+#'   supplied here can be checked against the one that was used.
+#'
+#'   Default is \code{NULL}, in which case the package defaults documented in
+#'   \code{\link{availableMethods}} and the package vignette are used.
 #' @param engine_params A named list of engine-level arguments to pass directly
 #'   to the underlying model fitting functions. Use this for fixed settings that
 #'   should apply whenever an engine is fitted (for example,
@@ -182,6 +219,19 @@
 #'   metrics are omitted.
 #' @param bootstrap_ci Logical indicating whether bootstrap confidence intervals
 #'   should be computed for performance metrics. Applies to all task types.
+#'   Defaults to \code{FALSE}.
+#'
+#'   The estimand is narrow. The model is fitted once and the bootstrap resamples
+#'   the fixed vector of held-out predictions, so the interval describes
+#'   uncertainty from the evaluation sample \emph{conditional on that fitted
+#'   model}. It does not propagate uncertainty from training-data variability,
+#'   from tuning, or from any other part of model development, and it is
+#'   therefore narrower than an interval that refitted the whole pipeline within
+#'   each replicate. Read as ordinary uncertainty about model performance it
+#'   overstates precision, which is why it is not computed unless requested.
+#'   Computing it also dominates run time, accounting for about 85 percent of
+#'   elapsed time on a Cox fit to the \code{rotterdam} data, which falls from
+#'   roughly 19 seconds to roughly 2.9 seconds with it disabled.
 #' @param bootstrap_samples Integer giving the number of bootstrap resamples to
 #'   use when \code{bootstrap_ci = TRUE}. Defaults to 500.
 #' @param bootstrap_seed Optional seed passed to the bootstrap procedure used to
@@ -268,7 +318,13 @@
 #' data$outcome <- factor(data$outcome, levels = c("positive", "negative"))
 #' }
 #'
-#' @return An object of class \code{fastml} containing the best model, performance metrics, and other information.
+#' @return An object of class \code{fastml} containing the best model,
+#'   performance metrics, and other information. Among its components,
+#'   \code{resampling_plan} records the resampling design that was used,
+#'   \code{preprocessor} the preprocessing specification, and
+#'   \code{tuning_grid} the tuning grid that was actually searched, listed per
+#'   algorithm and engine with each parameter marked as coming from the user or
+#'   from the package defaults.
 #' @examples
 #' \donttest{
 #' # Example 1: Using the iris dataset for binary classification (excluding 'setosa')
@@ -306,11 +362,13 @@ fastml <- function(data = NULL,
                    algorithms = "all",
                    task = "auto",
                    test_size = 0.2,
+                   test_size_tolerance = 0.05,
                    resampling_method = if (identical(task, "survival")) "none" else "cv",
                    folds = ifelse(grepl("cv", resampling_method), 10, 25),
                    repeats = NULL,
                    group_cols = NULL,
                    block_col = NULL,
+                   strata_cols = NULL,
                    block_size = NULL,
                    initial_window = NULL,
                    assess_window = NULL,
@@ -347,7 +405,7 @@ fastml <- function(data = NULL,
                    verbose = FALSE,
                    eval_times = NULL,
                    survival_metric_convention = "fastml",
-                   bootstrap_ci = TRUE,
+                   bootstrap_ci = FALSE,
                    bootstrap_samples = 500,
                    bootstrap_seed = NULL,
                    at_risk_threshold = 0.1,
@@ -375,6 +433,9 @@ fastml <- function(data = NULL,
   }
 
   task <- match.arg(task, c("auto", "classification", "regression", "survival"))
+  # Recorded before match.arg() forces the argument, since missing() reports
+  # FALSE once the formal has been assigned.
+  missing_event_class <- missing(event_class)
   event_class <- match.arg(event_class, c("first", "second"))
   tuning_strategy <- match.arg(tuning_strategy, c("grid", "bayes", "none"))
   tuning_complexity <- match.arg(tuning_complexity, c("balanced", "quick", "thorough", "exhaustive"))
@@ -620,13 +681,7 @@ fastml <- function(data = NULL,
 
   holdout_mode <- "random"
   if (!is.null(block_col)) {
-    if (!is.null(group_cols)) {
-      warning(
-        "Both 'block_col' and 'group_cols' were provided; holdout splitting will use 'block_col' ordering and ignore grouping.",
-        call. = FALSE
-      )
-    }
-    holdout_mode <- "time"
+    holdout_mode <- if (!is.null(group_cols)) "grouped_time" else "time"
   } else if (!is.null(group_cols)) {
     holdout_mode <- "group"
   }
@@ -644,7 +699,7 @@ fastml <- function(data = NULL,
       use_strata <- FALSE
     }
 
-    if (identical(holdout_mode, "time")) {
+    if (identical(holdout_mode, "time") || identical(holdout_mode, "grouped_time")) {
       if (is.null(block_col) || !block_col %in% names(df)) {
         stop("`block_col` must be present in the data for time-ordered holdout splitting.", call. = FALSE)
       }
@@ -661,8 +716,27 @@ fastml <- function(data = NULL,
       if (n_rows - n_test < 1L) {
         stop("`test_size` leaves no data for training after time-ordered splitting; reduce `test_size`.", call. = FALSE)
       }
-      test_idx <- seq.int(n_rows - n_test + 1L, n_rows)
-      train_idx <- seq_len(n_rows - n_test)
+      cut_point <- n_rows - n_test
+
+      if (identical(holdout_mode, "grouped_time")) {
+        if (!all(group_cols %in% names(df))) {
+          stop("`group_cols` must be present in the data for grouped time-ordered holdout splitting.", call. = FALSE)
+        }
+        cut_point <- fastml_grouped_time_cut(df, group_cols, cut_point)
+        realized <- (n_rows - cut_point) / n_rows
+        if (abs(realized - test_size) > test_size_tolerance) {
+          warning(
+            sprintf(
+              "Grouped time-ordered holdout used the nearest cut point that keeps groups intact: the test set holds %.1f%% of rows rather than the requested %.1f%%.",
+              realized * 100, test_size * 100
+            ),
+            call. = FALSE
+          )
+        }
+      }
+
+      test_idx <- seq.int(cut_point + 1L, n_rows)
+      train_idx <- seq_len(cut_point)
       return(list(
         train_data = df[train_idx, , drop = FALSE],
         test_data = df[test_idx, , drop = FALSE]
@@ -673,12 +747,7 @@ fastml <- function(data = NULL,
       if (is.null(group_cols) || !all(group_cols %in% names(df))) {
         stop("`group_cols` must be present in the data for grouped holdout splitting.", call. = FALSE)
       }
-      group_df <- df[, group_cols, drop = FALSE]
-      group_id <- if (length(group_cols) == 1) {
-        group_df[[1]]
-      } else {
-        interaction(group_df, drop = TRUE)
-      }
+      group_id <- fastml_group_id(df, group_cols)
       if (any(is.na(group_id))) {
         stop("Grouping columns contain missing values, which are not supported for grouped holdout splitting.", call. = FALSE)
       }
@@ -933,6 +1002,23 @@ fastml <- function(data = NULL,
 
   supported_algorithms <- availableMethods(type = task)
 
+  # 'time_varying_cox' requires start-stop (left-truncated) input, which fastml
+  # declines to evaluate, so the learner cannot produce a scored result. It is
+  # no longer advertised, and a request for it by name is answered with the
+  # reason rather than with a generic "invalid algorithm" warning.
+  if (identical(task, "survival") && "time_varying_cox" %in% algorithms) {
+    stop(
+      paste(
+        "'time_varying_cox' is not currently available.",
+        "It requires start-stop (left-truncated) survival data, which fastml does not",
+        "evaluate, so no scored result can be produced. Use 'cox_ph' or",
+        "'stratified_cox' for right-censored data, or fit a time-varying model",
+        "directly with survival::coxph() and evaluate it externally."
+      ),
+      call. = FALSE
+    )
+  }
+
   if ("all" %in% algorithms) {
     algorithms <- supported_algorithms
   } else {
@@ -1048,6 +1134,30 @@ fastml <- function(data = NULL,
       positive_class <- ifelse(event_class == "first",
                                levels(train_data[[label]])[1],
                                levels(train_data[[label]])[2])
+      # `event_class` cannot be inferred without risk. Choosing the wrong level
+      # exchanges sensitivity with specificity and leaves every metric looking
+      # plausible, so the default is not overridden here. What can be done
+      # safely is to say when the level names suggest the other choice, which
+      # turns a silent mistake into a visible decision.
+      if (n_classes == 2 && missing_event_class) {
+        lev <- levels(train_data[[label]])
+        event_like <- function(x) {
+          grepl(paste0(
+            "^(pos|positive|yes|y|case|event|true|t|1|malignant|abnormal|",
+            "disease|diseased|dead|died|death|fail|failure|churn|relapse)$"
+          ), tolower(trimws(x)))
+        }
+        if (event_like(lev[2]) && !event_like(lev[1])) {
+          message(sprintf(
+            paste(
+              "Outcome levels are '%s' then '%s', and metrics are being computed",
+              "with '%s' as the event because event_class defaults to \"first\".",
+              "If '%s' is the event, pass event_class = \"second\"."
+            ),
+            lev[1], lev[2], lev[1], lev[2]
+          ))
+        }
+      }
     }
   } else if (task == "regression") {
     train_data[[label]] <- as.numeric(train_data[[label]])
@@ -1223,6 +1333,7 @@ fastml <- function(data = NULL,
       repeats = repeats,
       group_cols = group_cols,
       block_col = block_col,
+      strata_cols = strata_cols,
       block_size = block_size,
       initial_window = initial_window,
       assess_window = assess_window,
@@ -1271,6 +1382,9 @@ fastml <- function(data = NULL,
 
   resampling_plan <- attr(models, "resampling_plan")
   attr(models, "resampling_plan") <- NULL
+
+  tuning_grid <- attr(models, "tuning_grids")
+  attr(models, "tuning_grids") <- NULL
 
   models <- models[sapply(models, function(x) length(x) > 0)]
 
@@ -1873,6 +1987,7 @@ fastml <- function(data = NULL,
     metric_bootstrap = list(enabled = bootstrap_ci, samples = bootstrap_samples, seed = bootstrap_seed),
     resampling_results = resampling_results,
     resampling_plan = resampling_plan,
+    tuning_grid = tuning_grid,
     nested_cv = nested_results,
     audit = if (audit_env$enabled) list(log = audit_env$log, flagged = audit_env$unsafe) else NULL
   )

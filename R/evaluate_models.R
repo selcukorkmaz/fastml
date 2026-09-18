@@ -29,7 +29,7 @@
 #'   class equally, while macro_weighted weights by class prevalence and can
 #'   change model rankings on imbalanced data.
 #' @importFrom dplyr filter bind_rows pull mutate select bind_cols
-#' @importFrom yardstick metric_set accuracy kap roc_auc sens spec precision f_meas rmse rsq mae
+#' @importFrom yardstick metric_set accuracy kap roc_auc sens spec precision f_meas rmse rsq rsq_trad mae
 #' @importFrom workflows pull_workflow_spec pull_workflow_preprocessor workflow add_model add_recipe
 #' @importFrom parsnip fit predict.model_fit
 #' @importFrom tune select_best finalize_model

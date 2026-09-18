@@ -14,6 +14,7 @@ train_models(
   repeats,
   group_cols = NULL,
   block_col = NULL,
+  strata_cols = NULL,
   block_size = NULL,
   initial_window = NULL,
   assess_window = NULL,
@@ -80,6 +81,15 @@ warning is emitted to document the limitation.}
 
 \item{block_col}{Optional name of the ordering column used with blocked or
 rolling resampling.}
+
+\item{strata_cols}{Character vector naming the stratification columns used by
+\code{"stratified_cox"}. Columns whose names begin with \code{"strata"} are
+also recognised for backward compatibility. Naming a column that is not
+present in the data is an error, and requesting \code{"stratified_cox"} with
+no strata at all is an error rather than a silent skip. The stratifier is
+read from the training frame rather than from the preprocessed frame, so a
+numeric column is not affected by a step that rescales it. Default is
+\code{NULL}.}
 
 \item{block_size}{Optional integer specifying the block size for
 `resampling_method = "blocked_cv"`.}

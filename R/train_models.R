@@ -339,6 +339,75 @@ fastml_nested_signature <- function(param_tbl) {
   paste(names(vals), vals, sep = "=", collapse = "||")
 }
 
+#' Select the best tuning configuration, recovering parameters when needed
+#'
+#' `tune::select_best()` reads the hyperparameter columns of the rows for the
+#' chosen metric. For probability metrics those columns can come back `NA` even
+#' though `.config` identifies the configuration correctly, and finalizing a
+#' workflow with `NA` parameters then fails inside the engine. The configuration
+#' is therefore identified by `.config`, and its parameter values are recovered
+#' from any row of the same tuning result that carries them.
+#'
+#' @param tuned A `tune_results` object.
+#' @param metric Name of the selection metric.
+#'
+#' @return A one-row tibble of parameter values, or `NULL`.
+#'
+#' @keywords internal
+#' @noRd
+fastml_select_best_config <- function(tuned, metric) {
+  best <- tryCatch(select_best(tuned, metric = metric), error = function(e) NULL)
+  # Read from the public attribute rather than tune's internals.
+  param_names <- tryCatch(attr(tuned, "parameters")$id, error = function(e) NULL)
+  if (is.null(param_names) || length(param_names) == 0) {
+    return(best)
+  }
+  usable <- function(x) {
+    !is.null(x) && is.data.frame(x) && nrow(x) > 0 &&
+      all(param_names %in% names(x)) &&
+      !any(vapply(x[1, param_names, drop = FALSE], function(v) all(is.na(v)), logical(1)))
+  }
+  if (usable(best)) {
+    return(best[, param_names, drop = FALSE])
+  }
+  # Fall back to identifying the configuration by .config and recovering its
+  # parameter values from rows that carry them.
+  all_metrics <- tryCatch(
+    tune::collect_metrics(tuned, summarize = TRUE),
+    error = function(e) NULL
+  )
+  if (is.null(all_metrics) || !".config" %in% names(all_metrics)) {
+    return(best)
+  }
+  scored <- all_metrics[all_metrics$.metric == metric, , drop = FALSE]
+  scored <- scored[is.finite(scored$mean), , drop = FALSE]
+  if (nrow(scored) == 0) {
+    return(best)
+  }
+  # Metric direction is read from the yardstick metric itself where possible,
+  # and otherwise from the set of metrics fastml treats as lower-is-better.
+  direction <- tryCatch(
+    attr(get(metric, envir = asNamespace("yardstick")), "direction"),
+    error = function(e) NULL
+  )
+  lower_better <- if (!is.null(direction) && nzchar(direction)) {
+    identical(direction, "minimize")
+  } else {
+    metric %in% c("rmse", "mae", "mase", "smape", "logloss", "mn_log_loss",
+                  "brier_score", "brier_class", "brier_survival", "ece")
+  }
+  ord <- if (lower_better) order(scored$mean) else order(-scored$mean)
+  best_config <- scored$.config[ord][[1]]
+  donors <- all_metrics[all_metrics$.config == best_config, , drop = FALSE]
+  for (i in seq_len(nrow(donors))) {
+    row <- donors[i, param_names, drop = FALSE]
+    if (!any(vapply(row, function(v) all(is.na(v)), logical(1)))) {
+      return(tibble::as_tibble(row))
+    }
+  }
+  best
+}
+
 fastml_nested_select_params <- function(inner_results,
                                         metric,
                                         lower_is_better,
@@ -362,6 +431,25 @@ fastml_nested_select_params <- function(inner_results,
     }
     if (is.null(metrics_tbl) || nrow(metrics_tbl) == 0) {
       return(NULL)
+    }
+    # Rows for probability metrics can carry NA in the hyperparameter columns
+    # while `.config` still identifies the configuration. Those rows are
+    # repaired from rows of the same `.config` that do carry the values, within
+    # this outer fold only, since each outer fold finalizes its own grid.
+    if (".config" %in% names(metrics_tbl)) {
+      param_cols_entry <- setdiff(
+        names(metrics_tbl),
+        c(".metric", ".estimator", ".estimate", ".config", "id", "id2",
+          ".iter", "n", "std_err", "mean", ".eval_time")
+      )
+      for (pc in param_cols_entry) {
+        needs <- is.na(metrics_tbl[[pc]])
+        if (!any(needs) || all(needs)) next
+        donor <- metrics_tbl[!is.na(metrics_tbl[[pc]]), c(".config", pc), drop = FALSE]
+        donor <- donor[!duplicated(donor$.config), , drop = FALSE]
+        idx <- match(metrics_tbl$.config[needs], donor$.config)
+        metrics_tbl[[pc]][needs] <- donor[[pc]][idx]
+      }
     }
     metrics_tbl
   })
@@ -601,13 +689,29 @@ fastml_run_nested_cv <- function(workflow_spec,
       }
 
       inner_results[[i]] <- model_tuned
-      best_params <- tryCatch({
-        select_best(model_tuned, metric = metric)
-      }, error = function(e) NULL)
+      best_params <- fastml_select_best_config(model_tuned, metric)
 
       if (!is.null(best_params)) {
         best_params_list[[i]] <- best_params
         current_workflow <- finalize_workflow(workflow_spec, best_params)
+      } else {
+        # Without a selected configuration the workflow still carries tune()
+        # placeholders. Fitting it hands those placeholders to the engine,
+        # which fails with a message about the parameter rather than about
+        # tuning, so the split is skipped and the reason is stated instead.
+        warning(
+          sprintf(
+            paste(
+              "Inner tuning selected no configuration for outer split '%s',",
+              "so this split contributes nothing to the nested estimate.",
+              "Check that the selection metric ('%s') is available in the",
+              "inner results."
+            ),
+            outer_ids[[i]], metric
+          ),
+          call. = FALSE
+        )
+        next
       }
     }
 
@@ -893,6 +997,14 @@ fastml_collect_tune_resample_summary <- function(tune_results, best_params, task
 #' @param label Name of the target variable.
 #' @param task Type of task: "classification", "regression", or "survival".
 #' @param algorithms Vector of algorithm names to train.
+#' @param strata_cols Character vector naming the stratification columns used by
+#'   \code{"stratified_cox"}. Columns whose names begin with \code{"strata"} are
+#'   also recognised for backward compatibility. Naming a column that is not
+#'   present in the data is an error, and requesting \code{"stratified_cox"} with
+#'   no strata at all is an error rather than a silent skip. The stratifier is
+#'   read from the training frame rather than from the preprocessed frame, so a
+#'   numeric column is not affected by a step that rescales it. Default is
+#'   \code{NULL}.
 #' @param resampling_method Resampling method for cross-validation. Supported
 #'   options include standard \code{"cv"}, \code{"repeatedcv"}, and
 #'   \code{"boot"}, as well as grouped resampling via \code{"grouped_cv"},
@@ -1004,7 +1116,7 @@ fastml_collect_tune_resample_summary <- function(tune_results, best_params, task
 #' @importFrom parsnip fit extract_parameter_set_dials survival_reg
 #' @importFrom workflows workflow add_model add_recipe
 #' @importFrom tune tune_grid control_grid select_best finalize_workflow finalize_model tune_bayes control_grid control_bayes
-#' @importFrom yardstick metric_set accuracy kap roc_auc sens spec precision f_meas rmse rsq mae new_class_metric
+#' @importFrom yardstick metric_set accuracy kap roc_auc sens spec precision f_meas rmse rsq rsq_trad mae new_class_metric
 #' @importFrom rsample vfold_cv bootstraps validation_split group_vfold_cv
 #'   rolling_origin nested_cv
 #' @importFrom recipes all_nominal_predictors all_numeric_predictors all_outcomes all_predictors
@@ -1020,6 +1132,7 @@ train_models <- function(train_data,
                          repeats,
                          group_cols = NULL,
                          block_col = NULL,
+                         strata_cols = NULL,
                          block_size = NULL,
                          initial_window = NULL,
                          assess_window = NULL,
@@ -1169,22 +1282,36 @@ train_models <- function(train_data,
     failed_models <- list()
 
     update_params_surv <- function(params_model, new_params) {
+      dials_scale <- attr(new_params, "fastml_dials_scale")
+      if (is.null(dials_scale)) dials_scale <- names(new_params)
       for (param_name in names(new_params)) {
         param_value <- new_params[[param_name]]
+        map_scale <- !(param_name %in% dials_scale)
         param_row <- params_model %>% dplyr::filter(id == param_name)
         if (nrow(param_row) == 0) next
 
         param_obj <- param_row$object[[1]]
 
         try_update <- function(obj, value) {
+          is_int <- inherits(obj, "integer_parameter") && is.null(obj$trans)
+          if (map_scale) {
+            # Values supplied through `tune_params` are candidate values, not
+            # the endpoints of an interval, however many of them there are.
+            # They are mapped onto the scale dials stores, and the parameter's
+            # range is widened to admit them, so that what the user wrote is
+            # what gets searched.
+            value <- fastml_to_param_scale(obj, value)
+            if (is_int) value <- as.integer(value)
+            return(dials::value_set(fastml_widen_param_range(obj, value), value))
+          }
           if (length(value) == 2) {
-            if (inherits(obj, "integer_parameter")) {
+            if (is_int) {
               return(obj %>% dials::range_set(c(as.integer(value[1]), as.integer(value[2]))))
             } else {
               return(obj %>% dials::range_set(value))
             }
           } else {
-            if (inherits(obj, "integer_parameter")) {
+            if (is_int) {
               return(obj %>% dials::value_set(as.integer(value)))
             } else {
               return(obj %>% dials::value_set(value))
@@ -1198,10 +1325,15 @@ train_models <- function(train_data,
           current_lb <- attr(param_obj, "range")$lower
           current_ub <- attr(param_obj, "range")$upper
 
-          if (length(param_value) == 1) {
-            new_val <- if (inherits(param_obj, "integer_parameter")) as.integer(param_value) else param_value
+          scaled_value <- if (map_scale) fastml_to_param_scale(param_obj, param_value) else param_value
+          if (length(scaled_value) == 1) {
+            new_val <- if (inherits(param_obj, "integer_parameter") && is.null(param_obj$trans)) {
+              as.integer(scaled_value)
+            } else {
+              scaled_value
+            }
           } else {
-            new_val <- c(min(param_value), max(param_value))
+            new_val <- c(min(scaled_value), max(scaled_value))
           }
 
           if (length(new_val) == 1) {
@@ -1487,6 +1619,7 @@ train_models <- function(train_data,
     }
 
     resampling_summaries <- list()
+    tuning_grids <- list()
 
     for (algo in algorithms) {
       engine <- get_engine(algo, get_default_engine(algo, task))
@@ -1619,15 +1752,21 @@ train_models <- function(train_data,
         )
 
         if (prefer_parsnip) {
-          warning(
+          # Refuse rather than approximate. parsnip exposes no 'censored
+          # regression' mode for xgboost, so the request cannot be honoured
+          # through the guarded path, and silently downgrading to a single
+          # native fit would return an unresampled number where the caller
+          # asked for a resampled one.
+          stop(
             paste(
-              "Parsnip does not currently expose a 'censored regression' mode for xgboost.",
-              "Falling back to the native AFT implementation with resampling disabled."
-            )
+              "Resampling and tuning are not available for 'xgboost_aft'.",
+              "parsnip exposes no 'censored regression' mode for xgboost, so the guarded",
+              "resampling path cannot be used for this learner. Set resampling_method =",
+              "\"none\" and omit tune_params to fit it through the native AFT",
+              "implementation, or choose a learner with a parsnip survival engine."
+            ),
+            call. = FALSE
           )
-          resamples <- NULL
-          resample_plan <- NULL
-          prefer_parsnip <- FALSE
         }
 
         if (prefer_parsnip) {
@@ -1696,12 +1835,16 @@ train_models <- function(train_data,
               call. = FALSE
             )
           }
-          log_time <- log(time_vec)
-          lower_bounds <- log_time
-          upper_bounds <- log_time
+          # XGBoost's AFT objective models log(Y) = T(x) + sigma * Z and applies
+          # the logarithm to the interval bounds internally, so the bounds are
+          # supplied on the ORIGINAL time scale.  Passing log(time) here would
+          # apply the transformation twice, and yields non-finite bounds whenever
+          # a survival time is below one.
+          lower_bounds <- time_vec
+          upper_bounds <- time_vec
           upper_bounds[status_vec <= 0 | !is.finite(status_vec)] <- Inf
 
-          dtrain <- xgboost::xgb.DMatrix(data = design_mat, label = log_time)
+          dtrain <- xgboost::xgb.DMatrix(data = design_mat, label = time_vec)
           xgboost::setinfo(dtrain, "label_lower_bound", lower_bounds)
           xgboost::setinfo(dtrain, "label_upper_bound", upper_bounds)
 
@@ -1746,14 +1889,25 @@ train_models <- function(train_data,
             verbosity = 0
           )
 
+          # XGBoost initialises the AFT margin at log(base_score), whose default
+          # of 0.5 sits far below survival times measured in days or months.
+          # The logistic AFT loss saturates at that distance, the gradients
+          # underflow and no tree ever splits, so the fit degenerates to a
+          # constant prediction.  Anchoring base_score at the median observed
+          # time starts the optimiser on the scale of the data.
+          base_score <- suppressWarnings(stats::median(time_vec, na.rm = TRUE))
+          if (is.finite(base_score) && base_score > 0) {
+            params$base_score <- base_score
+          }
+
           seed_val <- fastml_normalize_seed(seed)
           if (!is.null(engine_args$seed)) {
             seed_val <- engine_args$seed[[1]]
             engine_args$seed <- NULL
           }
-          if (!is.null(seed_val) && is.null(params$seed)) {
-            params$seed <- seed_val
-          }
+          # `seed_val` seeds the fit through fastml_with_seed() below.  It is
+          # deliberately not placed in `params`: the R xgboost package ignores a
+          # `seed` parameter and emits a warning on every fit.
 
           threads_val <- engine_threads_val
           if (!is.null(engine_args$nthread)) {
@@ -1863,10 +2017,34 @@ train_models <- function(train_data,
             call. = FALSE
           )
         }
-        strata_cols <- names(train_data)[grepl("^strata", names(train_data))]
+        # Prefer an explicit declaration. The name-prefix rule is retained for
+        # backward compatibility but is not the documented interface.
+        if (is.null(strata_cols) || length(strata_cols) == 0) {
+          strata_cols <- names(train_data)[grepl("^strata", names(train_data))]
+        } else {
+          missing_strata <- setdiff(strata_cols, names(train_data))
+          if (length(missing_strata) > 0) {
+            stop(
+              sprintf("'strata_cols' names columns not present in the data: %s.",
+                      paste(missing_strata, collapse = ", ")),
+              call. = FALSE
+            )
+          }
+        }
         if (length(strata_cols) == 0) {
-          warning("No columns starting with 'strata' were found; skipping stratified Cox.")
-          next
+          # A stratified Cox model is not defined without strata. Skipping it
+          # silently left the caller with no model and an opaque downstream
+          # failure, so the requirement is stated at the point of use.
+          stop(
+            paste(
+              "'stratified_cox' requires at least one stratification column.",
+              "Name them with the 'strata_cols' argument, for example",
+              "strata_cols = \"site\". Columns whose names begin with 'strata' are also",
+              "recognised for backward compatibility. Choose 'cox_ph' for an",
+              "unstratified fit."
+            ),
+            call. = FALSE
+          )
         }
         prep_dat <- get_prepped_data()
         baked_train <- prep_dat$data
@@ -1875,37 +2053,53 @@ train_models <- function(train_data,
         strata_base_cols <- character()
         strata_info <- list()
         for (sc in strata_cols) {
-          if (!(sc %in% names(baked_train)) && sc %in% names(train_data)) {
-            baked_train[[sc]] <- train_data[[sc]]
-          }
-          if (!(sc %in% names(baked_train))) {
-            next
-          }
+          # A stratifier is a grouping label rather than a modelled covariate,
+          # so both its values and its levels are read from the training frame.
+          # Reading values from the baked frame instead would desynchronise them
+          # from levels drawn from the raw frame whenever a step rescales the
+          # column, and a numeric stratifier that is normalised then becomes
+          # entirely missing.
           source_vals <- NULL
           if (sc %in% names(train_data)) {
-            source_vals <- train_data[[sc]]
-          } else {
-            source_vals <- baked_train[[sc]]
-          }
-          desired_levels <- NULL
-          if (is.factor(source_vals)) {
-            desired_levels <- levels(source_vals)
-          } else if (!is.null(source_vals)) {
-            desired_levels <- sort(unique(source_vals))
-          }
-          if (is.null(desired_levels) || length(desired_levels) == 0) {
-            alt_vals <- baked_train[[sc]]
-            if (is.factor(alt_vals)) {
-              desired_levels <- levels(alt_vals)
-            } else {
-              desired_levels <- sort(unique(alt_vals))
+            if (nrow(baked_train) != nrow(train_data)) {
+              stop(
+                sprintf(
+                  paste(
+                    "Stratification column '%s' cannot be aligned with the training",
+                    "data because preprocessing changed the number of rows (%d to %d).",
+                    "Remove the row-altering step or supply the stratifier as a column",
+                    "that survives preprocessing."
+                  ),
+                  sc, nrow(train_data), nrow(baked_train)
+                ),
+                call. = FALSE
+              )
             }
+            source_vals <- train_data[[sc]]
+          } else if (sc %in% names(baked_train)) {
+            source_vals <- baked_train[[sc]]
+          } else {
+            next
+          }
+          desired_levels <- if (is.factor(source_vals)) {
+            levels(source_vals)
+          } else {
+            sort(unique(source_vals))
           }
           desired_levels <- desired_levels[!is.na(desired_levels)]
           if (length(desired_levels) == 0) {
             next
           }
-          baked_train[[sc]] <- factor(baked_train[[sc]], levels = desired_levels)
+          strata_factor <- factor(source_vals, levels = desired_levels)
+          if (sum(!is.na(strata_factor)) == 0) {
+            stop(
+              sprintf(
+                "Stratification column '%s' carries no usable values.", sc
+              ),
+              call. = FALSE
+            )
+          }
+          baked_train[[sc]] <- strata_factor
           strata_cols_present <- c(strata_cols_present, sc)
           base_candidate <- gsub("^strata[._]*", "", sc)
           base_candidate <- gsub("^[._]+", "", base_candidate)
@@ -2241,21 +2435,29 @@ train_models <- function(train_data,
           paste0("survival::Surv(", paste(label_terms[1:2], collapse = ", "), ")")
         }
         rp_formula <- as.formula(paste(surv_lhs, "~", predictor_terms))
-        fit <- tryCatch({
-          stpm2_fn <- get("stpm2", envir = asNamespace("rstpm2"))
-          base_args <- list(
-            formula = rp_formula,
-            data = rp_train,
-            df = 3,
-            penalised = FALSE
-          )
-          fit_obj <- call_with_engine_params(
-            stpm2_fn,
-            base_args,
-            engine_args
-          )
-          fit_obj
-        }, error = function(e) e)
+        # rstpm2::stpm2() resolves an internal helper (gsm) from the search
+        # path rather than from its own namespace, so a namespaced call fails
+        # unless the package is attached. withr::with_package() attaches it for
+        # the duration of the fit and restores the previous state afterwards,
+        # leaving the search path unchanged whether or not the caller already
+        # had rstpm2 attached.
+        fit <- tryCatch(
+          withr::with_package("rstpm2", {
+            stpm2_fn <- get("stpm2", envir = asNamespace("rstpm2"))
+            base_args <- list(
+              formula = rp_formula,
+              data = rp_train,
+              df = 3,
+              penalised = FALSE
+            )
+            call_with_engine_params(
+              stpm2_fn,
+              base_args,
+              engine_args
+            )
+          }),
+          error = function(e) e
+        )
         if (inherits(fit, "error")) {
           failed_models[[length(failed_models) + 1]] <- list(
             algorithm = algo,
@@ -2369,6 +2571,13 @@ train_models <- function(train_data,
             engine_tune_params[[nm]] <- user_params[[nm]]
           }
         }
+        attr(engine_tune_params, "fastml_user_supplied") <- names(user_params)
+        attr(engine_tune_params, "fastml_dials_scale") <- if (use_default_tuning) {
+          setdiff(names(defaults), names(user_params))
+        } else {
+          character()
+        }
+        grid_levels_model <- grid_levels
 
         perform_tuning <- !is.null(resamples) &&
           (use_default_tuning || !is.null(user_params)) &&
@@ -2383,14 +2592,43 @@ train_models <- function(train_data,
           )
           if (!is.null(engine_tune_params) && length(engine_tune_params) > 0) {
             param_set <- update_params_surv(param_set, engine_tune_params)
+            grid_levels_model <- fastml_grid_levels(param_set, engine_tune_params, grid_levels)
           }
           if (nrow(param_set) > 0) {
             if (tuning_strategy == "grid" && !adaptive) {
-              tune_grid_values <- grid_regular(param_set, levels = grid_levels)
+              tune_grid_values <- grid_regular(param_set, levels = grid_levels_model)
             } else {
-              tune_grid_values <- grid_regular(param_set, levels = grid_levels)
+              tune_grid_values <- grid_regular(param_set, levels = grid_levels_model)
+            }
+            # Survival is fitted on its own path, so the grid is recorded here
+            # as well. Without this the tuning_grid component would be empty for
+            # survival runs while being populated for every other task.
+            realized_surv <- fastml_realized_grid(param_set, engine_tune_params,
+                                                  grid_levels_model)
+            if (!is.null(realized_surv)) {
+              if (is.null(tuning_grids[[algo]])) tuning_grids[[algo]] <- list()
+              tuning_grids[[algo]][[engine]] <- list(
+                strategy = if (adaptive) "race" else tuning_strategy,
+                parameters = realized_surv
+              )
             }
           } else {
+            # The survival specifications mark no parameter for tuning, so
+            # there is nothing to search. Saying so matters most when the user
+            # supplied a grid, which would otherwise be discarded in silence.
+            if (!is.null(user_params)) {
+              warning(
+                sprintf(
+                  paste(
+                    "'%s' (%s) exposes no tunable parameters, so the 'tune_params'",
+                    "entry supplied for it was not used. The model is fitted at its",
+                    "fixed defaults."
+                  ),
+                  algo, engine
+                ),
+                call. = FALSE
+              )
+            }
             perform_tuning <- FALSE
           }
         }
@@ -2523,6 +2761,10 @@ train_models <- function(train_data,
       attr(models, "guarded_resampling") <- resampling_summaries
     }
 
+    if (length(tuning_grids) > 0) {
+      attr(models, "tuning_grids") <- tuning_grids
+    }
+
     if (!is.null(resample_plan)) {
       attr(models, "resampling_plan") <- resample_plan
     }
@@ -2579,7 +2821,7 @@ train_models <- function(train_data,
 
     }
   } else {
-    metrics <- metric_set(rmse, rsq, mae)
+    metrics <- metric_set(rmse, rsq, rsq_trad, mae)
   }
 
   # Ensure the requested metric is available in the current metric set
@@ -2843,6 +3085,7 @@ train_models <- function(train_data,
   models <- list()
   failed_models <- list()
   resampling_summaries <- list()
+  tuning_grids <- list()
   resample_method_meta <- if (!is.null(resample_plan)) {
     fastml_resample_method(resample_plan) %||% resampling_method
   } else {
@@ -2888,8 +3131,11 @@ train_models <- function(train_data,
   }
 
   update_params <- function(params_model, new_params) {
+    dials_scale <- attr(new_params, "fastml_dials_scale")
+    if (is.null(dials_scale)) dials_scale <- names(new_params)
     for (param_name in names(new_params)) {
       param_value <- new_params[[param_name]]
+      map_scale <- !(param_name %in% dials_scale)
       param_row <- params_model %>% dplyr::filter(id == param_name)
       if (nrow(param_row) == 0) next
 
@@ -2897,14 +3143,25 @@ train_models <- function(train_data,
 
       # Helper function to update a parameter object
       try_update <- function(obj, value) {
+        is_int <- inherits(obj, "integer_parameter") && is.null(obj$trans)
+        if (map_scale) {
+          # Values supplied through `tune_params` are candidate values, not the
+          # endpoints of an interval, however many of them there are. They are
+          # mapped onto the scale dials stores, and the parameter's range is
+          # widened to admit them, so that what the user wrote is what gets
+          # searched.
+          value <- fastml_to_param_scale(obj, value)
+          if (is_int) value <- as.integer(value)
+          return(dials::value_set(fastml_widen_param_range(obj, value), value))
+        }
         if (length(value) == 2) {
-          if (inherits(obj, "integer_parameter")) {
+          if (is_int) {
             return(obj %>% dials::range_set(c(as.integer(value[1]), as.integer(value[2]))))
           } else {
             return(obj %>% dials::range_set(value))
           }
         } else {
-          if (inherits(obj, "integer_parameter")) {
+          if (is_int) {
             return(obj %>% dials::value_set(as.integer(value)))
           } else {
             return(obj %>% dials::value_set(value))
@@ -2919,11 +3176,16 @@ train_models <- function(train_data,
         current_lb <- attr(param_obj, "range")$lower
         current_ub <- attr(param_obj, "range")$upper
 
-        # Ensure new value(s) are numeric
-        if (length(param_value) == 1) {
-          new_val <- if (inherits(param_obj, "integer_parameter")) as.integer(param_value) else param_value
+        # Ensure new value(s) are numeric and on the parameter's own scale
+        scaled_value <- if (map_scale) fastml_to_param_scale(param_obj, param_value) else param_value
+        if (length(scaled_value) == 1) {
+          new_val <- if (inherits(param_obj, "integer_parameter") && is.null(param_obj$trans)) {
+            as.integer(scaled_value)
+          } else {
+            scaled_value
+          }
         } else {
-          new_val <- c(min(param_value), max(param_value))
+          new_val <- c(min(scaled_value), max(scaled_value))
         }
 
         # Compute new bounds that include the new value(s)
@@ -3092,6 +3354,20 @@ train_models <- function(train_data,
           engine_tune_params[[nm]] <- user_params[[nm]]
         }
       }
+      # Two registries feed this list on different scales. The default tuning
+      # ranges from get_default_tune_params() are written on the scale dials
+      # stores, which for `penalty`, `learn_rate` and similar parameters is
+      # log10. Everything else, the fixed defaults from get_default_params() and
+      # anything the user supplied, is on the parameter's natural scale and has
+      # to be mapped before it reaches dials. Which names are on which scale is
+      # recorded here rather than inferred later.
+      attr(engine_tune_params, "fastml_user_supplied") <- names(user_params)
+      attr(engine_tune_params, "fastml_dials_scale") <- if (use_default_tuning) {
+        setdiff(names(defaults), names(user_params))
+      } else {
+        character()
+      }
+      grid_levels_model <- grid_levels
 
       if (algo == "logistic_reg" && engine %in% c("glm", "gee", "glmer", "stan", "stan_glmer")) {
         perform_tuning <- FALSE
@@ -3147,10 +3423,24 @@ train_models <- function(train_data,
 
           if (!is.null(engine_tune_params)) {
             tune_params_model <- update_params(tune_params_model, engine_tune_params)
+            grid_levels_model <- fastml_grid_levels(tune_params_model, engine_tune_params, grid_levels)
           }
 
           if (nrow(tune_params_model) > 0 && tuning_strategy == "grid" && !adaptive) {
-            tune_grid_values <- grid_regular(tune_params_model, levels = grid_levels)
+            tune_grid_values <- grid_regular(tune_params_model, levels = grid_levels_model)
+          }
+          # Record the grid that will actually be searched, so that the
+          # specification the user wrote can be compared with the one that was
+          # used. Reporting only the selected configuration hides any
+          # substitution made while the grid was compiled.
+          realized <- fastml_realized_grid(tune_params_model, engine_tune_params,
+                                           grid_levels_model)
+          if (!is.null(realized)) {
+            if (is.null(tuning_grids[[algo]])) tuning_grids[[algo]] <- list()
+            tuning_grids[[algo]][[engine]] <- list(
+              strategy = if (adaptive) "race" else tuning_strategy,
+              parameters = realized
+            )
           }
         }
       }
@@ -3318,7 +3608,7 @@ train_models <- function(train_data,
             })
           } else if (tuning_strategy == "grid") {
             if (is.null(tune_grid_values)) {
-              tune_grid_values <- grid_regular(tune_params_model, levels = grid_levels)
+              tune_grid_values <- grid_regular(tune_params_model, levels = grid_levels_model)
             }
             model_tuned <- fastml_with_seed(tuning_seed_base, function() {
               tune::tune_grid(
@@ -3342,10 +3632,12 @@ train_models <- function(train_data,
           }
 
           best_metric_used <- metric
-          best_params <- tryCatch(
-            select_best(model_tuned, metric = metric),
-            error = function(e) NULL
-          )
+          # Recovering the configuration by `.config` matters here for the same
+          # reason it does under nested resampling. tune attaches the
+          # hyperparameter columns only to the class-metric rows, so selecting
+          # on a probability metric such as roc_auc yields NA parameters, and
+          # finalizing on those fails inside the engine.
+          best_params <- fastml_select_best_config(model_tuned, metric)
           if (is.null(best_params) || !is.data.frame(best_params) || nrow(best_params) == 0) {
             metrics_tbl <- tryCatch(
               tune::collect_metrics(model_tuned),
@@ -3383,7 +3675,7 @@ train_models <- function(train_data,
             fallback_grid <- tune_grid_values
             if (is.null(fallback_grid) || nrow(fallback_grid) == 0) {
               fallback_grid <- tryCatch(
-                grid_regular(tune_params_model, levels = grid_levels),
+                grid_regular(tune_params_model, levels = grid_levels_model),
                 error = function(e) NULL
               )
             }
@@ -3547,6 +3839,10 @@ train_models <- function(train_data,
 
   if (length(resampling_summaries) > 0) {
     attr(models, "guarded_resampling") <- resampling_summaries
+  }
+
+  if (length(tuning_grids) > 0) {
+    attr(models, "tuning_grids") <- tuning_grids
   }
 
   if (nested_mode && length(nested_details) > 0) {

@@ -143,6 +143,12 @@ get_default_params <- function(algo, task, num_predictors = NULL, engine = NULL)
                mixture = NULL
              )
            } else if (engine %in% c("brulee")) {
+             # NOTE: the values below are written on the log10 scale, but this
+             # list supplies fixed (untuned) arguments that parsnip reads on the
+             # natural scale, where a negative penalty is invalid. parsnip
+             # rejects such a value with an error rather than accepting it, so
+             # the mismatch fails loudly; it is recorded here so that the next
+             # reader does not have to rediscover it.
              list(
                penalty = -3,      # corresponds to a raw penalty of 0.001 (log10(0.001) = -3)
                mixture = 0.0
@@ -370,8 +376,11 @@ get_default_params <- function(algo, task, num_predictors = NULL, engine = NULL)
 #'
 #' @export
 get_default_tune_params <- function(algo, train_data, label, engine) {
-  # Determine the number of predictors
-  num_predictors <- ncol(train_data %>% select(-!!sym(label)))
+  # Determine the number of predictors. A survival label names two columns and
+  # sometimes three, so the columns are dropped by name rather than through
+  # sym(), which accepts only a single symbol and errored on every survival
+  # family before reaching the ranges below.
+  num_predictors <- ncol(train_data %>% dplyr::select(-dplyr::all_of(label)))
 
   switch(algo,
          # 1. Random Forest
@@ -392,7 +401,11 @@ get_default_tune_params <- function(algo, train_data, label, engine) {
            trees = c(50, 150),  # Reduced range for efficiency
            tree_depth = c(1, 5),  # Reduced maximum depth
            learn_rate = c(-2, -1),  # log scale
-           loss_reduction = c(0, 5),  # Reduced upper limit
+           # Ranges in this registry are written on the scale dials stores,
+           # which for loss_reduction is log10. The intended range is the
+           # documented [0, 5]; zero has no logarithm, so the lower bound is
+           # the smallest value dials represents, which is 1e-10.
+           loss_reduction = c(-10, log10(5)),
            min_n = c(2, 5),
            sample_size = c(0.5, 0.99),
            mtry = c(1, num_predictors)
@@ -403,7 +416,11 @@ get_default_tune_params <- function(algo, train_data, label, engine) {
            trees = c(50, 150),  # Reduced range for efficiency
            tree_depth = c(1, 5),  # Reduced maximum depth
            learn_rate = c(-2, -1),  # log scale
-           loss_reduction = c(0, 5),  # Reduced upper limit
+           # Ranges in this registry are written on the scale dials stores,
+           # which for loss_reduction is log10. The intended range is the
+           # documented [0, 5]; zero has no logarithm, so the lower bound is
+           # the smallest value dials represents, which is 1e-10.
+           loss_reduction = c(-10, log10(5)),
            min_n = c(2, 5),
            sample_size = c(0.5, 0.99),
            mtry = c(1, num_predictors)
@@ -462,12 +479,16 @@ get_default_tune_params <- function(algo, train_data, label, engine) {
 
          # 10. SVM Linear
          "svm_linear" = list(
-           cost = c(-3, 3)  # log scale
+           # dials::cost() is stored on a base-2 logarithmic scale, not base 10,
+           # so the documented range of [1e-3, 1e3] is written as its base-2
+           # logarithm here. Writing c(-3, 3) searched [0.125, 8] instead.
+           cost = c(log2(1e-3), log2(1e3))
          ),
 
          # 11. SVM Radial
          "svm_rbf" = list(
-           cost = c(-3, 3),  # log scale
+           # dials::cost() is stored on a base-2 logarithmic scale (see above).
+           cost = c(log2(1e-3), log2(1e3)),
            rbf_sigma = c(-9, -1)  # log scale
          ),
 
@@ -486,14 +507,20 @@ get_default_tune_params <- function(algo, train_data, label, engine) {
          # 14. Neural Network (nnet)
          "mlp" = list(
            hidden_units = c(1, 5),  # Reduced upper limit
-           penalty = c(1e-05, 0.1),
+           # log10 scale, as this registry uses throughout. The documented
+           # range is [1e-5, 0.1]; writing those values directly searched
+           # [10^1e-5, 10^0.1], which is roughly 1.0 to 1.26.
+           penalty = c(-5, -1),
            epochs = c(100, 150)  # Reduced upper limit
          ),
 
          # 15. Deep Learning (keras)
          "deep_learning" = list(
            hidden_units = c(10, 30),  # Reduced upper limit
-           penalty = c(1e-05, 0.1),
+           # log10 scale, as this registry uses throughout. The documented
+           # range is [1e-5, 0.1]; writing those values directly searched
+           # [10^1e-5, 10^0.1], which is roughly 1.0 to 1.26.
+           penalty = c(-5, -1),
            epochs = c(50, 100)  # Reduced upper limit
          ),
 
@@ -515,6 +542,7 @@ get_default_tune_params <- function(algo, train_data, label, engine) {
            penalty = c(-5, 0),  # log scale
            mixture = c(0, 1)
          ),
+
 
          # 20. Bayesian GLM
          "bayes_glm" = NULL,
@@ -615,49 +643,182 @@ get_default_params_with_warnings <- function(algo, task, num_predictors = NULL,
   fastml_params
 }
 
-#' Process Model and Compute Performance Metrics
+#' Map tuning values onto a dials parameter's own scale
 #'
-#' Finalizes a tuning result or utilizes an already fitted workflow to generate predictions on test data and compute performance metrics.
+#' `dials` stores quantitative parameters on their transformed scale. For
+#' `penalty`, `learn_rate` and `loss_reduction` that scale is base-10
+#' logarithmic, so the stored range of `learn_rate()` is `c(-10, -1)` rather
+#' than `c(1e-10, 0.1)`. Users supply tuning values on the natural scale, and
+#' passing them to `dials::range_set()` unchanged therefore reinterprets them
+#' as logarithms. A requested learning rate of `0.05` becomes `10^0.05`, which
+#' is greater than one, and a requested penalty of `0.01` becomes `10^0.01`.
+#' Neither substitution is reported. This helper maps supplied values through
+#' the parameter's own transform so that the value reaching the engine is the
+#' value the user asked for.
 #'
-#' @param model_obj A model object, which can be either a tuning result (an object inheriting from \code{"tune_results"}) or an already fitted workflow.
-#' @param model_id A unique identifier for the model, used in warning messages if issues arise during processing.
-#' @param task A character string indicating the type of task, either \code{"classification"} or \code{"regression"}.
-#' @param test_data A data frame containing the test data on which predictions will be generated.
-#' @param label A character string specifying the name of the outcome variable in \code{test_data}.
-#' @param event_class For classification tasks, a character string specifying which event class to consider as positive (accepted values: \code{"first"} or \code{"second"}).
-#' @param engine A character string specifying the modeling engine used. This parameter affects prediction types and metric computations.
-#' @param train_data A data frame containing the training data used to fit tuned models.
-#' @param metric A character string specifying the metric name used to select the best tuning parameters.
+#' @param obj A `dials` parameter object.
+#' @param value Numeric values on the parameter's natural scale.
 #'
-#' @return A list with two components:
-#'   \describe{
-#'     \item{performance}{A data frame of performance metrics. For classification tasks, metrics include accuracy, kappa, sensitivity, specificity, precision, F-measure, and ROC AUC (when applicable). For regression tasks, metrics include RMSE, R-squared, and MAE.}
-#'     \item{predictions}{A data frame containing the test data augmented with predicted classes and, when applicable, predicted probabilities.}
-#'   }
+#' @return `value` on the parameter's stored scale. Returned unchanged when the
+#'   parameter carries no transform.
 #'
-#' @details The function first checks if \code{model_obj} is a tuning result. If so, it attempts to:
-#'   \itemize{
-#'     \item Select the best tuning parameters using \code{tune::select_best} (note that the metric used for selection should be defined in the calling environment).
-#'     \item Extract the model specification and preprocessor from \code{model_obj} using \code{workflows::pull_workflow_spec} and \code{workflows::pull_workflow_preprocessor}, respectively.
-#'     \item Finalize the model specification with the selected parameters via \code{tune::finalize_model}.
-#'     \item Rebuild the workflow using \code{workflows::workflow}, \code{workflows::add_recipe}, and \code{workflows::add_model}, and fit the finalized workflow with \code{parsnip::fit} on the supplied \code{train_data}.
-#'   }
-#'   If \code{model_obj} is already a fitted workflow, it is used directly.
+#' @keywords internal
+#' @noRd
+fastml_to_param_scale <- function(obj, value) {
+  trans <- obj$trans
+  if (is.null(trans) || !is.function(trans$transform) || !is.numeric(value)) {
+    return(value)
+  }
+  out <- suppressWarnings(trans$transform(value))
+  # Zero is a meaningful request for parameters such as loss_reduction, where
+  # it means no minimum gain, but it has no logarithm. The closest value the
+  # parameter can represent is its own lower bound, which is what is used. The
+  # substitution is not hidden, since the value that results is reported in the
+  # `tuning_grid` component of the fitted object.
+  lower <- if (is.null(obj$range)) NULL else obj$range$lower
+  at_zero <- is.finite(value) & value == 0 & !is.finite(out)
+  if (any(at_zero) && !is.null(lower) && length(lower) == 1 &&
+      !dials::is_unknown(lower) && is.finite(lower)) {
+    out[at_zero] <- lower
+  }
+  if (any(!is.finite(out))) {
+    stop(
+      sprintf(
+        paste(
+          "Tuning value(s) %s are outside the domain of the '%s' parameter,",
+          "which is defined on a transformed scale. Supply values on the",
+          "natural scale of the parameter."
+        ),
+        paste(format(value[!is.finite(out)]), collapse = ", "),
+        if (is.null(obj$label)) "requested" else as.character(obj$label)
+      ),
+      call. = FALSE
+    )
+  }
+  out
+}
+
+#' Widen a dials parameter's range to admit a set of values
 #'
-#'   For classification tasks, the function makes class predictions (and probability predictions if \code{engine} is not \code{"LiblineaR"}) and computes performance metrics using functions from the \code{yardstick} package. In binary classification, the positive class is determined based on the \code{event_class} argument and ROC AUC is computed accordingly. For multiclass classification, macro-averaged metrics are reported and ROC AUC uses the \code{multiclass_auc} estimator (default \code{"macro"}; \code{"macro_weighted"} weights by class prevalence).
+#' `dials::value_set()` rejects values outside the parameter's declared range,
+#' and several sensible requests fall outside a default range (`tree_depth`
+#' defaults to `c(1, 15)`, so a requested depth of 20 is refused). Users are
+#' entitled to search outside a default, so the range is widened to cover what
+#' was asked for before the values are set. Unknown bounds, which `mtry` and
+#' `num_comp` carry until finalization, are taken from the values themselves.
 #'
-#'   For regression tasks, the function predicts outcomes and computes regression metrics (RMSE, R-squared, and MAE).
+#' @param obj A `dials` parameter object.
+#' @param value Numeric values on the parameter's stored scale.
 #'
-#'   If the number of predictions does not match the number of rows in \code{test_data}, the function stops with an informative error message regarding missing values and imputation options.
+#' @return `obj` with a range covering `value`.
 #'
-#' @importFrom tune select_best finalize_model
-#' @importFrom workflows pull_workflow_spec pull_workflow_preprocessor workflow add_recipe add_model
-#' @importFrom parsnip fit
-#' @importFrom dplyr select mutate bind_cols bind_rows
-#' @importFrom yardstick metric_set accuracy kap sens spec precision f_meas roc_auc rmse rsq mae
-#' @importFrom tibble tibble
-#' @importFrom rlang sym
-#' @importFrom stats predict
-#' @importFrom magrittr %>%
+#' @keywords internal
+#' @noRd
+fastml_widen_param_range <- function(obj, value) {
+  rng <- obj$range
+  if (is.null(rng)) return(obj)
+  lower <- rng$lower
+  upper <- rng$upper
+  if (length(lower) != 1 || dials::is_unknown(lower)) lower <- min(value)
+  if (length(upper) != 1 || dials::is_unknown(upper)) upper <- max(value)
+  lower <- min(c(lower, value))
+  upper <- max(c(upper, value))
+  if (inherits(obj, "integer_parameter") && is.null(obj$trans)) {
+    lower <- as.integer(floor(lower))
+    upper <- as.integer(ceiling(upper))
+  }
+  dials::range_set(obj, c(lower, upper))
+}
+
+#' Per-parameter grid levels that preserve every user-supplied value
 #'
-#' @export
+#' `dials::grid_regular()` takes at most `levels` values per parameter, so a
+#' user who supplies four candidate values while `grid_levels` is three would
+#' have one of them dropped without notice. Levels are therefore raised, for
+#' the affected parameters only, to the number of values the user asked for.
+#' Parameters left at their defaults keep `grid_levels`, so the grid does not
+#' grow except where the user asked it to.
+#'
+#' @param param_set A `dials` parameter set.
+#' @param tune_values The merged tuning specification, carrying the
+#'   `fastml_user_supplied` attribute that records which names came from the
+#'   user.
+#' @param grid_levels The requested number of levels per parameter.
+#'
+#' @return A named integer vector of levels, one per parameter in `param_set`.
+#'
+#' @keywords internal
+#' @noRd
+fastml_grid_levels <- function(param_set, tune_values, grid_levels) {
+  ids <- param_set$id
+  if (length(ids) == 0) return(as.integer(grid_levels))
+  levels_vec <- rep(as.integer(grid_levels), length(ids))
+  names(levels_vec) <- ids
+  user_supplied <- attr(tune_values, "fastml_user_supplied")
+  if (is.null(user_supplied)) return(levels_vec)
+  for (nm in intersect(ids, user_supplied)) {
+    n_values <- length(tune_values[[nm]])
+    if (n_values > levels_vec[[nm]]) levels_vec[[nm]] <- as.integer(n_values)
+  }
+  levels_vec
+}
+
+#' Describe the tuning grid that was actually searched
+#'
+#' `summary()` reports the selected configuration, which is the one view under
+#' which a corrupted grid is invisible: a selected `min_n` of 20 looks the same
+#' whether 20 was one of two values the user named or the low end of a range the
+#' package interpolated. This records, per parameter, the values `grid_regular()`
+#' will actually use, on the parameter's natural scale, together with whether
+#' the parameter came from the user or from the package defaults.
+#'
+#' @param param_set A finalized and updated `dials` parameter set.
+#' @param tune_values The merged tuning specification, carrying the
+#'   `fastml_user_supplied` attribute.
+#' @param levels_vec Levels per parameter, as returned by
+#'   `fastml_grid_levels()`.
+#'
+#' @return A data frame with columns `parameter`, `source` and `values`, or
+#'   `NULL` when nothing is tuned.
+#'
+#' @keywords internal
+#' @noRd
+fastml_realized_grid <- function(param_set, tune_values, levels_vec) {
+  if (is.null(param_set) || !is.data.frame(param_set) || nrow(param_set) == 0) {
+    return(NULL)
+  }
+  user_supplied <- attr(tune_values, "fastml_user_supplied")
+  if (is.null(user_supplied)) user_supplied <- character()
+  level_for <- function(id) {
+    if (!is.null(names(levels_vec)) && id %in% names(levels_vec)) {
+      as.integer(levels_vec[[id]])
+    } else {
+      as.integer(levels_vec[[1]])
+    }
+  }
+  rows <- lapply(seq_len(nrow(param_set)), function(i) {
+    id <- param_set$id[i]
+    obj <- param_set$object[[i]]
+    vals <- tryCatch(dials::value_seq(obj, level_for(id)), error = function(e) NULL)
+    txt <- if (is.null(vals)) {
+      "not resolved"
+    } else {
+      # Each value is formatted on its own, so that a lower bound standing in
+      # for a requested zero prints compactly without forcing every other
+      # value in the row into scientific notation.
+      paste(
+        vapply(vals, function(v) format(signif(v, 6), trim = TRUE), character(1)),
+        collapse = ", "
+      )
+    }
+    data.frame(
+      parameter = id,
+      source = if (id %in% user_supplied) "user" else "default",
+      values = txt,
+      stringsAsFactors = FALSE
+    )
+  })
+  out <- do.call(rbind, rows)
+  rownames(out) <- NULL
+  out
+}

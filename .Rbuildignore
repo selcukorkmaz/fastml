@@ -3,6 +3,7 @@
 ^.*\.Rproj$
 ^\.Rproj\.user$
 ^\.claude$
+^\.github$
 ^\.Rprofile
 ^.Renviron
 ^\.Renviron
