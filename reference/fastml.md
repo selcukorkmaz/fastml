@@ -674,19 +674,59 @@ model <- fastml(
   tune_params = tune,
   use_default_tuning = TRUE
 )
-#> Warning: Training failed for algorithm: rand_forest with engine: ranger 
-#> Error message: missing value where TRUE/FALSE needed
-#> 
-#> ============================================================
-#> WARNING: 1 model(s) failed to train:
-#> ------------------------------------------------------------
-#>   - rand_forest (ranger): missing value where TRUE/FALSE needed
-#> ============================================================
-#> Error in fastml(data = iris, label = "Species", algorithms = "rand_forest",     tune_params = tune, use_default_tuning = TRUE): No models were successfully trained.
 
 # View model summary
 summary(model)
-#> Error: object 'model' not found
+#> 
+#> ===== fastml Model Summary =====
+#> Task: classification 
+#> Number of Models Trained: 1 
+#> 
+#> -- Table 1: Model Selection (Cross-Validation) --
+#> Note: This table determines the best model.
+#> 
+#> -------------------------------------------------------- 
+#> Model         Engine  ROC AUC (CV mean)  ROC AUC (CV SD) 
+#> -------------------------------------------------------- 
+#> rand_forest†  ranger  0.9938             0.0198          
+#> -------------------------------------------------------- 
+#> † Selected based on mean ROC AUC across CV folds
+#> 
+#> -- Table 2: Final Evaluation (Test Set) --
+#> Note: For reporting only; selection was based on CV above.
+#> 
+#> ------------------------------------------------------------------------------------------------------------------------- 
+#> Model        Engine  Accuracy  F1 Score  Kappa  Precision  Sensitivity  Specificity  ROC AUC  Logloss  Brier Score  ECE   
+#> ------------------------------------------------------------------------------------------------------------------------- 
+#> rand_forest  ranger  0.900     0.889     0.800  1.000      0.800        1.000        1.000    0.166    0.049        0.118 
+#> ------------------------------------------------------------------------------------------------------------------------- 
+#> 
+#> Best Model hyperparameters:
+#> 
+#> Model: rand_forest (ranger) 
+#>   mtry: 1
+#>   trees: 150
+#>   min_n: 2
+#> 
+#> Tuning grid searched (values as passed to the engine):
+#> 
+#> rand_forest (ranger), search = grid
+#>   mtry             [user]   1, 3
+#>   trees            [default] 100, 150, 200
+#>   min_n            [default] 2, 3, 5
+#> 
+#> 
+#> ===========================
+#> Confusion Matrices by Model
+#> ===========================
+#> 
+#> Model: rand_forest (ranger) 
+#> ---------------------------
+#>             Truth
+#> Prediction   versicolor virginica
+#>   versicolor          8         0
+#>   virginica           2        10
+#> 
 
 
   # }
