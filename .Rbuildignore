@@ -18,3 +18,8 @@ Rscript1aa814787f6
 ^_pkgdown\.yml$
 ^docs$
 ^pkgdown$
+
+# JOSS paper sources: repository-only, not part of the R package.
+^paper\.md$
+^paper\.bib$
+^fastml\.pdf$
