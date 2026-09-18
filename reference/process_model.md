@@ -1,0 +1,197 @@
+# Process and Evaluate a Model Workflow
+
+This function processes a fitted model or a tuning result, finalizes the
+model if tuning was used, makes predictions on the test set, and
+computes performance metrics depending on the task type (classification
+or regression). It supports binary and multiclass classification, and
+handles probabilistic outputs when supported by the modeling engine.
+
+## Usage
+
+``` r
+process_model(
+  model_obj,
+  model_id,
+  task,
+  test_data,
+  label,
+  event_class,
+  class_threshold = 0.5,
+  start_col = NULL,
+  time_col = NULL,
+  status_col = NULL,
+  engine,
+  train_data,
+  metric,
+  eval_times_user = NULL,
+  bootstrap_ci = TRUE,
+  bootstrap_samples = 500,
+  bootstrap_seed = 1234,
+  at_risk_threshold = 0.1,
+  survival_metric_convention = "fastml",
+  metrics = NULL,
+  summaryFunction = NULL,
+  precomputed_predictions = NULL,
+  multiclass_auc = "macro"
+)
+```
+
+## Arguments
+
+- model_obj:
+
+  A fitted model or a tuning result (\`tune_results\` object).
+
+- model_id:
+
+  A character identifier for the model (used in warnings).
+
+- task:
+
+  Type of task, either \`"classification"\`, \`"regression"\`, or
+  \`"survival"\`.
+
+- test_data:
+
+  A data frame containing the test data.
+
+- label:
+
+  The name of the outcome variable (as a character string).
+
+- event_class:
+
+  For binary classification, specifies which class is considered the
+  positive class: \`"first"\` or \`"second"\`.
+
+- class_threshold:
+
+  For binary classification, controls how class probabilities are
+  converted into hard class predictions. The default is \`0.5\`
+  (standard threshold). Numeric values in (0, 1) set a fixed threshold.
+  Use \`"auto"\` to tune a threshold on training data to maximize F1;
+  use \`"model"\` to keep the model's default predictions.
+
+- start_col:
+
+  Optional string. The name of the column specifying the start time in
+  counting process (e.g., \`(start, stop, event)\`) survival data. Only
+  used when `task = "survival"`.
+
+- time_col:
+
+  String. The name of the column specifying the event or censoring time
+  (the "stop" time in counting process data). Only used when
+  `task = "survival"`.
+
+- status_col:
+
+  String. The name of the column specifying the event status (e.g., 0
+  for censored, 1 for event). Only used when `task = "survival"`.
+
+- engine:
+
+  A character string indicating the model engine (e.g., \`"xgboost"\`,
+  \`"randomForest"\`). Used to determine if class probabilities are
+  supported. If \`NULL\`, probabilities are skipped.
+
+- train_data:
+
+  A data frame containing the training data, required to refit finalized
+  workflows.
+
+- metric:
+
+  The name of the metric (e.g., \`"roc_auc"\`, \`"accuracy"\`,
+  \`"rmse"\`) used for selecting the best tuning result.
+
+- eval_times_user:
+
+  Optional numeric vector of time horizons at which to evaluate survival
+  Brier scores. When \`NULL\`, sensible defaults based on the observed
+  follow-up distribution are used.
+
+- bootstrap_ci:
+
+  Logical; if \`TRUE\`, bootstrap confidence intervals are estimated for
+  performance metrics.
+
+- bootstrap_samples:
+
+  Integer giving the number of bootstrap resamples used when computing
+  confidence intervals.
+
+- bootstrap_seed:
+
+  Optional integer seed applied before bootstrap resampling to make
+  interval estimates reproducible.
+
+- at_risk_threshold:
+
+  Numeric value between 0 and 1 defining the minimum proportion of
+  subjects required to remain at risk when determining the maximum
+  follow-up time used in survival metrics.
+
+- survival_metric_convention:
+
+  Character string specifying which survival metric conventions to
+  follow. \`"fastml"\` (default) uses fastml's internal defaults for
+  evaluation horizons and t_max. \`"tidymodels"\` uses
+  \`eval_times_user\` as the explicit evaluation grid and applies
+  yardstick-style Brier/IBS normalization; when \`eval_times_user\` is
+  \`NULL\`, time-dependent Brier metrics are omitted.
+
+- metrics:
+
+  Optional yardstick metric set (e.g.,
+  \`yardstick::metric_set(yardstick::rmse)\`) used for computing
+  regression performance.
+
+- summaryFunction:
+
+  Optional custom classification metric function passed to
+  \`yardstick::new_class_metric()\` and included in holdout evaluation.
+
+- precomputed_predictions:
+
+  Optional data frame or nested list of previously generated predictions
+  (per algorithm/engine) to reuse instead of re-predicting; primarily
+  used when combining results across engines.
+
+- multiclass_auc:
+
+  For multiclass ROC AUC, the averaging method to use: \`"macro"\`
+  (default, tidymodels) or \`"macro_weighted"\`. Macro weights each
+  class equally, while macro_weighted weights by class prevalence and
+  can change model rankings on imbalanced data.
+
+## Value
+
+A list with two elements:
+
+- performance:
+
+  A tibble with computed performance metrics.
+
+- predictions:
+
+  A tibble with predicted values and corresponding truth values, and
+  probabilities (if applicable).
+
+## Details
+
+\- If the input \`model_obj\` is a \`tune_results\` object, the function
+finalizes the model using the best hyperparameters according to the
+specified \`metric\`, and refits the model on the full training data.
+
+\- For classification tasks, performance metrics include accuracy,
+kappa, sensitivity, specificity, precision, F1-score, and ROC AUC (if
+probabilities are available).
+
+\- For multiclass ROC AUC, the estimator is controlled by
+\`multiclass_auc\`.
+
+\- For regression tasks, RMSE, R-squared, and MAE are returned.
+
+\- For models with missing prediction lengths, a helpful imputation
+error is thrown to guide data preprocessing.

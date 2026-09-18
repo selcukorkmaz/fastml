@@ -1,0 +1,579 @@
+# fastml: Guarded Resampling Workflows for Leakage-Aware Machine Learning in R
+
+![](reference/figures/fastml_hex.png)
+
+**Guarded Resampling Workflows for Leakage-Aware Machine Learning in R**
+
+fastml is an R package for training, evaluating, and comparing machine
+learning models with a guarded resampling workflow. Rather than
+introducing new learning algorithms, fastml focuses on **reducing
+leakage risk** by keeping preprocessing, model fitting, and evaluation
+aligned within supported resampling paths.
+
+In fastml, *fast* refers to the rapid construction of statistically
+valid workflows, not to computational shortcuts. By eliminating entire
+classes of user-induced errors — most notably preprocessing leakage —
+fastml allows practitioners to obtain reliable performance estimates
+with minimal configuration.
+
+## Core Principles
+
+- **Guarded resampling workflow** — When the guarded resampling path is
+  used, preprocessing and model fitting are re-estimated independently
+  within each resampling split. This reduces leakage risk, but does not
+  prevent users from supplying preprocessed inputs.
+
+- **Leakage risk reduction, not guarantees** — fastml can mitigate
+  common leakage modes (e.g., global scaling or imputation before
+  resampling) when workflows are fit within resamples. It does not
+  universally prevent all leakage scenarios.
+
+- **Single, unified interface** — Multiple models can be trained and
+  benchmarked through a single call, while internally coordinating
+  resampling, preprocessing, and evaluation in supported paths.
+
+- **Compatibility with established engines** — fastml orchestrates
+  existing modeling infrastructure (recipes, rsample, parsnip,
+  yardstick) without modifying their statistical behavior.
+
+## Installation
+
+### From CRAN
+
+``` r
+
+install.packages("fastml")
+```
+
+### From GitHub (development version)
+
+``` r
+
+# install.packages("devtools")
+devtools::install_github("selcukorkmaz/fastml")
+```
+
+### Optional Dependencies
+
+fastml uses a lightweight core. Feature-specific packages are installed
+only when needed:
+
+``` r
+
+# Explainability (SHAP, LIME, ALE, ICE, etc.)
+install.packages(c("DALEX", "iml", "lime", "iBreakDown", "pdp"))
+
+# Additional model engines
+install.packages(c("ranger", "glmnet", "kernlab", "kknn", "lightgbm", "C50"))
+
+# Discriminant analysis and bagged trees
+install.packages(c("discrim", "baguette"))
+
+# Survival analysis extensions
+install.packages(c("censored", "flexsurv", "rstpm2", "survRM2", "aorsf"))
+
+# Fairness and interactive dashboards
+install.packages(c("fairmodels", "modelStudio"))
+```
+
+## Quick Start
+
+``` r
+
+library(fastml)
+library(dplyr)
+
+data(iris)
+
+iris_binary <- iris %>%
+  filter(Species != "setosa") %>%
+  mutate(Species = factor(Species))
+
+# Train and evaluate models in one call
+fit <- fastml(
+  data = iris_binary,
+  label = "Species",
+  algorithms = c("rand_forest", "logistic_reg")
+)
+
+# Inspect results
+summary(fit)
+
+# Visualize
+plot(fit, type = "bar")
+plot(fit, type = "roc")
+plot(fit, type = "calibration")
+
+# Predict on new data
+predict(fit, newdata = iris_binary[1:5, ])
+```
+
+## Supported Tasks
+
+fastml auto-detects the task type based on the target variable:
+
+| Task | Detection | Metrics |
+|----|----|----|
+| **Classification** | Factor or character target (binary/multiclass) | Accuracy, ROC AUC, Sensitivity, Specificity, Precision, F1, Kappa, Logloss |
+| **Regression** | Numeric target | RMSE, R-squared, MAE |
+| **Survival** | Two-column label (time + status) | C-index, Integrated Brier Score, time-dependent Brier, RMST |
+
+## Supported Algorithms
+
+### Classification
+
+| Algorithm          | Default Engine | Alternative Engines                    |
+|--------------------|----------------|----------------------------------------|
+| `logistic_reg`     | glm            | glmnet, brulee, stan, keras, LiblineaR |
+| `multinom_reg`     | nnet           | glmnet, brulee, keras                  |
+| `rand_forest`      | ranger         | randomForest, h2o, partykit            |
+| `xgboost`          | xgboost        | —                                      |
+| `lightgbm`         | lightgbm       | —                                      |
+| `decision_tree`    | rpart          | C5.0, partykit                         |
+| `bag_tree`         | rpart          | —                                      |
+| `svm_rbf`          | kernlab        | —                                      |
+| `svm_linear`       | kernlab        | LiblineaR                              |
+| `nearest_neighbor` | kknn           | —                                      |
+| `naive_Bayes`      | klaR           | naivebayes, h2o                        |
+| `mlp`              | nnet           | brulee, keras, h2o                     |
+| `discrim_linear`   | MASS           | —                                      |
+| `discrim_quad`     | sparsediscrim  | —                                      |
+
+### Regression
+
+| Algorithm          | Default Engine | Alternative Engines |
+|--------------------|----------------|---------------------|
+| `linear_reg`       | lm             | —                   |
+| `ridge_reg`        | glmnet         | —                   |
+| `lasso_reg`        | glmnet         | —                   |
+| `elastic_net`      | glmnet         | —                   |
+| `rand_forest`      | ranger         | randomForest, h2o   |
+| `xgboost`          | xgboost        | —                   |
+| `lightgbm`         | lightgbm       | —                   |
+| `decision_tree`    | rpart          | —                   |
+| `svm_rbf`          | kernlab        | —                   |
+| `svm_linear`       | kernlab        | —                   |
+| `nearest_neighbor` | kknn           | —                   |
+| `mlp`              | nnet           | brulee, keras, h2o  |
+| `pls`              | mixOmics       | —                   |
+| `bayes_glm`        | stan           | —                   |
+
+### Survival
+
+| Algorithm                 | Default Engine |
+|---------------------------|----------------|
+| `cox_ph`                  | survival       |
+| `penalized_cox`           | glmnet         |
+| `stratified_cox`          | survival       |
+| `time_varying_cox`        | survival       |
+| `survreg`                 | survival       |
+| `rand_forest`             | aorsf / ranger |
+| `xgboost` / `xgboost_aft` | xgboost        |
+| `parametric_surv`         | flexsurv       |
+| `piecewise_exp`           | flexsurv       |
+| `royston_parmar`          | rstpm2         |
+
+## Resampling Methods
+
+``` r
+
+fit <- fastml(
+  data = df,
+  label = "target",
+  resampling_method = "cv",  # default
+  cv_folds = 10
+)
+```
+
+| Method             | Description                                         |
+|--------------------|-----------------------------------------------------|
+| `cv`               | K-fold cross-validation (default)                   |
+| `repeatedcv`       | Repeated cross-validation                           |
+| `boot`             | Bootstrap resampling                                |
+| `grouped_cv`       | Grouped cross-validation (keeps groups intact)      |
+| `blocked_cv`       | Blocked/time-series CV (respects temporal ordering) |
+| `rolling_origin`   | Rolling window resampling                           |
+| `nested_cv`        | Nested cross-validation (unbiased tuning)           |
+| `validation_split` | Simple train/validation split                       |
+| `none`             | No resampling (single holdout)                      |
+
+## Hyperparameter Tuning
+
+``` r
+
+fit <- fastml(
+  data = iris_binary,
+  label = "Species",
+  algorithms = c("rand_forest", "xgboost"),
+  tuning_strategy = "bayes",
+  tuning_complexity = "balanced",
+  tuning_iterations = 25
+)
+```
+
+| Strategy | Description             |
+|----------|-------------------------|
+| `grid`   | Grid search (default)   |
+| `bayes`  | Bayesian optimization   |
+| `none`   | No tuning, use defaults |
+
+**Tuning complexity presets** control search breadth:
+
+| Preset       | Grid Levels | Use Case                            |
+|--------------|-------------|-------------------------------------|
+| `quick`      | 2           | Prototyping, debugging              |
+| `balanced`   | 3           | Most production use (default)       |
+| `thorough`   | 5           | Final model selection, publications |
+| `exhaustive` | 7           | Research, competitions              |
+
+## Preprocessing
+
+fastml isolates preprocessing inside the resampling loop to prevent
+leakage:
+
+``` r
+
+fit <- fastml(
+  data = df,
+  label = "target",
+  impute_method = "knnImpute",   # medianImpute, bagImpute, remove, error
+  scale = c("center", "scale"),
+  balance = "upsample"           # downsample, or none (default)
+)
+```
+
+Transformations applied per fold: imputation, dummy encoding, centering,
+scaling, zero-variance removal, novel/unknown level handling.
+
+## Explainability
+
+Model explainability is provided through
+[`fastexplain()`](https://selcukorkmaz.github.io/fastml/reference/fastexplain.md)
+with 10 methods:
+
+``` r
+
+# DALEX-based: variable importance, SHAP values, partial dependence
+fastexplain(fit, method = "dalex")
+
+# LIME local explanations
+fastexplain(fit, method = "lime", observation = df[1, ])
+
+# Accumulated Local Effects
+fastexplain(fit, method = "ale", features = "Sepal.Length")
+
+# Individual Conditional Expectation curves
+fastexplain(fit, method = "ice", features = "Sepal.Length")
+
+# Surrogate decision tree
+fastexplain(fit, method = "surrogate")
+
+# Feature interaction strength
+fastexplain(fit, method = "interaction")
+
+# iBreakDown contributions
+fastexplain(fit, method = "breakdown", observation = df[1, ])
+
+# Counterfactual explanations
+fastexplain(fit, method = "counterfactual", observation = df[1, ])
+
+# Interactive modelStudio dashboard
+fastexplain(fit, method = "studio")
+
+# Fairness diagnostics
+fastexplain(fit, method = "fairness", protected = df$gender)
+```
+
+### Feature Importance Stability
+
+Analyze how feature importance varies across cross-validation folds:
+
+``` r
+
+fit <- fastml(data = df, label = "target", store_fold_models = TRUE)
+stability <- explain_stability(fit)
+print(stability)
+plot(stability)
+```
+
+## Exploratory Data Analysis
+
+[`fastexplore()`](https://selcukorkmaz.github.io/fastml/reference/fastexplore.md)
+provides read-only diagnostics prior to model training:
+
+``` r
+
+fastexplore(iris, label = "Species")
+```
+
+Generates: summary statistics, distribution plots (histograms, boxplots,
+bar charts), correlation heatmaps, Q-Q plots, missingness analysis, and
+more — without invoking any modeling.
+
+## Visualization
+
+``` r
+
+# Performance comparison
+plot(fit, type = "bar")
+
+# ROC curves (classification)
+plot(fit, type = "roc")
+
+# Calibration plot (classification)
+plot(fit, type = "calibration")
+
+# Residual diagnostics (regression)
+plot(fit, type = "residual")
+
+# All plots at once
+plot(fit, type = "all")
+```
+
+## Parallel Processing
+
+``` r
+
+fit <- fastml(
+  data = df,
+  label = "target",
+  algorithms = c("rand_forest", "xgboost", "svm_rbf"),
+  n_cores = 4
+)
+```
+
+## Model Persistence
+
+``` r
+
+# Save
+save.fastml(fit, path = "my_model.rds")
+
+# Load
+fit <- load_model("my_model.rds")
+```
+
+## Survival Analysis
+
+``` r
+
+library(survival)
+data(lung)
+
+fit_surv <- fastml(
+  data = lung,
+  label = c("time", "status"),
+  algorithms = c("cox_ph", "rand_forest"),
+  eval_times = c(180, 365, 730)
+)
+
+summary(fit_surv)
+
+# Predict survival probabilities
+predict_survival(fit_surv, newdata = lung[1:5, ], eval_times = c(365, 730))
+
+# Predict risk scores
+predict_risk(fit_surv, newdata = lung[1:5, ])
+```
+
+## Advanced Options
+
+``` r
+
+fit <- fastml(
+  data = df,
+  label = "target",
+
+  # Algorithms and engines
+  algorithms = c("rand_forest", "xgboost"),
+  algorithm_engines = list(rand_forest = "ranger", xgboost = "xgboost"),
+  engine_params = list(xgboost = list(nthread = 4)),
+
+  # Resampling
+  resampling_method = "cv",
+  cv_folds = 10,
+  store_fold_models = TRUE,
+
+  # Tuning
+  tuning_strategy = "bayes",
+  tuning_complexity = "thorough",
+  tuning_iterations = 30,
+
+  # Classification-specific
+  class_threshold = "auto",          # auto-tune threshold
+  multiclass_auc = "macro_weighted", # prevalence-weighted AUC
+
+  # Bootstrap confidence intervals
+  bootstrap_ci = TRUE,
+  bootstrap_samples = 500,
+
+  # Reproducibility
+  seed = 42
+)
+```
+
+## Scope
+
+fastml is intended for users who require reliable performance estimation
+under cross-validation, particularly in:
+
+- Multi-site or grouped data
+- High-dimensional biomedical applications
+- Workflows prone to preprocessing leakage
+
+It prioritizes correctness-oriented defaults and workflow clarity over
+maximum flexibility.
+
+## Links
+
+- [Tutorial &
+  Documentation](https://selcukorkmaz.github.io/fastml-tutorial/)
+- [GitHub Repository](https://github.com/selcukorkmaz/fastml)
+- [Bug Reports](https://github.com/selcukorkmaz/fastml/issues)
+- [CRAN Page](https://CRAN.R-project.org/package=fastml)
+
+## License
+
+MIT License.
+
+# Package index
+
+## Fit and compare
+
+The main entry points for training and benchmarking models.
+
+- [`fastml()`](https://selcukorkmaz.github.io/fastml/reference/fastml.md)
+  : Fast Machine Learning Function
+- [`train_models()`](https://selcukorkmaz.github.io/fastml/reference/train_models.md)
+  : Train Specified Machine Learning Algorithms on the Training Data
+- [`availableMethods()`](https://selcukorkmaz.github.io/fastml/reference/availableMethods.md)
+  : Get Available Methods
+- [`process_model()`](https://selcukorkmaz.github.io/fastml/reference/process_model.md)
+  : Process and Evaluate a Model Workflow
+
+## Explore and explain
+
+Data exploration before fitting, and model-agnostic explanation
+afterwards (SHAP, LIME, ALE, ICE, surrogates, counterfactuals).
+
+- [`fastexplore()`](https://selcukorkmaz.github.io/fastml/reference/fastexplore.md)
+  : Lightweight exploratory helper
+- [`fastexplain()`](https://selcukorkmaz.github.io/fastml/reference/fastexplain.md)
+  : Explain a fastml model using various techniques
+- [`explain_dalex()`](https://selcukorkmaz.github.io/fastml/reference/explain_dalex.md)
+  : Generate DALEX explanations for a fastml model
+- [`explain_lime()`](https://selcukorkmaz.github.io/fastml/reference/explain_lime.md)
+  : Generate LIME explanations for a fastml model
+- [`explain_ale()`](https://selcukorkmaz.github.io/fastml/reference/explain_ale.md)
+  : Compute Accumulated Local Effects (ALE) for a fastml model
+- [`explain_stability()`](https://selcukorkmaz.github.io/fastml/reference/explain_stability.md)
+  : Analyze Feature Importance Stability Across Cross-Validation Folds
+- [`plot_ice()`](https://selcukorkmaz.github.io/fastml/reference/plot_ice.md)
+  : Plot ICE curves for a fastml model
+- [`surrogate_tree()`](https://selcukorkmaz.github.io/fastml/reference/surrogate_tree.md)
+  : Fit a surrogate decision tree for a fastml model
+- [`counterfactual_explain()`](https://selcukorkmaz.github.io/fastml/reference/counterfactual_explain.md)
+  : Generate counterfactual explanations for a fastml model
+- [`interaction_strength()`](https://selcukorkmaz.github.io/fastml/reference/interaction_strength.md)
+  : Compute feature interaction strengths for a fastml model
+
+## Predict
+
+- [`predict(`*`<fastml>`*`)`](https://selcukorkmaz.github.io/fastml/reference/predict.fastml.md)
+  : Predict method for fastml objects
+- [`predict_model.model_fit()`](https://selcukorkmaz.github.io/fastml/reference/predict_model.model_fit.md)
+  : Internal predict_model method for parsnip fits
+- [`predict_risk()`](https://selcukorkmaz.github.io/fastml/reference/predict_risk.md)
+  : Predict Risk Scores from a Survival Model
+- [`predict_survival()`](https://selcukorkmaz.github.io/fastml/reference/predict_survival.md)
+  : Predict survival probabilities from a survival model
+
+## Inspect results
+
+Summaries, plots, and accessors for a fitted fastml object.
+
+- [`summary(`*`<fastml>`*`)`](https://selcukorkmaz.github.io/fastml/reference/summary.fastml.md)
+  : Summary Function for fastml (Using yardstick for ROC Curves)
+
+- [`plot(`*`<fastml>`*`)`](https://selcukorkmaz.github.io/fastml/reference/plot.fastml.md)
+  :
+
+  Plot Methods for `fastml` Objects
+
+- [`plot(`*`<fastml_stability>`*`)`](https://selcukorkmaz.github.io/fastml/reference/plot.fastml_stability.md)
+  : Plot method for fastml_stability objects
+
+- [`print(`*`<fastml_stability>`*`)`](https://selcukorkmaz.github.io/fastml/reference/print.fastml_stability.md)
+  : Print method for fastml_stability objects
+
+- [`get_best_model_idx()`](https://selcukorkmaz.github.io/fastml/reference/get_best_model_idx.md)
+  : Get Best Model Indices by Metric and Group
+
+- [`get_best_model_names()`](https://selcukorkmaz.github.io/fastml/reference/get_best_model_names.md)
+  : Get Best Model Names
+
+- [`get_best_workflows()`](https://selcukorkmaz.github.io/fastml/reference/get_best_workflows.md)
+  : Get Best Workflows
+
+- [`fastml_compute_holdout_results()`](https://selcukorkmaz.github.io/fastml/reference/fastml_compute_holdout_results.md)
+  : Evaluate Models Function
+
+## Defaults and tuning configuration
+
+Inspect and control the engine defaults and tuning grids fastml applies,
+including where they differ from the parsnip defaults.
+
+- [`compare_defaults()`](https://selcukorkmaz.github.io/fastml/reference/compare_defaults.md)
+  : Compare fastml and parsnip defaults
+- [`get_default_differences()`](https://selcukorkmaz.github.io/fastml/reference/get_default_differences.md)
+  : Get All Default Differences Summary
+- [`print_default_differences()`](https://selcukorkmaz.github.io/fastml/reference/print_default_differences.md)
+  : Print Default Differences Table
+- [`get_default_engine()`](https://selcukorkmaz.github.io/fastml/reference/get_default_engine.md)
+  : Get Default Engine
+- [`get_default_params()`](https://selcukorkmaz.github.io/fastml/reference/get_default_params.md)
+  : Get Default Parameters for an Algorithm
+- [`get_default_params_with_warnings()`](https://selcukorkmaz.github.io/fastml/reference/get_default_params_with_warnings.md)
+  : Get Default Parameters with Transparency Warnings
+- [`get_default_tune_params()`](https://selcukorkmaz.github.io/fastml/reference/get_default_tune_params.md)
+  : Get Default Tuning Parameters
+- [`get_engine_names()`](https://selcukorkmaz.github.io/fastml/reference/get_engine_names.md)
+  : Get Engine Names from Model Workflows
+- [`get_expanded_tune_params()`](https://selcukorkmaz.github.io/fastml/reference/get_expanded_tune_params.md)
+  : Expanded Default Tuning Parameters
+- [`get_model_engine_names()`](https://selcukorkmaz.github.io/fastml/reference/get_model_engine_names.md)
+  : Get Model Engine Names
+- [`get_parsnip_default_engine()`](https://selcukorkmaz.github.io/fastml/reference/get_parsnip_default_engine.md)
+  : Get Parsnip Default Engine for an Algorithm
+- [`get_parsnip_default_params()`](https://selcukorkmaz.github.io/fastml/reference/get_parsnip_default_params.md)
+  : Get Parsnip Default Parameters for an Algorithm
+- [`get_tuning_complexity()`](https://selcukorkmaz.github.io/fastml/reference/get_tuning_complexity.md)
+  : Tuning Complexity Presets
+- [`get_tuning_params_for_complexity()`](https://selcukorkmaz.github.io/fastml/reference/get_tuning_params_for_complexity.md)
+  : Get Tuning Parameters for Complexity Level
+- [`estimate_tuning_time()`](https://selcukorkmaz.github.io/fastml/reference/estimate_tuning_time.md)
+  : Estimate Tuning Time
+- [`recommend_tuning_config()`](https://selcukorkmaz.github.io/fastml/reference/recommend_tuning_config.md)
+  : Recommend Tuning Configuration
+- [`print_tuning_presets()`](https://selcukorkmaz.github.io/fastml/reference/print_tuning_presets.md)
+  : Print Tuning Presets Summary
+- [`tuning_config`](https://selcukorkmaz.github.io/fastml/reference/tuning_config.md)
+  : Tuning Configuration and Complexity Presets
+- [`defaults_registry`](https://selcukorkmaz.github.io/fastml/reference/defaults_registry.md)
+  : Defaults Registry for Engine and Parameter Transparency
+- [`validate_defaults_registry()`](https://selcukorkmaz.github.io/fastml/reference/validate_defaults_registry.md)
+  : Validate Defaults Registry Against Parsnip
+- [`warn_default_override()`](https://selcukorkmaz.github.io/fastml/reference/warn_default_override.md)
+  : Warn About Default Overrides
+- [`reset_default_warnings()`](https://selcukorkmaz.github.io/fastml/reference/reset_default_warnings.md)
+  : Reset Default Override Warnings
+
+## Save and load
+
+- [`save_fastml()`](https://selcukorkmaz.github.io/fastml/reference/save_fastml.md)
+  : Save Model Function
+- [`save.fastml()`](https://selcukorkmaz.github.io/fastml/reference/save.fastml.md)
+  : Save Model Function (Deprecated)
+- [`load_model()`](https://selcukorkmaz.github.io/fastml/reference/load_model.md)
+  : Load Model Function
+
