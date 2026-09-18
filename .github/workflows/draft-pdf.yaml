@@ -1,0 +1,38 @@
+# Builds the JOSS-typeset draft PDF of paper.md using Open Journals' own
+# pipeline, so the preview matches what the journal will publish. The PDF is
+# uploaded as a workflow artifact; nothing is committed to the repository and
+# no PDF is ever submitted to JOSS by hand — the journal compiles paper.md
+# itself from the repository URL given on the submission form.
+
+name: Draft PDF
+
+on:
+  push:
+    paths:
+      - 'paper.md'
+      - 'paper.bib'
+      - '.github/workflows/draft-pdf.yaml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  paper:
+    runs-on: ubuntu-latest
+    name: Paper draft
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Build draft PDF
+        uses: openjournals/openjournals-draft-action@master
+        with:
+          journal: joss
+          paper-path: paper.md
+
+      - name: Upload
+        uses: actions/upload-artifact@v4
+        with:
+          name: paper
+          path: paper.pdf
