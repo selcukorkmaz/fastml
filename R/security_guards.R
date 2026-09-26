@@ -226,6 +226,48 @@ fastml_validate_user_recipe <- function(recipe, audit_env = NULL) {
   invisible(recipe)
 }
 
+# A user-supplied recipe records the class of every column it was built on,
+# and prep() refuses training data whose classes differ. fastml coerces
+# character columns to factors and integers to doubles before splitting, so a
+# recipe built on the caller's own data would be rejected. Undo exactly those
+# two coercions for the predictors the recipe covers; any other mismatch is
+# the caller's and is left for recipes to report.
+fastml_align_to_recipe_ptype <- function(df, recipe, label, task) {
+  ptype <- tryCatch(recipes::recipes_ptype(recipe, stage = "prep"), error = function(e) NULL)
+  if (is.null(ptype) || is.null(df)) {
+    return(df)
+  }
+
+  if (task == "classification" && length(label) == 1 &&
+      label %in% names(ptype) && !is.factor(ptype[[label]])) {
+    stop(
+      sprintf(
+        paste(
+          "The supplied recipe records the outcome '%s' as <%s>, but classification requires a factor outcome.",
+          "Convert '%s' to a factor in the data before building the recipe."
+        ),
+        label, paste(class(ptype[[label]]), collapse = "/"), label
+      ),
+      call. = FALSE
+    )
+  }
+
+  cols <- intersect(names(ptype), names(df))
+  if (task != "regression") {
+    cols <- setdiff(cols, label)
+  }
+  for (col in cols) {
+    recorded <- ptype[[col]]
+    current <- df[[col]]
+    if (is.character(recorded) && is.factor(current)) {
+      df[[col]] <- as.character(current)
+    } else if (is.integer(recorded) && is.double(current)) {
+      df[[col]] <- as.integer(current)
+    }
+  }
+  df
+}
+
 fastml_audit_io_functions <- function() {
   c(
     "read.csv", "read.csv2", "read.table", "readRDS", "load", "scan",

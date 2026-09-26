@@ -79,7 +79,7 @@
 #'   class equally, while macro_weighted weights by class prevalence and can
 #'   change model rankings on imbalanced data.
 #' @param exclude A character vector specifying the names of the columns to be excluded from the training process.
-#' @param recipe A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.
+#' @param recipe A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped. The column types the recipe recorded are preserved: character and integer columns the recipe covers are not converted to factors or doubles. A classification outcome must already be a factor when the recipe is built.
 #' @param tune_params A named list of candidate tuning values for each algorithm
 #'   and engine pair. Example:
 #'   \code{list(rand_forest = list(ranger = list(mtry = c(1, 3))))} searches
@@ -1171,6 +1171,8 @@ fastml <- function(data = NULL,
   # If user has provided a custom recipe, skip internal imputation logic
   if (!is.null(recipe)) {
     fastml_validate_user_recipe(recipe, audit_env)
+    train_data <- fastml_align_to_recipe_ptype(train_data, recipe, label, task)
+    test_data <- fastml_align_to_recipe_ptype(test_data, recipe, label, task)
     skip_recipe_imputation <- TRUE
   } else {
     skip_recipe_imputation <- FALSE

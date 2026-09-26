@@ -153,7 +153,7 @@ class, "second" treats the second level as positive. Use
 
 \item{exclude}{A character vector specifying the names of the columns to be excluded from the training process.}
 
-\item{recipe}{A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.}
+\item{recipe}{A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped. The column types the recipe recorded are preserved: character and integer columns the recipe covers are not converted to factors or doubles. A classification outcome must already be a factor when the recipe is built.}
 
 \item{tune_params}{A named list of candidate tuning values for each algorithm
   and engine pair. Example:
