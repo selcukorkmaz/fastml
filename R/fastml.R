@@ -20,12 +20,12 @@
 #'   or survival based on the data. Survival is detected when `label` is a
 #'   character vector of length 2 that matches time and status columns in the data.
 #'   You may also explicitly set to "classification", "regression", or "survival".
-#' @param test_size A numeric value between 0 and 1 indicating the proportion of the data to use for testing. For grouped holdout, this is applied to groups; for time-ordered holdout, it selects the final proportion of rows; for grouped time-ordered holdout it is a target that is met as closely as an intact-group cut allows, with a warning when the realized proportion differs from it by more than \code{test_size_tolerance}. Default is \code{0.2}.
+#' @param test_size A numeric value between 0 and 1 indicating the proportion of the data to use for testing. For grouped holdout, this is applied to the number of groups rather than rows, so the share of rows in the test set depends on the sizes of the groups drawn (for example 0.175 rather than 0.2 when the sampled groups are smaller than average), with a warning when it differs from \code{test_size} by more than \code{test_size_tolerance}; for time-ordered holdout, it selects the final proportion of rows; for grouped time-ordered holdout it is a target that is met as closely as an intact-group cut allows, with a warning when the realized proportion differs from it by more than \code{test_size_tolerance}. Default is \code{0.2}.
 #' @param test_size_tolerance A numeric value giving how far the realized test
 #'   proportion may fall from \code{test_size} before a warning is issued. This
-#'   applies only to the grouped time-ordered holdout, where the cut must fall
-#'   between whole groups and the requested proportion is therefore a target
-#'   rather than a constraint. There is no principled value for it, since how
+#'   applies only to the grouped holdouts (with or without \code{block_col}),
+#'   where the cut must fall between whole groups and the requested proportion
+#'   is therefore a target rather than a constraint. There is no principled value for it, since how
 #'   much departure matters depends on the sample size and on how the test
 #'   estimate will be used, so it is exposed rather than fixed. The default of
 #'   \code{0.05} is a reporting threshold chosen to be small enough to catch a
@@ -39,6 +39,11 @@
 #'   Native survival engines (flexsurv/rstpm2/custom xgboost) ignore resampling and will error if custom resamples
 #'   are supplied. When the task auto-detects survival and \code{resampling_method} is omitted, it defaults to
 #'   \code{"none"} so native engines continue to run; set it explicitly to enable resampling for parsnip survival fits.
+#'   When \code{group_cols} is supplied (without \code{block_col}) and \code{resampling_method} is omitted, it
+#'   defaults to \code{"grouped_cv"}, with a message, so that the folds keep groups intact as the holdout does.
+#'   Combining \code{group_cols} or \code{block_col} with a method that builds folds from rows (\code{"cv"},
+#'   \code{"repeatedcv"}, \code{"boot"}, \code{"validation_split"}, or, for \code{block_col}, \code{"nested_cv"})
+#'   issues a warning, because those folds ignore the grouping or the time order.
 #' @param folds An integer specifying the number of folds for cross-validation
 #'   (default \code{10} for methods containing "cv", \code{25} otherwise).
 #'   When \code{resampling_method = "boot"}, this controls the number of
@@ -47,7 +52,13 @@
 #' @param repeats Number of times to repeat cross-validation (only applicable for methods like "repeatedcv").
 #' @param group_cols Character vector naming one or more grouping columns used when
 #'   \code{resampling_method = "grouped_cv"} or when grouped nested cross-validation is desired.
-#'   All rows that share the same combination of values remain together in every fold. Columns must exist
+#'   All rows that share the same combination of values remain together in every fold. When
+#'   \code{resampling_method} is omitted, supplying \code{group_cols} switches the default from
+#'   \code{"cv"} to \code{"grouped_cv"} (announced with a message); if \code{folds} is also omitted
+#'   and the training set has fewer groups than the default of 10 folds, one fold per group is used.
+#'   An explicit row-wise method such as \code{"cv"} is honoured but warns that its folds share groups
+#'   between analysis and assessment sets. The holdout split also keeps groups intact, with
+#'   \code{test_size} applied to the number of groups (see \code{test_size}). Columns must exist
 #'   in the training data and cannot contain missing values. The default recipe gives these columns the
 #'   non-predictor role \code{"grouping"} and removes them before preprocessing, so group identity is never
 #'   used as a feature; they are not required in the data passed to \code{predict()}. A user-supplied
@@ -57,7 +68,13 @@
 #'   names begin with \code{"strata"} are used, which is the historical behaviour.
 #' @param block_col Single column name that defines the ordering variable for
 #'   \code{resampling_method = "blocked_cv"} or \code{"rolling_origin"}. Data must already be sorted in
-#'   ascending order by this column to avoid leakage from future observations. The default recipe
+#'   ascending order by this column to avoid leakage from future observations. Supplying
+#'   \code{block_col} does not change \code{resampling_method}, because blocked and rolling folds need
+#'   \code{block_size} or \code{initial_window} and \code{assess_window}; with the default \code{"cv"}
+#'   (or another row-wise method) \code{fastml()} warns that every fold trains on rows later than some it
+#'   assesses. Under \code{"rolling_origin"}, rows that share a \code{block_col} value with the first
+#'   assessment row are moved from the analysis set into the assessment set, so that every analysis row
+#'   strictly precedes every assessment row. The default recipe
 #'   gives this column the non-predictor role \code{"ordering"} and removes it before preprocessing,
 #'   so it is not required in the data passed to \code{predict()}; to model a time trend, supply a
 #'   \code{recipe} that derives the features you want. When
@@ -85,7 +102,9 @@
 #'   class equally, while macro_weighted weights by class prevalence and can
 #'   change model rankings on imbalanced data.
 #' @param exclude A character vector specifying the names of the columns to be excluded from the training process.
-#'   Exclusion is applied to \code{data} before it is split. Columns also named in \code{group_cols} or
+#'   Exclusion is applied to \code{data} before it is split, or to both \code{train_data} and
+#'   \code{test_data} when pre-split data are supplied. Naming a column that is absent from the data
+#'   warns, and naming the label is an error. Columns also named in \code{group_cols} or
 #'   \code{block_col} are retained, with a message, because splitting and resampling need them; they are
 #'   already kept out of the default recipe's predictors.
 #' @param recipe A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped. The column types the recipe recorded are preserved: character and integer columns the recipe covers are not converted to factors or doubles. A classification outcome must already be a factor when the recipe is built.
@@ -423,6 +442,7 @@ fastml <- function(data = NULL,
                    store_fold_models = FALSE) {
 
   resampling_method_missing <- missing(resampling_method)
+  folds_missing <- missing(folds)
   bootstrap_seed_missing <- missing(bootstrap_seed)
   audit_env <- fastml_init_audit_env(audit_mode)
 
@@ -687,6 +707,57 @@ fastml <- function(data = NULL,
   positive_class <- NULL
   # ---------------- END TASK DETECTION ----------------
 
+  # The default for an omitted `resampling_method` is evaluated before the task
+  # is known, so a survival task detected above still holds "cv" here.
+  if (task == "survival" && resampling_method_missing) {
+    resampling_method <- "none"
+  }
+
+  # The holdout honours `group_cols` and `block_col`; the folds should too.
+  # Grouped folds are a safe default, but blocked and rolling folds need
+  # `block_size` or window sizes that cannot be guessed, so those only warn.
+  grouped_cv_by_default <- FALSE
+  if (!custom_resamples) {
+    row_wise_methods <- c("cv", "repeatedcv", "boot", "validation_split")
+    if (resampling_method_missing && identical(resampling_method, "cv") &&
+        !is.null(group_cols) && is.null(block_col)) {
+      resampling_method <- "grouped_cv"
+      grouped_cv_by_default <- TRUE
+      message(
+        "`group_cols` was supplied without `resampling_method`, so resampling uses ",
+        "grouped cross-validation (`resampling_method = \"grouped_cv\"`) and no group ",
+        "appears in both the analysis and assessment sets of a fold. Set ",
+        "`resampling_method` explicitly to choose another scheme."
+      )
+    } else if (!is.null(block_col) &&
+               resampling_method %in% c(row_wise_methods, "nested_cv")) {
+      warning(
+        sprintf(
+          paste0(
+            "`block_col` orders the holdout split, but `resampling_method = \"%s\"` builds ",
+            "folds from randomly chosen rows, so every fold trains on observations later than ",
+            "some it is assessed on. Use `resampling_method = \"blocked_cv\"` (with `block_size`) ",
+            "or `\"rolling_origin\"` (with `initial_window` and `assess_window`) for time-ordered folds."
+          ),
+          resampling_method
+        ),
+        call. = FALSE
+      )
+    } else if (!is.null(group_cols) && resampling_method %in% row_wise_methods) {
+      warning(
+        sprintf(
+          paste0(
+            "`group_cols` keeps groups intact in the holdout split, but `resampling_method = \"%s\"` ",
+            "builds folds from rows and ignores the grouping, so groups are shared between ",
+            "analysis and assessment sets. Use `resampling_method = \"grouped_cv\"` for grouped folds."
+          ),
+          resampling_method
+        ),
+        call. = FALSE
+      )
+    }
+  }
+
 
   holdout_mode <- "random"
   if (!is.null(block_col)) {
@@ -768,6 +839,18 @@ fastml <- function(data = NULL,
       }
       test_groups <- sample(unique_groups, size = n_test_groups, replace = FALSE)
       in_test <- group_id %in% test_groups
+      # `test_size` counts groups here, so the share of rows follows the sizes
+      # of the groups drawn.
+      realized <- mean(in_test)
+      if (abs(realized - test_size) > test_size_tolerance) {
+        warning(
+          sprintf(
+            "Grouped holdout assigned %d of %d groups to the test set, which holds %.1f%% of rows rather than the requested %.1f%%; `test_size` is applied to groups, not rows.",
+            n_test_groups, n_groups, realized * 100, test_size * 100
+          ),
+          call. = FALSE
+        )
+      }
       return(list(
         train_data = df[!in_test, , drop = FALSE],
         test_data = df[in_test, , drop = FALSE]
@@ -789,6 +872,39 @@ fastml <- function(data = NULL,
     )
   }
 
+  # Validate `exclude` against the columns available and return the columns to
+  # drop. It is shared by the `data` path and the `train_data`/`test_data` path.
+  resolve_exclude <- function(exclude, available_cols) {
+    if (is.null(exclude)) {
+      return(character())
+    }
+    exclude <- unique(as.character(exclude))
+    if (any(label %in% exclude)) {
+      if (task == "survival") {
+        stop("Label variable(s) cannot be excluded: ", paste(label[label %in% exclude], collapse = ", "))
+      }
+      stop("Label variable cannot be excluded: ", label)
+    }
+    missing_vars <- setdiff(exclude, available_cols)
+    if (length(missing_vars) > 0) {
+      warning("Variables not in data: ", paste(missing_vars, collapse = ", "))
+      exclude <- setdiff(exclude, missing_vars)
+    }
+    # Columns named in `group_cols` or `block_col` are needed to split and
+    # resample, so they cannot be dropped here. They are already kept out of
+    # the default recipe's predictors, which is what excluding them asks for.
+    structural_excluded <- intersect(exclude, c(group_cols, block_col))
+    if (length(structural_excluded) > 0) {
+      message(
+        "Column(s) ", paste(structural_excluded, collapse = ", "),
+        " are named in `group_cols` or `block_col` and are retained for splitting and ",
+        "resampling rather than excluded; they are not used as predictors."
+      )
+      exclude <- setdiff(exclude, structural_excluded)
+    }
+    exclude
+  }
+
   provisional_split_used <- FALSE
   # If initial data provided, perform exclusion and checks, then split
   if (!is.null(data)) {
@@ -801,31 +917,8 @@ fastml <- function(data = NULL,
         stop("The specified label does not exist in the data.")
       }
     }
-    if (!is.null(exclude)) {
-      if (task == "survival") {
-        if (any(label %in% exclude)) {
-          stop("Label variable(s) cannot be excluded: ", paste(label[label %in% exclude], collapse = ", "))
-        }
-      } else {
-        if (label %in% exclude) stop("Label variable cannot be excluded: ", label)
-      }
-      missing_vars <- setdiff(exclude, colnames(data))
-      if (length(missing_vars) > 0) {
-        warning("Variables not in data: ", paste(missing_vars, collapse = ", "))
-        exclude <- setdiff(exclude, missing_vars)
-      }
-      # Columns named in `group_cols` or `block_col` are needed to split and
-      # resample, so they cannot be dropped here. They are already kept out of
-      # the default recipe's predictors, which is what excluding them asks for.
-      structural_excluded <- intersect(exclude, c(group_cols, block_col))
-      if (length(structural_excluded) > 0) {
-        message(
-          "Column(s) ", paste(structural_excluded, collapse = ", "),
-          " are named in `group_cols` or `block_col` and are retained for splitting and ",
-          "resampling rather than excluded; they are not used as predictors."
-        )
-        exclude <- setdiff(exclude, structural_excluded)
-      }
+    exclude <- resolve_exclude(exclude, colnames(data))
+    if (length(exclude) > 0) {
       data <- dplyr::select(data, -dplyr::all_of(exclude))
     }
     if (!is.null(impute_method) && impute_method == "error" && anyNA(data)) {
@@ -872,6 +965,13 @@ fastml <- function(data = NULL,
 
     train_data <- split_result$train_data
     test_data  <- split_result$test_data
+  } else {
+    # Pre-split data: drop the excluded columns from both sets.
+    exclude <- resolve_exclude(exclude, union(colnames(train_data), colnames(test_data)))
+    if (length(exclude) > 0) {
+      train_data <- dplyr::select(train_data, -dplyr::any_of(exclude))
+      test_data <- dplyr::select(test_data, -dplyr::any_of(exclude))
+    }
   }
 
   if (task == "survival") {
@@ -1234,6 +1334,18 @@ fastml <- function(data = NULL,
   reference_resample_data <- train_data
   ensure_columns_present(reference_resample_data, group_cols, "`group_cols`")
   ensure_columns_present(reference_resample_data, block_col, "`block_col`")
+  # Grouped folds chosen on the user's behalf should not fail merely because the
+  # default fold count exceeds the number of training groups.
+  if (grouped_cv_by_default && folds_missing) {
+    n_train_groups <- length(unique(fastml_group_id(train_data, group_cols)))
+    if (n_train_groups >= 2 && n_train_groups < folds) {
+      message(sprintf(
+        "Using %d grouped folds because the training set has only %d groups.",
+        n_train_groups, n_train_groups
+      ))
+      folds <- n_train_groups
+    }
+  }
   if (!is.null(recipe)) {
     fastml_warn_group_predictors(recipe, train_data, group_cols)
   }

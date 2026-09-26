@@ -83,13 +83,13 @@ or survival based on the data. Survival is detected when `label` is a
 character vector of length 2 that matches time and status columns in the data.
 You may also explicitly set to "classification", "regression", or "survival".}
 
-\item{test_size}{A numeric value between 0 and 1 indicating the proportion of the data to use for testing. For grouped holdout, this is applied to groups; for time-ordered holdout, it selects the final proportion of rows; for grouped time-ordered holdout it is a target that is met as closely as an intact-group cut allows, with a warning when the realized proportion differs from it by more than \code{test_size_tolerance}. Default is \code{0.2}.}
+\item{test_size}{A numeric value between 0 and 1 indicating the proportion of the data to use for testing. For grouped holdout, this is applied to the number of groups rather than rows, so the share of rows in the test set depends on the sizes of the groups drawn (for example 0.175 rather than 0.2 when the sampled groups are smaller than average), with a warning when it differs from \code{test_size} by more than \code{test_size_tolerance}; for time-ordered holdout, it selects the final proportion of rows; for grouped time-ordered holdout it is a target that is met as closely as an intact-group cut allows, with a warning when the realized proportion differs from it by more than \code{test_size_tolerance}. Default is \code{0.2}.}
 
 \item{test_size_tolerance}{A numeric value giving how far the realized test
 proportion may fall from \code{test_size} before a warning is issued. This
-applies only to the grouped time-ordered holdout, where the cut must fall
-between whole groups and the requested proportion is therefore a target
-rather than a constraint. There is no principled value for it, since how
+applies only to the grouped holdouts (with or without \code{block_col}),
+where the cut must fall between whole groups and the requested proportion
+is therefore a target rather than a constraint. There is no principled value for it, since how
 much departure matters depends on the sample size and on how the test
 estimate will be used, so it is exposed rather than fixed. The default of
 \code{0.05} is a reporting threshold chosen to be small enough to catch a
@@ -103,7 +103,12 @@ realized proportion whenever it differs at all.}
 For survival tasks, resampling is supported for parsnip-compatible engines (e.g., censored/ranger, glmnet).
 Native survival engines (flexsurv/rstpm2/custom xgboost) ignore resampling and will error if custom resamples
 are supplied. When the task auto-detects survival and \code{resampling_method} is omitted, it defaults to
-\code{"none"} so native engines continue to run; set it explicitly to enable resampling for parsnip survival fits.}
+\code{"none"} so native engines continue to run; set it explicitly to enable resampling for parsnip survival fits.
+When \code{group_cols} is supplied (without \code{block_col}) and \code{resampling_method} is omitted, it
+defaults to \code{"grouped_cv"}, with a message, so that the folds keep groups intact as the holdout does.
+Combining \code{group_cols} or \code{block_col} with a method that builds folds from rows (\code{"cv"},
+\code{"repeatedcv"}, \code{"boot"}, \code{"validation_split"}, or, for \code{block_col}, \code{"nested_cv"})
+issues a warning, because those folds ignore the grouping or the time order.}
 
 \item{folds}{An integer specifying the number of folds for cross-validation
 (default \code{10} for methods containing "cv", \code{25} otherwise).
@@ -115,7 +120,13 @@ the proportion held out for validation is derived as \code{1 - 1/folds}.}
 
 \item{group_cols}{Character vector naming one or more grouping columns used when
 \code{resampling_method = "grouped_cv"} or when grouped nested cross-validation is desired.
-All rows that share the same combination of values remain together in every fold. Columns must exist
+All rows that share the same combination of values remain together in every fold. When
+\code{resampling_method} is omitted, supplying \code{group_cols} switches the default from
+\code{"cv"} to \code{"grouped_cv"} (announced with a message); if \code{folds} is also omitted
+and the training set has fewer groups than the default of 10 folds, one fold per group is used.
+An explicit row-wise method such as \code{"cv"} is honoured but warns that its folds share groups
+between analysis and assessment sets. The holdout split also keeps groups intact, with
+\code{test_size} applied to the number of groups (see \code{test_size}). Columns must exist
 in the training data and cannot contain missing values. The default recipe gives these columns the
 non-predictor role \code{"grouping"} and removes them before preprocessing, so group identity is never
 used as a feature; they are not required in the data passed to \code{predict()}. A user-supplied
@@ -123,7 +134,13 @@ used as a feature; they are not required in the data passed to \code{predict()}.
 
 \item{block_col}{Single column name that defines the ordering variable for
 \code{resampling_method = "blocked_cv"} or \code{"rolling_origin"}. Data must already be sorted in
-ascending order by this column to avoid leakage from future observations. The default recipe
+ascending order by this column to avoid leakage from future observations. Supplying
+\code{block_col} does not change \code{resampling_method}, because blocked and rolling folds need
+\code{block_size} or \code{initial_window} and \code{assess_window}; with the default \code{"cv"}
+(or another row-wise method) \code{fastml()} warns that every fold trains on rows later than some it
+assesses. Under \code{"rolling_origin"}, rows that share a \code{block_col} value with the first
+assessment row are moved from the analysis set into the assessment set, so that every analysis row
+strictly precedes every assessment row. The default recipe
 gives this column the non-predictor role \code{"ordering"} and removes it before preprocessing,
 so it is not required in the data passed to \code{predict()}; to model a time trend, supply a
 \code{recipe} that derives the features you want. When
@@ -158,7 +175,9 @@ class, "second" treats the second level as positive. Use
 \code{levels(your_data$outcome)} to check level order before training. Default is "first".}
 
 \item{exclude}{A character vector specifying the names of the columns to be excluded from the training process.
-Exclusion is applied to \code{data} before it is split. Columns also named in \code{group_cols} or
+Exclusion is applied to \code{data} before it is split, or to both \code{train_data} and
+\code{test_data} when pre-split data are supplied. Naming a column that is absent from the data
+warns, and naming the label is an error. Columns also named in \code{group_cols} or
 \code{block_col} are retained, with a message, because splitting and resampling need them; they are
 already kept out of the default recipe's predictors.}
 

@@ -239,12 +239,36 @@ make_rolling_origin_cv <- function(data,
     stop("'skip' must be a non-negative integer.")
   }
 
-  rsample::rolling_origin(
+  resamples <- rsample::rolling_origin(
     data,
     initial = window_args$initial_window,
     assess = window_args$assess_window,
     skip = window_args$skip
   )
+
+  # rolling_origin() cuts by row count, so rows sharing a `block_col` value can
+  # fall on both sides of a cut. Move such rows into the assessment set so that
+  # every analysis row strictly precedes every assessment row.
+  block_vals <- data[[block_col]]
+  resamples$splits <- lapply(resamples$splits, function(split) {
+    first_assessed <- min(block_vals[split$out_id])
+    tied <- split$in_id[block_vals[split$in_id] >= first_assessed]
+    if (length(tied) == 0) {
+      return(split)
+    }
+    split$in_id <- setdiff(split$in_id, tied)
+    if (length(split$in_id) == 0) {
+      stop(
+        sprintf(
+          "'initial_window' falls entirely within rows sharing one value of '%s', so a rolling split would have no analysis rows that precede its assessment rows. Increase 'initial_window'.",
+          block_col
+        )
+      )
+    }
+    split$out_id <- sort(c(tied, split$out_id))
+    split
+  })
+  resamples
 }
 
 make_nested_cv <- function(data,
