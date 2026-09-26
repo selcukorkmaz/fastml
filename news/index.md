@@ -67,6 +67,22 @@ CRAN release: 2026-08-28
   the gap between them is a calibration diagnostic. Code that reads the
   regression metrics table by column position will need updating.
 
+- **`group_cols` without a `resampling_method` now gives grouped
+  folds.** The holdout split honoured `group_cols`, but the default
+  `resampling_method = "cv"` built ordinary row-wise folds, so the
+  cross-validation estimate used for tuning and model selection was
+  computed with groups on both sides of every fold. In one example,
+  groups were shared between analysis and assessment sets 99 times
+  across 5 folds, with no warning. When `group_cols` is supplied
+  (without `block_col`) and `resampling_method` is omitted,
+  [`fastml()`](https://selcukorkmaz.github.io/fastml/reference/fastml.md)
+  now uses `"grouped_cv"` and says so in a message. If `folds` is also
+  omitted and the training set has fewer than 10 groups, one fold per
+  group is used rather than failing. Cross-validated results for such
+  calls will change; set `resampling_method = "cv"` to recover the
+  previous folds, which now warns (below). Regression tests are in
+  `tests/testthat/test-structure-defaults.R`.
+
 ### New features
 
 - **The tuning grid that was actually searched is recorded and
@@ -97,6 +113,52 @@ CRAN release: 2026-08-28
   error rather than a silent skip.
 
 ### Bug fixes
+
+- **Row-wise folds combined with `group_cols` or `block_col` now warn.**
+  An explicit `"cv"`, `"repeatedcv"`, `"boot"` or `"validation_split"`
+  alongside `group_cols` warns that the folds ignore the grouping and
+  points to `"grouped_cv"`. The same methods, or `"nested_cv"`,
+  alongside `block_col` warn that every fold trains on rows later than
+  some it assesses, and point to `"blocked_cv"` and `"rolling_origin"`.
+  This includes the default `"cv"` when `block_col` is supplied:
+  [`fastml()`](https://selcukorkmaz.github.io/fastml/reference/fastml.md)
+  cannot switch to a time-ordered method there, because those need
+  `block_size` or window sizes it has no basis for choosing.
+
+- **`exclude` now applies to `train_data` and `test_data`.** Exclusion
+  ran only when
+  [`fastml()`](https://selcukorkmaz.github.io/fastml/reference/fastml.md)
+  split `data` itself, so on the pre-split path an identifier such as
+  `exclude = "sample_id"` was silently kept and dummy-encoded into one
+  predictor per sample. The excluded columns are now dropped from both
+  sets, with the same checks as the `data` path: a column not in the
+  data warns, the label cannot be excluded, and `group_cols` and
+  `block_col` are retained with a message.
+
+- **An auto-detected survival task now defaults to no resampling, as
+  documented.** The default for an omitted `resampling_method` was
+  evaluated while `task` was still `"auto"`, so a survival task detected
+  from a two-column `label` got `"cv"`, and a native engine such as
+  `cox_ph` then failed unless `censored` was loaded. The default is now
+  re-applied once the task is known, matching an explicit
+  `task = "survival"`.
+
+- **`rolling_origin` folds no longer split tied `block_col` values
+  across a cut.**
+  [`rsample::rolling_origin()`](https://rsample.tidymodels.org/reference/rolling_origin.html)
+  cuts by row count, so rows sharing a time value could sit in both the
+  analysis and the assessment set of a split; with four rows per time
+  point this happened in four of five splits. Tied rows at a cut are now
+  moved into the assessment set, so every analysis row strictly precedes
+  every assessment row.
+
+- **A grouped holdout reports when its row share departs from
+  `test_size`.** For a grouped holdout `test_size` counts groups, not
+  rows, so unequal group sizes give a different share of rows, for
+  example 17.5% against the 20% requested. This is now documented under
+  `test_size`, and a warning is issued when the realized share differs
+  by more than `test_size_tolerance`, as the grouped time-ordered
+  holdout already did.
 
 - **A user-supplied `recipe` built on data with character or integer
   columns no longer fails to train.**

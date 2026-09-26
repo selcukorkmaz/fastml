@@ -115,26 +115,30 @@ fastml(
 - test_size:
 
   A numeric value between 0 and 1 indicating the proportion of the data
-  to use for testing. For grouped holdout, this is applied to groups;
-  for time-ordered holdout, it selects the final proportion of rows; for
-  grouped time-ordered holdout it is a target that is met as closely as
-  an intact-group cut allows, with a warning when the realized
-  proportion differs from it by more than `test_size_tolerance`. Default
-  is `0.2`.
+  to use for testing. For grouped holdout, this is applied to the number
+  of groups rather than rows, so the share of rows in the test set
+  depends on the sizes of the groups drawn (for example 0.175 rather
+  than 0.2 when the sampled groups are smaller than average), with a
+  warning when it differs from `test_size` by more than
+  `test_size_tolerance`; for time-ordered holdout, it selects the final
+  proportion of rows; for grouped time-ordered holdout it is a target
+  that is met as closely as an intact-group cut allows, with a warning
+  when the realized proportion differs from it by more than
+  `test_size_tolerance`. Default is `0.2`.
 
 - test_size_tolerance:
 
   A numeric value giving how far the realized test proportion may fall
   from `test_size` before a warning is issued. This applies only to the
-  grouped time-ordered holdout, where the cut must fall between whole
-  groups and the requested proportion is therefore a target rather than
-  a constraint. There is no principled value for it, since how much
-  departure matters depends on the sample size and on how the test
-  estimate will be used, so it is exposed rather than fixed. The default
-  of `0.05` is a reporting threshold chosen to be small enough to catch
-  a materially different split while not warning on the rounding that
-  whole group boundaries inevitably produce. Set it to `0` to be told
-  the realized proportion whenever it differs at all.
+  grouped holdouts (with or without `block_col`), where the cut must
+  fall between whole groups and the requested proportion is therefore a
+  target rather than a constraint. There is no principled value for it,
+  since how much departure matters depends on the sample size and on how
+  the test estimate will be used, so it is exposed rather than fixed.
+  The default of `0.05` is a reporting threshold chosen to be small
+  enough to catch a materially different split while not warning on the
+  rounding that whole group boundaries inevitably produce. Set it to `0`
+  to be told the realized proportion whenever it differs at all.
 
 - resampling_method:
 
@@ -148,7 +152,13 @@ fastml(
   custom resamples are supplied. When the task auto-detects survival and
   `resampling_method` is omitted, it defaults to `"none"` so native
   engines continue to run; set it explicitly to enable resampling for
-  parsnip survival fits.
+  parsnip survival fits. When `group_cols` is supplied (without
+  `block_col`) and `resampling_method` is omitted, it defaults to
+  `"grouped_cv"`, with a message, so that the folds keep groups intact
+  as the holdout does. Combining `group_cols` or `block_col` with a
+  method that builds folds from rows (`"cv"`, `"repeatedcv"`, `"boot"`,
+  `"validation_split"`, or, for `block_col`, `"nested_cv"`) issues a
+  warning, because those folds ignore the grouping or the time order.
 
 - folds:
 
@@ -168,11 +178,18 @@ fastml(
   Character vector naming one or more grouping columns used when
   `resampling_method = "grouped_cv"` or when grouped nested
   cross-validation is desired. All rows that share the same combination
-  of values remain together in every fold. Columns must exist in the
-  training data and cannot contain missing values. The default recipe
-  gives these columns the non-predictor role `"grouping"` and removes
-  them before preprocessing, so group identity is never used as a
-  feature; they are not required in the data passed to
+  of values remain together in every fold. When `resampling_method` is
+  omitted, supplying `group_cols` switches the default from `"cv"` to
+  `"grouped_cv"` (announced with a message); if `folds` is also omitted
+  and the training set has fewer groups than the default of 10 folds,
+  one fold per group is used. An explicit row-wise method such as `"cv"`
+  is honoured but warns that its folds share groups between analysis and
+  assessment sets. The holdout split also keeps groups intact, with
+  `test_size` applied to the number of groups (see `test_size`). Columns
+  must exist in the training data and cannot contain missing values. The
+  default recipe gives these columns the non-predictor role `"grouping"`
+  and removes them before preprocessing, so group identity is never used
+  as a feature; they are not required in the data passed to
   [`predict()`](https://rdrr.io/r/stats/predict.html). A user-supplied
   `recipe` controls roles itself, and `fastml()` warns when it leaves a
   grouping column as a predictor.
@@ -182,17 +199,24 @@ fastml(
   Single column name that defines the ordering variable for
   `resampling_method = "blocked_cv"` or `"rolling_origin"`. Data must
   already be sorted in ascending order by this column to avoid leakage
-  from future observations. The default recipe gives this column the
-  non-predictor role `"ordering"` and removes it before preprocessing,
-  so it is not required in the data passed to
-  [`predict()`](https://rdrr.io/r/stats/predict.html); to model a time
-  trend, supply a `recipe` that derives the features you want. When
-  `group_cols` is also supplied, the holdout split is cut at the
-  admissible point nearest the requested `test_size` at which no group
-  spans the cut, so that every training row precedes every test row and
-  no group appears on both sides; if the groups are interleaved in time
-  so that no such point exists, `fastml()` stops rather than relaxing
-  either guarantee.
+  from future observations. Supplying `block_col` does not change
+  `resampling_method`, because blocked and rolling folds need
+  `block_size` or `initial_window` and `assess_window`; with the default
+  `"cv"` (or another row-wise method) `fastml()` warns that every fold
+  trains on rows later than some it assesses. Under `"rolling_origin"`,
+  rows that share a `block_col` value with the first assessment row are
+  moved from the analysis set into the assessment set, so that every
+  analysis row strictly precedes every assessment row. The default
+  recipe gives this column the non-predictor role `"ordering"` and
+  removes it before preprocessing, so it is not required in the data
+  passed to [`predict()`](https://rdrr.io/r/stats/predict.html); to
+  model a time trend, supply a `recipe` that derives the features you
+  want. When `group_cols` is also supplied, the holdout split is cut at
+  the admissible point nearest the requested `test_size` at which no
+  group spans the cut, so that every training row precedes every test
+  row and no group appears on both sides; if the groups are interleaved
+  in time so that no such point exists, `fastml()` stops rather than
+  relaxing either guarantee.
 
 - strata_cols:
 
@@ -239,9 +263,12 @@ fastml(
 
   A character vector specifying the names of the columns to be excluded
   from the training process. Exclusion is applied to `data` before it is
-  split. Columns also named in `group_cols` or `block_col` are retained,
-  with a message, because splitting and resampling need them; they are
-  already kept out of the default recipe's predictors.
+  split, or to both `train_data` and `test_data` when pre-split data are
+  supplied. Naming a column that is absent from the data warns, and
+  naming the label is an error. Columns also named in `group_cols` or
+  `block_col` are retained, with a message, because splitting and
+  resampling need them; they are already kept out of the default
+  recipe's predictors.
 
 - recipe:
 

@@ -143,15 +143,15 @@ You may also explicitly set to "classification", "regression", or "survival".</p
 
 
 <dt id="arg-test-size">test_size<a class="anchor" aria-label="anchor" href="#arg-test-size"></a></dt>
-<dd><p>A numeric value between 0 and 1 indicating the proportion of the data to use for testing. For grouped holdout, this is applied to groups; for time-ordered holdout, it selects the final proportion of rows; for grouped time-ordered holdout it is a target that is met as closely as an intact-group cut allows, with a warning when the realized proportion differs from it by more than <code>test_size_tolerance</code>. Default is <code>0.2</code>.</p></dd>
+<dd><p>A numeric value between 0 and 1 indicating the proportion of the data to use for testing. For grouped holdout, this is applied to the number of groups rather than rows, so the share of rows in the test set depends on the sizes of the groups drawn (for example 0.175 rather than 0.2 when the sampled groups are smaller than average), with a warning when it differs from <code>test_size</code> by more than <code>test_size_tolerance</code>; for time-ordered holdout, it selects the final proportion of rows; for grouped time-ordered holdout it is a target that is met as closely as an intact-group cut allows, with a warning when the realized proportion differs from it by more than <code>test_size_tolerance</code>. Default is <code>0.2</code>.</p></dd>
 
 
 <dt id="arg-test-size-tolerance">test_size_tolerance<a class="anchor" aria-label="anchor" href="#arg-test-size-tolerance"></a></dt>
 <dd><p>A numeric value giving how far the realized test
 proportion may fall from <code>test_size</code> before a warning is issued. This
-applies only to the grouped time-ordered holdout, where the cut must fall
-between whole groups and the requested proportion is therefore a target
-rather than a constraint. There is no principled value for it, since how
+applies only to the grouped holdouts (with or without <code>block_col</code>),
+where the cut must fall between whole groups and the requested proportion
+is therefore a target rather than a constraint. There is no principled value for it, since how
 much departure matters depends on the sample size and on how the test
 estimate will be used, so it is exposed rather than fixed. The default of
 <code>0.05</code> is a reporting threshold chosen to be small enough to catch a
@@ -167,7 +167,12 @@ realized proportion whenever it differs at all.</p></dd>
 For survival tasks, resampling is supported for parsnip-compatible engines (e.g., censored/ranger, glmnet).
 Native survival engines (flexsurv/rstpm2/custom xgboost) ignore resampling and will error if custom resamples
 are supplied. When the task auto-detects survival and <code>resampling_method</code> is omitted, it defaults to
-<code>"none"</code> so native engines continue to run; set it explicitly to enable resampling for parsnip survival fits.</p></dd>
+<code>"none"</code> so native engines continue to run; set it explicitly to enable resampling for parsnip survival fits.
+When <code>group_cols</code> is supplied (without <code>block_col</code>) and <code>resampling_method</code> is omitted, it
+defaults to <code>"grouped_cv"</code>, with a message, so that the folds keep groups intact as the holdout does.
+Combining <code>group_cols</code> or <code>block_col</code> with a method that builds folds from rows (<code>"cv"</code>,
+<code>"repeatedcv"</code>, <code>"boot"</code>, <code>"validation_split"</code>, or, for <code>block_col</code>, <code>"nested_cv"</code>)
+issues a warning, because those folds ignore the grouping or the time order.</p></dd>
 
 
 <dt id="arg-folds">folds<a class="anchor" aria-label="anchor" href="#arg-folds"></a></dt>
@@ -185,7 +190,13 @@ the proportion held out for validation is derived as <code>1 - 1/folds</code>.</
 <dt id="arg-group-cols">group_cols<a class="anchor" aria-label="anchor" href="#arg-group-cols"></a></dt>
 <dd><p>Character vector naming one or more grouping columns used when
 <code>resampling_method = "grouped_cv"</code> or when grouped nested cross-validation is desired.
-All rows that share the same combination of values remain together in every fold. Columns must exist
+All rows that share the same combination of values remain together in every fold. When
+<code>resampling_method</code> is omitted, supplying <code>group_cols</code> switches the default from
+<code>"cv"</code> to <code>"grouped_cv"</code> (announced with a message); if <code>folds</code> is also omitted
+and the training set has fewer groups than the default of 10 folds, one fold per group is used.
+An explicit row-wise method such as <code>"cv"</code> is honoured but warns that its folds share groups
+between analysis and assessment sets. The holdout split also keeps groups intact, with
+<code>test_size</code> applied to the number of groups (see <code>test_size</code>). Columns must exist
 in the training data and cannot contain missing values. The default recipe gives these columns the
 non-predictor role <code>"grouping"</code> and removes them before preprocessing, so group identity is never
 used as a feature; they are not required in the data passed to <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code>. A user-supplied
@@ -195,7 +206,13 @@ used as a feature; they are not required in the data passed to <code><a href="ht
 <dt id="arg-block-col">block_col<a class="anchor" aria-label="anchor" href="#arg-block-col"></a></dt>
 <dd><p>Single column name that defines the ordering variable for
 <code>resampling_method = "blocked_cv"</code> or <code>"rolling_origin"</code>. Data must already be sorted in
-ascending order by this column to avoid leakage from future observations. The default recipe
+ascending order by this column to avoid leakage from future observations. Supplying
+<code>block_col</code> does not change <code>resampling_method</code>, because blocked and rolling folds need
+<code>block_size</code> or <code>initial_window</code> and <code>assess_window</code>; with the default <code>"cv"</code>
+(or another row-wise method) <code>fastml()</code> warns that every fold trains on rows later than some it
+assesses. Under <code>"rolling_origin"</code>, rows that share a <code>block_col</code> value with the first
+assessment row are moved from the analysis set into the assessment set, so that every analysis row
+strictly precedes every assessment row. The default recipe
 gives this column the non-predictor role <code>"ordering"</code> and removes it before preprocessing,
 so it is not required in the data passed to <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code>; to model a time trend, supply a
 <code>recipe</code> that derives the features you want. When
@@ -246,7 +263,9 @@ class, "second" treats the second level as positive. Use
 
 <dt id="arg-exclude">exclude<a class="anchor" aria-label="anchor" href="#arg-exclude"></a></dt>
 <dd><p>A character vector specifying the names of the columns to be excluded from the training process.
-Exclusion is applied to <code>data</code> before it is split. Columns also named in <code>group_cols</code> or
+Exclusion is applied to <code>data</code> before it is split, or to both <code>train_data</code> and
+<code>test_data</code> when pre-split data are supplied. Naming a column that is absent from the data
+warns, and naming the label is an error. Columns also named in <code>group_cols</code> or
 <code>block_col</code> are retained, with a message, because splitting and resampling need them; they are
 already kept out of the default recipe's predictors.</p></dd>
 
