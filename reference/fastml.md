@@ -169,19 +169,30 @@ fastml(
   `resampling_method = "grouped_cv"` or when grouped nested
   cross-validation is desired. All rows that share the same combination
   of values remain together in every fold. Columns must exist in the
-  training data and cannot contain missing values.
+  training data and cannot contain missing values. The default recipe
+  gives these columns the non-predictor role `"grouping"` and removes
+  them before preprocessing, so group identity is never used as a
+  feature; they are not required in the data passed to
+  [`predict()`](https://rdrr.io/r/stats/predict.html). A user-supplied
+  `recipe` controls roles itself, and `fastml()` warns when it leaves a
+  grouping column as a predictor.
 
 - block_col:
 
   Single column name that defines the ordering variable for
   `resampling_method = "blocked_cv"` or `"rolling_origin"`. Data must
   already be sorted in ascending order by this column to avoid leakage
-  from future observations. When `group_cols` is also supplied, the
-  holdout split is cut at the admissible point nearest the requested
-  `test_size` at which no group spans the cut, so that every training
-  row precedes every test row and no group appears on both sides; if the
-  groups are interleaved in time so that no such point exists,
-  `fastml()` stops rather than relaxing either guarantee.
+  from future observations. The default recipe gives this column the
+  non-predictor role `"ordering"` and removes it before preprocessing,
+  so it is not required in the data passed to
+  [`predict()`](https://rdrr.io/r/stats/predict.html); to model a time
+  trend, supply a `recipe` that derives the features you want. When
+  `group_cols` is also supplied, the holdout split is cut at the
+  admissible point nearest the requested `test_size` at which no group
+  spans the cut, so that every training row precedes every test row and
+  no group appears on both sides; if the groups are interleaved in time
+  so that no such point exists, `fastml()` stops rather than relaxing
+  either guarantee.
 
 - strata_cols:
 
@@ -227,7 +238,10 @@ fastml(
 - exclude:
 
   A character vector specifying the names of the columns to be excluded
-  from the training process.
+  from the training process. Exclusion is applied to `data` before it is
+  split. Columns also named in `group_cols` or `block_col` are retained,
+  with a message, because splitting and resampling need them; they are
+  already kept out of the default recipe's predictors.
 
 - recipe:
 

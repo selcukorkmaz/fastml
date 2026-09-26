@@ -117,6 +117,36 @@ CRAN release: 2026-08-28
   failed. Regression tests are in
   `tests/testthat/test-user-recipe-column-types.R`.
 
+- **Grouping and ordering columns are no longer used as predictors.**
+  The default recipe was built as `label ~ .`, so the columns named in
+  `group_cols` were ordinary predictors and `step_dummy()` encoded them.
+  Under `grouped_cv` the final model was then fitted on indicator
+  columns such as `grp_G02` and `grp_G04`. For a column that is unique
+  per group, such as a connected-component identifier, the fit was
+  rank-deficient, and on a 40-group logistic regression both the
+  cross-validated and the held-out AUC were 0.500. More generally, group
+  identity cannot inform a prediction for a group absent from training,
+  which is the case grouped resampling is designed to estimate. The
+  default recipe now gives `group_cols` the role `"grouping"` and
+  `block_col` the role `"ordering"`, and removes both before any other
+  step, so rsample can still build the folds but neither column reaches
+  the model. On the example above the held-out AUC is 0.76. Neither role
+  is required at bake time, and
+  [`predict()`](https://rdrr.io/r/stats/predict.html) accepts new data
+  with or without these columns. The explainers no longer list them as
+  features. A time index under `blocked_cv` or `rolling_origin` is never
+  interpolated on a later holdout, only extrapolated, so it is treated
+  the same way. To model a trend, supply a `recipe` that derives the
+  features you want. A user-supplied `recipe` still controls its own
+  roles, but
+  [`fastml()`](https://selcukorkmaz.github.io/fastml/reference/fastml.md)
+  now warns when the prepped recipe leaves a `group_cols` column, or its
+  dummy columns, among the predictors. Naming a grouping or ordering
+  column in `exclude` previously deleted it before the split and so
+  could not be combined with `group_cols` or `block_col`. Such a column
+  is now retained for splitting and resampling, with a message.
+  Regression tests are in `tests/testthat/test-grouping-roles.R`.
+
 - **Tuning values supplied through `tune_params` are no longer
   reinterpreted as logarithms.** `dials` stores quantitative parameters
   on their transformed scale, which for `penalty`, `learn_rate`,

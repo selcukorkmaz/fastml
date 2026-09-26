@@ -186,13 +186,19 @@ the proportion held out for validation is derived as <code>1 - 1/folds</code>.</
 <dd><p>Character vector naming one or more grouping columns used when
 <code>resampling_method = "grouped_cv"</code> or when grouped nested cross-validation is desired.
 All rows that share the same combination of values remain together in every fold. Columns must exist
-in the training data and cannot contain missing values.</p></dd>
+in the training data and cannot contain missing values. The default recipe gives these columns the
+non-predictor role <code>"grouping"</code> and removes them before preprocessing, so group identity is never
+used as a feature; they are not required in the data passed to <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code>. A user-supplied
+<code>recipe</code> controls roles itself, and <code>fastml()</code> warns when it leaves a grouping column as a predictor.</p></dd>
 
 
 <dt id="arg-block-col">block_col<a class="anchor" aria-label="anchor" href="#arg-block-col"></a></dt>
 <dd><p>Single column name that defines the ordering variable for
 <code>resampling_method = "blocked_cv"</code> or <code>"rolling_origin"</code>. Data must already be sorted in
-ascending order by this column to avoid leakage from future observations. When
+ascending order by this column to avoid leakage from future observations. The default recipe
+gives this column the non-predictor role <code>"ordering"</code> and removes it before preprocessing,
+so it is not required in the data passed to <code><a href="https://rdrr.io/r/stats/predict.html" class="external-link">predict()</a></code>; to model a time trend, supply a
+<code>recipe</code> that derives the features you want. When
 <code>group_cols</code> is also supplied, the holdout split is cut at the admissible point
 nearest the requested <code>test_size</code> at which no group spans the cut, so that every
 training row precedes every test row and no group appears on both sides; if the groups
@@ -239,7 +245,10 @@ class, "second" treats the second level as positive. Use
 
 
 <dt id="arg-exclude">exclude<a class="anchor" aria-label="anchor" href="#arg-exclude"></a></dt>
-<dd><p>A character vector specifying the names of the columns to be excluded from the training process.</p></dd>
+<dd><p>A character vector specifying the names of the columns to be excluded from the training process.
+Exclusion is applied to <code>data</code> before it is split. Columns also named in <code>group_cols</code> or
+<code>block_col</code> are retained, with a message, because splitting and resampling need them; they are
+already kept out of the default recipe's predictors.</p></dd>
 
 
 <dt id="arg-recipe">recipe<a class="anchor" aria-label="anchor" href="#arg-recipe"></a></dt>
