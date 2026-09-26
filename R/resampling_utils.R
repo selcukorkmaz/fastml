@@ -121,6 +121,98 @@ fastml_group_id <- function(df, group_cols) {
   }
 }
 
+# Give the columns that define the resampling structure a non-predictor role in
+# the default recipe. `group_cols` become "grouping" and `block_col` becomes
+# "ordering": they stay in the training data so rsample can build the splits,
+# but they are removed before any other step and are never offered to a model.
+# A group identifier carries no information about groups that were not seen in
+# training, and an ordering index only ever has to be extrapolated on a later
+# holdout, so neither is a meaningful feature. Neither role is required at bake
+# time, so new data may omit the columns or carry them.
+fastml_recipe_structural_roles <- function(recipe, group_cols = NULL, block_col = NULL,
+                                           outcome_cols = NULL) {
+  group_cols <- setdiff(group_cols, outcome_cols)
+  block_col <- setdiff(block_col, c(group_cols, outcome_cols))
+  roles <- list(grouping = group_cols, ordering = block_col)
+  roles <- roles[lengths(roles) > 0]
+  if (length(roles) == 0) {
+    return(recipe)
+  }
+  for (role in names(roles)) {
+    recipe <- recipes::update_role(recipe, dplyr::all_of(roles[[role]]), new_role = role)
+    recipe <- recipes::update_role_requirements(recipe, role, bake = FALSE)
+  }
+  recipes::step_rm(recipe, dplyr::all_of(unlist(roles, use.names = FALSE)))
+}
+
+# Columns that `fastml_recipe_structural_roles()` marked as not needed at bake
+# time. `predict.fastml()` drops them from new data so that their type there is
+# never checked against the training data; the recipe removes them anyway.
+fastml_recipe_structural_cols <- function(recipe) {
+  if (is.null(recipe) || is.null(recipe$var_info)) {
+    return(character())
+  }
+  bake_req <- recipe$requirements$bake
+  roles <- intersect(c("grouping", "ordering"), names(bake_req)[!bake_req])
+  unique(recipe$var_info$variable[recipe$var_info$role %in% roles])
+}
+
+# Warn when a user-supplied recipe hands a grouping column to the model. The
+# recipe is prepped to see which predictors survive, so a column the recipe
+# removes or re-roles itself does not trigger the warning; a dummy-encoded
+# column is recognised by its `<col>_` prefix. Prepping must not disturb the
+# random stream used for training, so the seed is restored afterwards.
+fastml_warn_group_predictors <- function(recipe, train_data, group_cols) {
+  if (is.null(group_cols) || length(group_cols) == 0) {
+    return(invisible(NULL))
+  }
+  info <- recipe$var_info
+  cols <- intersect(group_cols, info$variable[info$role %in% "predictor"])
+  if (length(cols) == 0) {
+    return(invisible(NULL))
+  }
+
+  had_seed <- exists(".Random.seed", envir = globalenv(), inherits = FALSE)
+  old_seed <- if (had_seed) get(".Random.seed", envir = globalenv(), inherits = FALSE)
+  prepped <- tryCatch(
+    suppressWarnings(suppressMessages(recipes::prep(recipe, training = train_data))),
+    error = function(e) NULL
+  )
+  if (had_seed) {
+    assign(".Random.seed", old_seed, envir = globalenv())
+  } else if (exists(".Random.seed", envir = globalenv(), inherits = FALSE)) {
+    rm(".Random.seed", envir = globalenv())
+  }
+
+  if (!is.null(prepped)) {
+    final_info <- summary(prepped)
+    predictors <- final_info$variable[final_info$role %in% "predictor"]
+    cols <- cols[vapply(cols, function(col) {
+      any(predictors == col | startsWith(predictors, paste0(col, "_")))
+    }, logical(1))]
+  }
+  if (length(cols) == 0) {
+    return(invisible(NULL))
+  }
+
+  warning(
+    sprintf(
+      paste(
+        "Grouping column(s) %s are used as predictors by the supplied recipe.",
+        "Group identity carries no information about groups absent from training,",
+        "and a column that is unique per group can make the fit degenerate.",
+        "Give them a non-predictor role, e.g.",
+        "`update_role(%s, new_role = \"grouping\")` followed by",
+        "`update_role_requirements(\"grouping\", bake = FALSE)`."
+      ),
+      paste(cols, collapse = ", "),
+      paste(cols, collapse = ", ")
+    ),
+    call. = FALSE
+  )
+  invisible(cols)
+}
+
 # Locate the cut point for a time-ordered holdout that also keeps groups intact.
 #
 # `df` is assumed to be sorted in ascending order of the ordering variable. A

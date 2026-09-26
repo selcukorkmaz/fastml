@@ -54,7 +54,9 @@ fastml_prepare_explainer_inputs <- function(object, data = c("train", "test")) {
   rownames(selected_data) <- NULL
 
   label <- object$label
-  x_raw <- selected_data[, setdiff(names(selected_data), label), drop = FALSE]
+  # Grouping and ordering columns are not predictors, so they are not explained.
+  structural_cols <- fastml_recipe_structural_cols(object$preprocessor)
+  x_raw <- selected_data[, setdiff(names(selected_data), c(label, structural_cols)), drop = FALSE]
   x_raw <- as.data.frame(x_raw)
   rownames(x_raw) <- NULL
   y_raw <- selected_data[[label]]

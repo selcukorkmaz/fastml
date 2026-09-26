@@ -55,6 +55,15 @@ predict.fastml <- function(object, newdata,
     stop("No preprocessing recipe found in fastml object.")
   }
 
+  # Grouping and ordering columns only shaped the resamples and are never
+  # predictors, so new data may omit them; drop them when present.
+  if (is.data.frame(newdata)) {
+    structural_cols <- intersect(fastml_recipe_structural_cols(object$preprocessor), names(newdata))
+    if (length(structural_cols) > 0) {
+      newdata <- newdata[, setdiff(names(newdata), structural_cols), drop = FALSE]
+    }
+  }
+
   # Pass full data to bake; the recipe handles label removal via step_rm
   new_proc <- recipes::bake(object$preprocessor, new_data = newdata)
 

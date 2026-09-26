@@ -48,13 +48,19 @@
 #' @param group_cols Character vector naming one or more grouping columns used when
 #'   \code{resampling_method = "grouped_cv"} or when grouped nested cross-validation is desired.
 #'   All rows that share the same combination of values remain together in every fold. Columns must exist
-#'   in the training data and cannot contain missing values.
+#'   in the training data and cannot contain missing values. The default recipe gives these columns the
+#'   non-predictor role \code{"grouping"} and removes them before preprocessing, so group identity is never
+#'   used as a feature; they are not required in the data passed to \code{predict()}. A user-supplied
+#'   \code{recipe} controls roles itself, and \code{fastml()} warns when it leaves a grouping column as a predictor.
 #' @param strata_cols Optional character vector naming the columns that define
 #'   strata for \code{stratified_cox}. When \code{NULL} (the default), columns whose
 #'   names begin with \code{"strata"} are used, which is the historical behaviour.
 #' @param block_col Single column name that defines the ordering variable for
 #'   \code{resampling_method = "blocked_cv"} or \code{"rolling_origin"}. Data must already be sorted in
-#'   ascending order by this column to avoid leakage from future observations. When
+#'   ascending order by this column to avoid leakage from future observations. The default recipe
+#'   gives this column the non-predictor role \code{"ordering"} and removes it before preprocessing,
+#'   so it is not required in the data passed to \code{predict()}; to model a time trend, supply a
+#'   \code{recipe} that derives the features you want. When
 #'   \code{group_cols} is also supplied, the holdout split is cut at the admissible point
 #'   nearest the requested \code{test_size} at which no group spans the cut, so that every
 #'   training row precedes every test row and no group appears on both sides; if the groups
@@ -79,6 +85,9 @@
 #'   class equally, while macro_weighted weights by class prevalence and can
 #'   change model rankings on imbalanced data.
 #' @param exclude A character vector specifying the names of the columns to be excluded from the training process.
+#'   Exclusion is applied to \code{data} before it is split. Columns also named in \code{group_cols} or
+#'   \code{block_col} are retained, with a message, because splitting and resampling need them; they are
+#'   already kept out of the default recipe's predictors.
 #' @param recipe A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped. The column types the recipe recorded are preserved: character and integer columns the recipe covers are not converted to factors or doubles. A classification outcome must already be a factor when the recipe is built.
 #' @param tune_params A named list of candidate tuning values for each algorithm
 #'   and engine pair. Example:
@@ -805,6 +814,18 @@ fastml <- function(data = NULL,
         warning("Variables not in data: ", paste(missing_vars, collapse = ", "))
         exclude <- setdiff(exclude, missing_vars)
       }
+      # Columns named in `group_cols` or `block_col` are needed to split and
+      # resample, so they cannot be dropped here. They are already kept out of
+      # the default recipe's predictors, which is what excluding them asks for.
+      structural_excluded <- intersect(exclude, c(group_cols, block_col))
+      if (length(structural_excluded) > 0) {
+        message(
+          "Column(s) ", paste(structural_excluded, collapse = ", "),
+          " are named in `group_cols` or `block_col` and are retained for splitting and ",
+          "resampling rather than excluded; they are not used as predictors."
+        )
+        exclude <- setdiff(exclude, structural_excluded)
+      }
       data <- dplyr::select(data, -dplyr::all_of(exclude))
     }
     if (!is.null(impute_method) && impute_method == "error" && anyNA(data)) {
@@ -1179,7 +1200,7 @@ fastml <- function(data = NULL,
   }
 
   if (is.null(recipe) && task == "classification" && "discrim_quad" %in% algorithms) {
-    predictor_cols <- setdiff(names(train_data), label)
+    predictor_cols <- setdiff(names(train_data), c(label, group_cols, block_col))
     numeric_predictors <- predictor_cols[vapply(train_data[predictor_cols], is.numeric, logical(1))]
 
     if (length(numeric_predictors) > 0) {
@@ -1213,6 +1234,9 @@ fastml <- function(data = NULL,
   reference_resample_data <- train_data
   ensure_columns_present(reference_resample_data, group_cols, "`group_cols`")
   ensure_columns_present(reference_resample_data, block_col, "`block_col`")
+  if (!is.null(recipe)) {
+    fastml_warn_group_predictors(recipe, train_data, group_cols)
+  }
   ###############################################################################
 
   # Set up parallel processing using future and restore it on exit.
@@ -1229,6 +1253,15 @@ fastml <- function(data = NULL,
     if (task == "survival") {
       recipe <- recipe %>% step_rm(all_of(label_surv))
     }
+
+    # Grouping and ordering columns define the resampling structure only; keep
+    # them out of the predictors so group identity is never learned as a feature.
+    recipe <- fastml_recipe_structural_roles(
+      recipe,
+      group_cols = group_cols,
+      block_col = block_col,
+      outcome_cols = c(label, label_surv)
+    )
 
     # Remove zero-variance predictors before any additional transformations
     recipe <- recipe %>%

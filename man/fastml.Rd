@@ -116,11 +116,17 @@ the proportion held out for validation is derived as \code{1 - 1/folds}.}
 \item{group_cols}{Character vector naming one or more grouping columns used when
 \code{resampling_method = "grouped_cv"} or when grouped nested cross-validation is desired.
 All rows that share the same combination of values remain together in every fold. Columns must exist
-in the training data and cannot contain missing values.}
+in the training data and cannot contain missing values. The default recipe gives these columns the
+non-predictor role \code{"grouping"} and removes them before preprocessing, so group identity is never
+used as a feature; they are not required in the data passed to \code{predict()}. A user-supplied
+\code{recipe} controls roles itself, and \code{fastml()} warns when it leaves a grouping column as a predictor.}
 
 \item{block_col}{Single column name that defines the ordering variable for
 \code{resampling_method = "blocked_cv"} or \code{"rolling_origin"}. Data must already be sorted in
-ascending order by this column to avoid leakage from future observations. When
+ascending order by this column to avoid leakage from future observations. The default recipe
+gives this column the non-predictor role \code{"ordering"} and removes it before preprocessing,
+so it is not required in the data passed to \code{predict()}; to model a time trend, supply a
+\code{recipe} that derives the features you want. When
 \code{group_cols} is also supplied, the holdout split is cut at the admissible point
 nearest the requested \code{test_size} at which no group spans the cut, so that every
 training row precedes every test row and no group appears on both sides; if the groups
@@ -151,7 +157,10 @@ For binary classification, "first" treats the first factor level as the positive
 class, "second" treats the second level as positive. Use
 \code{levels(your_data$outcome)} to check level order before training. Default is "first".}
 
-\item{exclude}{A character vector specifying the names of the columns to be excluded from the training process.}
+\item{exclude}{A character vector specifying the names of the columns to be excluded from the training process.
+Exclusion is applied to \code{data} before it is split. Columns also named in \code{group_cols} or
+\code{block_col} are retained, with a message, because splitting and resampling need them; they are
+already kept out of the default recipe's predictors.}
 
 \item{recipe}{A user-defined \code{recipe} object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped. The column types the recipe recorded are preserved: character and integer columns the recipe covers are not converted to factors or doubles. A classification outcome must already be a factor when the recipe is built.}
 

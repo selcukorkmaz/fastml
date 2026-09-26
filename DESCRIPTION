@@ -24,7 +24,7 @@ Depends:
     R (>= 4.1.0)
 Imports:
     stats,
-    recipes,
+    recipes (>= 1.0.0),
     dplyr,
     ggplot2,
     reshape2,
