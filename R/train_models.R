@@ -725,7 +725,7 @@ fastml_run_nested_cv <- function(workflow_spec,
         parsnip::fit(current_workflow, data = outer_train)
       })
     }, error = function(e) {
-      warning(sprintf("Outer fit failed for split '%s': %s", outer_ids[[i]], e$message))
+      warning(sprintf("Outer fit failed for split '%s': %s", outer_ids[[i]], conditionMessage(e)))
       NULL
     })
 
@@ -755,7 +755,7 @@ fastml_run_nested_cv <- function(workflow_spec,
             multiclass_auc = multiclass_auc
           )
         }, error = function(e) {
-        warning(sprintf("Evaluation failed for outer split '%s': %s", outer_ids[[i]], e$message))
+        warning(sprintf("Evaluation failed for outer split '%s': %s", outer_ids[[i]], conditionMessage(e)))
         NULL
       })
 
@@ -980,6 +980,30 @@ fastml_attach_fold_sizes <- function(res_summary, resamples, task) {
   res_summary$folds <- folds_tbl
   res_summary$aggregated <- fastml_aggregate_resample_metrics(folds_tbl, task)
   res_summary
+}
+
+#' Print the summary of models that failed to train
+#'
+#' Reasons come from `conditionMessage()` and may span several lines (cli
+#' errors put the offending columns in bullet lines below the header), so
+#' continuation lines are indented under the entry they belong to.
+#'
+#' @keywords internal
+#' @noRd
+fastml_report_failed_models <- function(failed_models) {
+  rule <- function(ch) paste(rep(ch, 60), collapse = "")
+  message("\n", rule("="))
+  message(sprintf("WARNING: %d model(s) failed to train:", length(failed_models)))
+  message(rule("-"))
+  for (fm in failed_models) {
+    reason <- paste(as.character(fm$reason), collapse = "\n")
+    reason_lines <- strsplit(trimws(reason, which = "right"), "\n", fixed = TRUE)[[1]]
+    if (length(reason_lines) == 0) reason_lines <- ""
+    header <- sprintf("  - %s (%s): %s", fm$algorithm, fm$engine, reason_lines[[1]])
+    message(paste(c(header, paste0("      ", reason_lines[-1])), collapse = "\n"))
+  }
+  message(rule("="), "\n")
+  invisible(failed_models)
 }
 
 fastml_collect_tune_resample_summary <- function(tune_results, best_params, task) {
@@ -2494,9 +2518,9 @@ train_models <- function(train_data,
           failed_models[[length(failed_models) + 1]] <- list(
             algorithm = algo,
             engine = engine,
-            reason = fit$message
+            reason = conditionMessage(fit)
           )
-          warning(sprintf("royston_parmar training failed: %s", fit$message))
+          warning(sprintf("royston_parmar training failed: %s", conditionMessage(fit)))
           next
         }
         if (!inherits(fit, c("stpm2", "pstpm2"))) {
@@ -2803,13 +2827,7 @@ train_models <- function(train_data,
 
     # Report failed models prominently
     if (length(failed_models) > 0) {
-      message("\n", paste(rep("=", 60), collapse = ""))
-      message(sprintf("WARNING: %d model(s) failed to train:", length(failed_models)))
-      message(paste(rep("-", 60), collapse = ""))
-      for (fm in failed_models) {
-        message(sprintf("  - %s (%s): %s", fm$algorithm, fm$engine, fm$reason))
-      }
-      message(paste(rep("=", 60), collapse = ""), "\n")
+      fastml_report_failed_models(failed_models)
       attr(models, "failed_models") <- failed_models
     }
 
@@ -3846,10 +3864,10 @@ train_models <- function(train_data,
         failed_models[[length(failed_models) + 1]] <<- list(
           algorithm = algo,
           engine = engine,
-          reason = e$message
+          reason = conditionMessage(e)
         )
         warning(paste("Training failed for algorithm:", algo, "with engine:", engine,
-                      "\nError message:", e$message))
+                      "\nError message:", conditionMessage(e)))
       })
 
       }else{
@@ -3883,13 +3901,7 @@ train_models <- function(train_data,
 
   # Report failed models prominently
   if (length(failed_models) > 0) {
-    message("\n", paste(rep("=", 60), collapse = ""))
-    message(sprintf("WARNING: %d model(s) failed to train:", length(failed_models)))
-    message(paste(rep("-", 60), collapse = ""))
-    for (fm in failed_models) {
-      message(sprintf("  - %s (%s): %s", fm$algorithm, fm$engine, fm$reason))
-    }
-    message(paste(rep("=", 60), collapse = ""), "\n")
+    fastml_report_failed_models(failed_models)
     attr(models, "failed_models") <- failed_models
   }
 
