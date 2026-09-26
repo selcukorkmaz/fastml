@@ -350,6 +350,23 @@ CRAN release: 2026-08-28
   guarantee. Fold construction under `blocked_cv` and `rolling_origin`
   remains purely positional and is unaffected.
 
+- **Training failures now report the whole error, including the lines
+  that name the offending columns.** The failure handlers recorded and
+  warned with `e$message`. For errors raised through cli and rlang, as
+  recipes, parsnip and workflows do, that field holds only the header
+  line, and for recipes step errors it can be empty, so the
+  `WARNING: N model(s) failed to train` summary printed a line such as
+  `The following variable has the wrong class:` with nothing after it,
+  or no reason at all for a `step_normalize()` applied to a factor. The
+  handlers now use
+  [`conditionMessage()`](https://rdrr.io/r/base/conditions.html), which
+  includes the bullets, and the summary indents the continuation lines
+  of a multi-line reason under the model they belong to. The same change
+  applies to the `failed_models` attribute, the `royston_parmar`
+  handler, and the outer-fit and outer-evaluation warnings of nested
+  cross-validation. Regression tests are in
+  `tests/testthat/test-failed-models-reason.R`.
+
 - **Continuous integration and a prediction-orientation test suite.**
   The package now runs `R CMD check` on GitHub Actions across macOS,
   Windows, and Linux on R release, devel, and oldrel-1, with
