@@ -98,6 +98,25 @@ CRAN release: 2026-08-28
 
 ### Bug fixes
 
+- **A user-supplied `recipe` built on data with character or integer
+  columns no longer fails to train.**
+  [`fastml()`](https://selcukorkmaz.github.io/fastml/reference/fastml.md)
+  converts character columns to factors and integers to doubles before
+  splitting, while a recipe records the class of every column it was
+  built on, and
+  [`recipes::prep()`](https://recipes.tidymodels.org/reference/prep.html)
+  refuses training data whose classes differ. A recipe built on the
+  caller’s own data frame was therefore rejected for every algorithm
+  with “The following variable has the wrong class”, ending in “No
+  models were successfully trained.” The same recipe worked only if the
+  caller had converted the columns first. When a recipe is supplied, the
+  predictors it covers now keep the classes it recorded, as does an
+  integer regression outcome. Classification still needs a factor
+  outcome, so a recipe that records the outcome as character or logical
+  now stops with an error naming the column, where before every model
+  failed. Regression tests are in
+  `tests/testthat/test-user-recipe-column-types.R`.
+
 - **Tuning values supplied through `tune_params` are no longer
   reinterpreted as logarithms.** `dials` stores quantitative parameters
   on their transformed scale, which for `penalty`, `learn_rate`,

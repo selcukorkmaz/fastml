@@ -243,7 +243,7 @@ class, "second" treats the second level as positive. Use
 
 
 <dt id="arg-recipe">recipe<a class="anchor" aria-label="anchor" href="#arg-recipe"></a></dt>
-<dd><p>A user-defined <code>recipe</code> object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped.</p></dd>
+<dd><p>A user-defined <code>recipe</code> object for custom preprocessing. If provided, internal recipe steps (imputation, encoding, scaling) are skipped. The column types the recipe recorded are preserved: character and integer columns the recipe covers are not converted to factors or doubles. A classification outcome must already be a factor when the recipe is built.</p></dd>
 
 
 <dt id="arg-tune-params">tune_params<a class="anchor" aria-label="anchor" href="#arg-tune-params"></a></dt>

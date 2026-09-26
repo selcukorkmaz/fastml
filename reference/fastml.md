@@ -232,7 +232,11 @@ fastml(
 - recipe:
 
   A user-defined `recipe` object for custom preprocessing. If provided,
-  internal recipe steps (imputation, encoding, scaling) are skipped.
+  internal recipe steps (imputation, encoding, scaling) are skipped. The
+  column types the recipe recorded are preserved: character and integer
+  columns the recipe covers are not converted to factors or doubles. A
+  classification outcome must already be a factor when the recipe is
+  built.
 
 - tune_params:
 
