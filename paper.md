@@ -25,7 +25,7 @@ affiliations:
   - name: Faculty of Medicine, Department of Biostatistics, Sakarya University, Sakarya 54290, Türkiye
     index: 2
     ror: 04ttnw109
-  - name: Faculty of Medicine, Department of Biostatistics, University of Health Sciences, Ankara 06010, Türkiye
+  - name: Faculty of Medicine, Department of Medical Informatics, University of Health Sciences, Ankara 06010, Türkiye
     index: 3
     ror: 03k7bde87
 date: 18 September 2026
