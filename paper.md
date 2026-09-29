@@ -19,13 +19,13 @@ authors:
     orcid: 0000-0003-3085-7809
     affiliation: 3
 affiliations:
-  - name: Department of Biostatistics, Trakya University, Edirne, Türkiye
+  - name: Faculty of Medicine, Department of Biostatistics and Medical Informatics, Trakya University, Edirne 22030, Türkiye
     index: 1
     ror: 00xa0xn82
-  - name: Department of Biostatistics, Sakarya University, Sakarya, Türkiye
+  - name: Faculty of Medicine, Department of Biostatistics, Sakarya University, Sakarya 54290, Türkiye
     index: 2
     ror: 04ttnw109
-  - name: Department of Medical Informatics, University of Health Sciences, Istanbul, Türkiye
+  - name: Faculty of Medicine, Department of Biostatistics, University of Health Sciences, Ankara 06010, Türkiye
     index: 3
     ror: 03k7bde87
 date: 18 September 2026
