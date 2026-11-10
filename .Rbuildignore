@@ -32,3 +32,4 @@ Rscript1aa814787f6
 ^Figure1\.jpeg$
 ^dev$
 ^paper-figures$
+^.*\.Rcheck$

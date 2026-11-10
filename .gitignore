@@ -29,3 +29,6 @@ docs/
 fastml.pdf
 paper.html
 Figure1.jpeg
+
+# R CMD check output directories (e.g. ..Rcheck from checking the source tree)
+*.Rcheck/

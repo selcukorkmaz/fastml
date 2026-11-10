@@ -47,12 +47,13 @@ feature selection has been shown to inflate prediction performance substantially
 [@rosenblatt2024leakage].
 
 `fastml` is an R package that trains, tunes and compares machine-learning models
-through a single call. In `fastml`, *fold-local* preprocessing is the default
-execution path and not a convention the user has to remember to follow. Every
-data-dependent transformation is re-estimated inside each resampling split from
-that split's analysis data alone, then applied to the corresponding assessment
-data. The package covers classification, regression and survival tasks, and it
-offers resampling designs that respect grouping and time order alongside ordinary
+through a single call. In `fastml`, *fold-local* preprocessing (preprocessing
+re-estimated independently within each fold) is the default execution path and
+not a convention the user has to remember to follow. Every data-dependent
+transformation is estimated inside each resampling split from that split's
+analysis data alone, then applied to the corresponding assessment data. The
+package covers classification, regression and survival tasks, and it offers
+resampling designs that respect grouping and time order alongside ordinary
 cross-validation. The evaluation design stays explicit and under the user's
 control.
 
@@ -78,11 +79,8 @@ accident.
 compile to untrained specifications that are estimated only inside the resampling
 loop. A recipe that has already been passed through `prep()` may carry
 parameters estimated outside that loop, so the package rejects it before training
-begins. The restriction is deliberate. It prevents unsafe combinations, but it
-also rules out arbitrary pipeline structures, tuning of preprocessing parameters
-and stacking. Two limitations remain: the package cannot undo preprocessing
-performed before the call, and a custom step inside a user-supplied recipe can
-still read values computed elsewhere.
+begins. The restriction is deliberate; its costs and residual risks are set out
+under Limitations.
 
 # State of the field
 
@@ -169,12 +167,10 @@ used for both purposes [@varma2006bias].
 Survival modelling is supported through both `parsnip`-compatible engines and
 native implementations. The latter include the XGBoost accelerated failure time
 model [@barnwal2020aft] and a piecewise-exponential model implemented through
-`flexsurv` [@jackson2016flexsurv]. The package also screens user-supplied recipes
-for steps that depend on external data or the global environment. Additional
-features include exploratory diagnostics and model interpretation using
-permutation importance, accumulated local effects (ALE), LIME, individual
-conditional expectation (ICE) curves, surrogate trees and counterfactual
-explanations.
+`flexsurv` [@jackson2016flexsurv]. Additional features include exploratory
+diagnostics and model interpretation using permutation importance, accumulated
+local effects (ALE), LIME, individual conditional expectation (ICE) curves,
+surrogate trees and counterfactual explanations.
 
 # Example workflow
 
@@ -201,6 +197,28 @@ of each fold. Dependence structure is declared in the same call: `group_cols`
 identifies grouping variables, while `block_col` defines the ordering variable
 for `blocked_cv` or `rolling_origin`. These settings determine both the initial
 holdout split and the resampling folds.
+
+# Limitations
+
+The safeguards described above apply only inside a `fastml()` call, and three
+limitations remain.
+
+First, the package cannot detect or undo preprocessing performed before the
+call. If the input data have already been scaled, imputed, rebalanced or
+filtered by feature selection using all observations, every fold inherits that
+leakage. Data-dependent preprocessing should be left to the package's own
+arguments or to an untrained recipe.
+
+Second, the checks on user-supplied recipes are a safeguard, not a guarantee.
+`fastml` rejects trained recipes and recipes with steps that embed a data frame
+or reference the global environment, but it inspects a recipe's structure, not
+the origin of the values it holds. A custom step can therefore still carry a
+statistic computed from the full dataset, such as a mean or a list of selected
+features, that looks no different from a legitimate constant.
+
+Third, the narrow interface excludes arbitrary pipeline structures, tuning of
+preprocessing parameters and stacking. Users who need these should turn to a
+modular framework and take responsibility for composing it correctly.
 
 # Research impact statement
 
